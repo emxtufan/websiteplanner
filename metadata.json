@@ -1,0 +1,5 @@
+{
+  "name": "YES",
+  "description": "Refactorizarea UI-ului existent către stilul Shadcn Dashboard, păstrând logica de business.",
+  "requestFramePermissions": []
+}

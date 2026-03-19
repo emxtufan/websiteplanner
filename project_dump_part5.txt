@@ -1,0 +1,3853 @@
+import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+
+type Props = {
+  className?: string;
+  style?: React.CSSProperties;
+  wispDensity?: number;
+  dpr?: number;
+  mouseSmoothTime?: number;
+  mouseTiltStrength?: number;
+  horizontalBeamOffset?: number;
+  verticalBeamOffset?: number;
+  flowSpeed?: number;
+  verticalSizing?: number;
+  horizontalSizing?: number;
+  fogIntensity?: number;
+  fogScale?: number;
+  wispSpeed?: number;
+  wispIntensity?: number;
+  flowStrength?: number;
+  decay?: number;
+  falloffStart?: number;
+  fogFallSpeed?: number;
+  color?: string;
+};
+
+const VERT = `
+precision highp float;
+attribute vec3 position;
+void main(){
+  gl_Position = vec4(position, 1.0);
+}
+`;
+
+const FRAG = `
+#ifdef GL_ES
+#extension GL_OES_standard_derivatives : enable
+#endif
+precision highp float;
+precision mediump int;
+
+uniform float iTime;
+uniform vec3 iResolution;
+uniform vec4 iMouse;
+uniform float uWispDensity;
+uniform float uTiltScale;
+uniform float uFlowTime;
+uniform float uFogTime;
+uniform float uBeamXFrac;
+uniform float uBeamYFrac;
+uniform float uFlowSpeed;
+uniform float uVLenFactor;
+uniform float uHLenFactor;
+uniform float uFogIntensity;
+uniform float uFogScale;
+uniform float uWSpeed;
+uniform float uWIntensity;
+uniform float uFlowStrength;
+uniform float uDecay;
+uniform float uFalloffStart;
+uniform float uFogFallSpeed;
+uniform vec3 uColor;
+uniform float uFade;
+
+// Core beam/flare shaping and dynamics
+#define PI 3.14159265359
+#define TWO_PI 6.28318530718
+#define EPS 1e-6
+#define EDGE_SOFT (DT_LOCAL*4.0)
+#define DT_LOCAL 0.0038
+#define TAP_RADIUS 6
+#define R_H 150.0
+#define R_V 150.0
+#define FLARE_HEIGHT 16.0
+#define FLARE_AMOUNT 8.0
+#define FLARE_EXP 2.0
+#define TOP_FADE_START 0.1
+#define TOP_FADE_EXP 1.0
+#define FLOW_PERIOD 0.5
+#define FLOW_SHARPNESS 1.5
+
+// Wisps (animated micro-streaks) that travel along the beam
+#define W_BASE_X 1.5
+#define W_LAYER_GAP 0.25
+#define W_LANES 10
+#define W_SIDE_DECAY 0.5
+#define W_HALF 0.01
+#define W_AA 0.15
+#define W_CELL 20.0
+#define W_SEG_MIN 0.01
+#define W_SEG_MAX 0.55
+#define W_CURVE_AMOUNT 15.0
+#define W_CURVE_RANGE (FLARE_HEIGHT - 3.0)
+#define W_BOTTOM_EXP 10.0
+
+// Volumetric fog controls
+#define FOG_ON 1
+#define FOG_CONTRAST 1.2
+#define FOG_SPEED_U 0.1
+#define FOG_SPEED_V -0.1
+#define FOG_OCTAVES 5
+#define FOG_BOTTOM_BIAS 0.8
+#define FOG_TILT_TO_MOUSE 0.05
+#define FOG_TILT_DEADZONE 0.01
+#define FOG_TILT_MAX_X 0.35
+#define FOG_TILT_SHAPE 1.5
+#define FOG_BEAM_MIN 0.0
+#define FOG_BEAM_MAX 0.75
+#define FOG_MASK_GAMMA 0.5
+#define FOG_EXPAND_SHAPE 12.2
+#define FOG_EDGE_MIX 0.5
+
+// Horizontal vignette for the fog volume
+#define HFOG_EDGE_START 0.20
+#define HFOG_EDGE_END 0.98
+#define HFOG_EDGE_GAMMA 1.4
+#define HFOG_Y_RADIUS 25.0
+#define HFOG_Y_SOFT 60.0
+
+// Beam extents and edge masking
+#define EDGE_X0 0.22
+#define EDGE_X1 0.995
+#define EDGE_X_GAMMA 1.25
+#define EDGE_LUMA_T0 0.0
+#define EDGE_LUMA_T1 2.0
+#define DITHER_STRENGTH 1.0
+
+    float g(float x){return x<=0.00031308?12.92*x:1.055*pow(x,1.0/2.4)-0.055;}
+    float bs(vec2 p,vec2 q,float powr){
+        float d=distance(p,q),f=powr*uFalloffStart,r=(f*f)/(d*d+EPS);
+        return powr*min(1.0,r);
+    }
+    float bsa(vec2 p,vec2 q,float powr,vec2 s){
+        vec2 d=p-q; float dd=(d.x*d.x)/(s.x*s.x)+(d.y*d.y)/(s.y*s.y),f=powr*uFalloffStart,r=(f*f)/(dd+EPS);
+        return powr*min(1.0,r);
+    }
+    float tri01(float x){float f=fract(x);return 1.0-abs(f*2.0-1.0);}
+    float tauWf(float t,float tmin,float tmax){float a=smoothstep(tmin,tmin+EDGE_SOFT,t),b=1.0-smoothstep(tmax-EDGE_SOFT,tmax,t);return max(0.0,a*b);} 
+    float h21(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+34.123);return fract(p.x*p.y);}
+    float vnoise(vec2 p){
+        vec2 i=floor(p),f=fract(p);
+        float a=h21(i),b=h21(i+vec2(1,0)),c=h21(i+vec2(0,1)),d=h21(i+vec2(1,1));
+        vec2 u=f*f*(3.0-2.0*f);
+        return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+    }
+    float fbm2(vec2 p){
+        float v=0.0,amp=0.6; mat2 m=mat2(0.86,0.5,-0.5,0.86);
+        for(int i=0;i<FOG_OCTAVES;++i){v+=amp*vnoise(p); p=m*p*2.03+17.1; amp*=0.52;}
+        return v;
+    }
+    float rGate(float x,float l){float a=smoothstep(0.0,W_AA,x),b=1.0-smoothstep(l,l+W_AA,x);return max(0.0,a*b);}
+    float flareY(float y){float t=clamp(1.0-(clamp(y,0.0,FLARE_HEIGHT)/max(FLARE_HEIGHT,EPS)),0.0,1.0);return pow(t,FLARE_EXP);}
+
+    float vWisps(vec2 uv,float topF){
+    float y=uv.y,yf=(y+uFlowTime*uWSpeed)/W_CELL;
+    float dRaw=clamp(uWispDensity,0.0,2.0),d=dRaw<=0.0?1.0:dRaw;
+    float lanesF=floor(float(W_LANES)*min(d,1.0)+0.5); // WebGL1-safe
+    int lanes=int(max(1.0,lanesF));
+    float sp=min(d,1.0),ep=max(d-1.0,0.0);
+    float fm=flareY(max(y,0.0)),rm=clamp(1.0-(y/max(W_CURVE_RANGE,EPS)),0.0,1.0),cm=fm*rm;
+    const float G=0.05; float xS=1.0+(FLARE_AMOUNT*W_CURVE_AMOUNT*G)*cm;
+    float sPix=clamp(y/R_V,0.0,1.0),bGain=pow(1.0-sPix,W_BOTTOM_EXP),sum=0.0;
+    for(int s=0;s<2;++s){
+        float sgn=s==0?-1.0:1.0;
+        for(int i=0;i<W_LANES;++i){
+            if(i>=lanes) break;
+            float off=W_BASE_X+float(i)*W_LAYER_GAP,xc=sgn*(off*xS);
+            float dx=abs(uv.x-xc),lat=1.0-smoothstep(W_HALF,W_HALF+W_AA,dx),amp=exp(-off*W_SIDE_DECAY);
+            float seed=h21(vec2(off,sgn*17.0)),yf2=yf+seed*7.0,ci=floor(yf2),fy=fract(yf2);
+            float seg=mix(W_SEG_MIN,W_SEG_MAX,h21(vec2(ci,off*2.3)));
+            float spR=h21(vec2(ci,off+sgn*31.0)),seg1=rGate(fy,seg)*step(spR,sp);
+            if(ep>0.0){float spR2=h21(vec2(ci*3.1+7.0,off*5.3+sgn*13.0)); float f2=fract(fy+0.5); seg1+=rGate(f2,seg*0.9)*step(spR2,ep);}
+            sum+=amp*lat*seg1;
+        }
+    }
+    float span=smoothstep(-3.0,0.0,y)*(1.0-smoothstep(R_V-6.0,R_V,y));
+    return uWIntensity*sum*topF*bGain*span;
+}
+
+void mainImage(out vec4 fc,in vec2 frag){
+    vec2 C=iResolution.xy*.5; float invW=1.0/max(C.x,1.0);
+    float sc=512.0/iResolution.x*.4;
+    vec2 uv=(frag-C)*sc,off=vec2(uBeamXFrac*iResolution.x*sc,uBeamYFrac*iResolution.y*sc);
+    vec2 uvc = uv - off;
+    float a=0.0,b=0.0;
+    float basePhase=1.5*PI+uDecay*.5; float tauMin=basePhase-uDecay; float tauMax=basePhase;
+    float cx=clamp(uvc.x/(R_H*uHLenFactor),-1.0,1.0),tH=clamp(TWO_PI-acos(cx),tauMin,tauMax);
+    for(int k=-TAP_RADIUS;k<=TAP_RADIUS;++k){
+        float tu=tH+float(k)*DT_LOCAL,wt=tauWf(tu,tauMin,tauMax); if(wt<=0.0) continue;
+        float spd=max(abs(sin(tu)),0.02),u=clamp((basePhase-tu)/max(uDecay,EPS),0.0,1.0),env=pow(1.0-abs(u*2.0-1.0),0.8);
+        vec2 p=vec2((R_H*uHLenFactor)*cos(tu),0.0);
+        a+=wt*bs(uvc,p,env*spd);
+    }
+    float yPix=uvc.y,cy=clamp(-yPix/(R_V*uVLenFactor),-1.0,1.0),tV=clamp(TWO_PI-acos(cy),tauMin,tauMax);
+    for(int k=-TAP_RADIUS;k<=TAP_RADIUS;++k){
+        float tu=tV+float(k)*DT_LOCAL,wt=tauWf(tu,tauMin,tauMax); if(wt<=0.0) continue;
+        float yb=(-R_V)*cos(tu),s=clamp(yb/R_V,0.0,1.0),spd=max(abs(sin(tu)),0.02);
+        float env=pow(1.0-s,0.6)*spd;
+        float cap=1.0-smoothstep(TOP_FADE_START,1.0,s); cap=pow(cap,TOP_FADE_EXP); env*=cap;
+        float ph=s/max(FLOW_PERIOD,EPS)+uFlowTime*uFlowSpeed;
+        float fl=pow(tri01(ph),FLOW_SHARPNESS);
+        env*=mix(1.0-uFlowStrength,1.0,fl);
+        float yp=(-R_V*uVLenFactor)*cos(tu),m=pow(smoothstep(FLARE_HEIGHT,0.0,yp),FLARE_EXP),wx=1.0+FLARE_AMOUNT*m;
+        vec2 sig=vec2(wx,1.0),p=vec2(0.0,yp);
+        float mask=step(0.0,yp);
+        b+=wt*bsa(uvc,p,mask*env,sig);
+    }
+    float sPix=clamp(yPix/R_V,0.0,1.0),topA=pow(1.0-smoothstep(TOP_FADE_START,1.0,sPix),TOP_FADE_EXP);
+    float L=a+b*topA;
+    float w=vWisps(vec2(uvc.x,yPix),topA);
+    float fog=0.0;
+#if FOG_ON
+    vec2 fuv=uvc*uFogScale;
+    float mAct=step(1.0,length(iMouse.xy)),nx=((iMouse.x-C.x)*invW)*mAct;
+    float ax = abs(nx);
+    float stMag = mix(ax, pow(ax, FOG_TILT_SHAPE), 0.35);
+    float st = sign(nx) * stMag * uTiltScale;
+    st = clamp(st, -FOG_TILT_MAX_X, FOG_TILT_MAX_X);
+    vec2 dir=normalize(vec2(st,1.0));
+    fuv+=uFogTime*uFogFallSpeed*dir;
+    vec2 prp=vec2(-dir.y,dir.x);
+    fuv+=prp*(0.08*sin(dot(uvc,prp)*0.08+uFogTime*0.9));
+    float n=fbm2(fuv+vec2(fbm2(fuv+vec2(7.3,2.1)),fbm2(fuv+vec2(-3.7,5.9)))*0.6);
+    n=pow(clamp(n,0.0,1.0),FOG_CONTRAST);
+    float pixW = 1.0 / max(iResolution.y, 1.0);
+#ifdef GL_OES_standard_derivatives
+    float wL = max(fwidth(L), pixW);
+#else
+    float wL = pixW;
+#endif
+    float m0=pow(smoothstep(FOG_BEAM_MIN - wL, FOG_BEAM_MAX + wL, L),FOG_MASK_GAMMA);
+    float bm=1.0-pow(1.0-m0,FOG_EXPAND_SHAPE); bm=mix(bm*m0,bm,FOG_EDGE_MIX);
+    float yP=1.0-smoothstep(HFOG_Y_RADIUS,HFOG_Y_RADIUS+HFOG_Y_SOFT,abs(yPix));
+    float nxF=abs((frag.x-C.x)*invW),hE=1.0-smoothstep(HFOG_EDGE_START,HFOG_EDGE_END,nxF); hE=pow(clamp(hE,0.0,1.0),HFOG_EDGE_GAMMA);
+    float hW=mix(1.0,hE,clamp(yP,0.0,1.0));
+    float bBias=mix(1.0,1.0-sPix,FOG_BOTTOM_BIAS);
+    float browserFogIntensity = uFogIntensity;
+    browserFogIntensity *= 1.8;
+    float radialFade = 1.0 - smoothstep(0.0, 0.7, length(uvc) / 120.0);
+    float safariFog = n * browserFogIntensity * bBias * bm * hW * radialFade;
+    fog = safariFog;
+#endif
+    float LF=L+fog;
+    float dith=(h21(frag)-0.5)*(DITHER_STRENGTH/255.0);
+    float tone=g(LF+w);
+    vec3 col=tone*uColor+dith;
+    float alpha=clamp(g(L+w*0.6)+dith*0.6,0.0,1.0);
+    float nxE=abs((frag.x-C.x)*invW),xF=pow(clamp(1.0-smoothstep(EDGE_X0,EDGE_X1,nxE),0.0,1.0),EDGE_X_GAMMA);
+    float scene=LF+max(0.0,w)*0.5,hi=smoothstep(EDGE_LUMA_T0,EDGE_LUMA_T1,scene);
+    float eM=mix(xF,1.0,hi);
+    col*=eM; alpha*=eM;
+    col*=uFade; alpha*=uFade;
+    fc=vec4(col,alpha);
+}
+
+void main(){
+  vec4 fc;
+  mainImage(fc, gl_FragCoord.xy);
+  gl_FragColor = fc;
+}
+`;
+
+export const LaserFlow: React.FC<Props> = ({
+  className,
+  style,
+  wispDensity = 1,
+  dpr,
+  mouseSmoothTime = 0.0,
+  mouseTiltStrength = 0.01,
+  horizontalBeamOffset = 0.1,
+  verticalBeamOffset = 0.0,
+  flowSpeed = 0.35,
+  verticalSizing = 2.0,
+  horizontalSizing = 0.5,
+  fogIntensity = 0.45,
+  fogScale = 0.3,
+  wispSpeed = 15.0,
+  wispIntensity = 5.0,
+  flowStrength = 0.25,
+  decay = 1.1,
+  falloffStart = 1.2,
+  fogFallSpeed = 0.6,
+  color = '#FF79C6'
+}) => {
+  const mountRef = useRef<HTMLDivElement | null>(null);
+  const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const uniformsRef = useRef<any>(null);
+  const hasFadedRef = useRef(false);
+  const rectRef = useRef<DOMRect | null>(null);
+  const baseDprRef = useRef<number>(1);
+  const currentDprRef = useRef<number>(1);
+  const lastSizeRef = useRef({ width: 0, height: 0, dpr: 0 });
+  const fpsSamplesRef = useRef<number[]>([]);
+  const lastFpsCheckRef = useRef<number>(performance.now());
+  const emaDtRef = useRef<number>(16.7); // ms
+  const pausedRef = useRef<boolean>(false);
+  const inViewRef = useRef<boolean>(true);
+
+  const hexToRGB = (hex: string) => {
+    let c = hex.trim();
+    if (c[0] === '#') c = c.slice(1);
+    if (c.length === 3)
+      c = c
+        .split('')
+        .map(x => x + x)
+        .join('');
+    const n = parseInt(c, 16) || 0xffffff;
+    return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255 };
+  };
+
+  useEffect(() => {
+    const mount = mountRef.current!;
+    const renderer = new THREE.WebGLRenderer({
+      antialias: false,
+      alpha: false,
+      depth: false,
+      stencil: false,
+      powerPreference: 'high-performance',
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: false,
+      failIfMajorPerformanceCaveat: false,
+      logarithmicDepthBuffer: false
+    });
+    rendererRef.current = renderer;
+
+    baseDprRef.current = Math.min(dpr ?? (window.devicePixelRatio || 1), 2);
+    currentDprRef.current = baseDprRef.current;
+
+    renderer.setPixelRatio(currentDprRef.current);
+    renderer.shadowMap.enabled = false;
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0x000000, 1);
+    const canvas = renderer.domElement;
+    canvas.style.width = '100%';
+    canvas.style.height = '100%';
+    canvas.style.display = 'block';
+    mount.appendChild(canvas);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 3, -1, 0, -1, 3, 0]), 3));
+
+    const uniforms = {
+      iTime: { value: 0 },
+      iResolution: { value: new THREE.Vector3(1, 1, 1) },
+      iMouse: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uWispDensity: { value: wispDensity },
+      uTiltScale: { value: mouseTiltStrength },
+      uFlowTime: { value: 0 },
+      uFogTime: { value: 0 },
+      uBeamXFrac: { value: horizontalBeamOffset },
+      uBeamYFrac: { value: verticalBeamOffset },
+      uFlowSpeed: { value: flowSpeed },
+      uVLenFactor: { value: verticalSizing },
+      uHLenFactor: { value: horizontalSizing },
+      uFogIntensity: { value: fogIntensity },
+      uFogScale: { value: fogScale },
+      uWSpeed: { value: wispSpeed },
+      uWIntensity: { value: wispIntensity },
+      uFlowStrength: { value: flowStrength },
+      uDecay: { value: decay },
+      uFalloffStart: { value: falloffStart },
+      uFogFallSpeed: { value: fogFallSpeed },
+      uColor: { value: new THREE.Vector3(1, 1, 1) },
+      uFade: { value: hasFadedRef.current ? 1 : 0 }
+    };
+    uniformsRef.current = uniforms;
+
+    const material = new THREE.RawShaderMaterial({
+      vertexShader: VERT,
+      fragmentShader: FRAG,
+      uniforms,
+      transparent: false,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.NormalBlending
+    });
+
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.frustumCulled = false;
+    scene.add(mesh);
+
+    const clock = new THREE.Clock();
+    let prevTime = 0;
+    let fade = hasFadedRef.current ? 1 : 0;
+
+    const mouseTarget = new THREE.Vector2(0, 0);
+    const mouseSmooth = new THREE.Vector2(0, 0);
+
+    const setSizeNow = () => {
+      const w = mount.clientWidth || 1;
+      const h = mount.clientHeight || 1;
+      const pr = currentDprRef.current;
+
+      const last = lastSizeRef.current;
+      const sizeChanged = Math.abs(w - last.width) > 0.5 || Math.abs(h - last.height) > 0.5;
+      const dprChanged = Math.abs(pr - last.dpr) > 0.01;
+      if (!sizeChanged && !dprChanged) {
+        return;
+      }
+
+      lastSizeRef.current = { width: w, height: h, dpr: pr };
+      renderer.setPixelRatio(pr);
+      renderer.setSize(w, h, false);
+      uniforms.iResolution.value.set(w * pr, h * pr, pr);
+      rectRef.current = canvas.getBoundingClientRect();
+
+      if (!pausedRef.current) {
+        renderer.render(scene, camera);
+      }
+    };
+
+    let resizeRaf = 0;
+    const scheduleResize = () => {
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
+      resizeRaf = requestAnimationFrame(setSizeNow);
+    };
+
+    setSizeNow();
+    const ro = new ResizeObserver(scheduleResize);
+    ro.observe(mount);
+
+    const io = new IntersectionObserver(
+      entries => {
+        inViewRef.current = entries[0]?.isIntersecting ?? true;
+      },
+      { root: null, threshold: 0 }
+    );
+    io.observe(mount);
+
+    const onVis = () => {
+      pausedRef.current = document.hidden;
+    };
+    document.addEventListener('visibilitychange', onVis, { passive: true });
+
+    const updateMouse = (clientX: number, clientY: number) => {
+      const rect = rectRef.current;
+      if (!rect) return;
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+      const ratio = currentDprRef.current;
+      const hb = rect.height * ratio;
+      mouseTarget.set(x * ratio, hb - y * ratio);
+    };
+    const onMove = (ev: PointerEvent | MouseEvent) => updateMouse(ev.clientX, ev.clientY);
+    const onLeave = () => mouseTarget.set(0, 0);
+    canvas.addEventListener('pointermove', onMove as any, { passive: true });
+    canvas.addEventListener('pointerdown', onMove as any, { passive: true });
+    canvas.addEventListener('pointerenter', onMove as any, { passive: true });
+    canvas.addEventListener('pointerleave', onLeave as any, { passive: true });
+
+    const onCtxLost = (e: Event) => {
+      e.preventDefault();
+      pausedRef.current = true;
+    };
+    const onCtxRestored = () => {
+      pausedRef.current = false;
+      scheduleResize();
+    };
+    canvas.addEventListener('webglcontextlost', onCtxLost, false);
+    canvas.addEventListener('webglcontextrestored', onCtxRestored, false);
+
+    let raf = 0;
+
+    const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+    const dprFloor = 0.6;
+    const lowerThresh = 50;
+    const upperThresh = 58;
+    let lastDprChangeRef = 0;
+    const dprChangeCooldown = 2000;
+
+    const adjustDprIfNeeded = (now: number) => {
+      const elapsed = now - lastFpsCheckRef.current;
+      if (elapsed < 750) return;
+
+      const samples = fpsSamplesRef.current;
+      if (samples.length === 0) {
+        lastFpsCheckRef.current = now;
+        return;
+      }
+      const avgFps = samples.reduce((a, b) => a + b, 0) / samples.length;
+
+      let next = currentDprRef.current;
+      const base = baseDprRef.current;
+
+      if (avgFps < lowerThresh) {
+        next = clamp(currentDprRef.current * 0.85, dprFloor, base);
+      } else if (avgFps > upperThresh && currentDprRef.current < base) {
+        next = clamp(currentDprRef.current * 1.1, dprFloor, base);
+      }
+
+      if (Math.abs(next - currentDprRef.current) > 0.01 && now - lastDprChangeRef > dprChangeCooldown) {
+        currentDprRef.current = next;
+        lastDprChangeRef = now;
+        setSizeNow();
+      }
+
+      fpsSamplesRef.current = [];
+      lastFpsCheckRef.current = now;
+    };
+
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      if (pausedRef.current || !inViewRef.current) return;
+
+      const t = clock.getElapsedTime();
+      const dt = Math.max(0, t - prevTime);
+      prevTime = t;
+
+      const dtMs = dt * 1000;
+      emaDtRef.current = emaDtRef.current * 0.9 + dtMs * 0.1;
+      const instFps = 1000 / Math.max(1, emaDtRef.current);
+      fpsSamplesRef.current.push(instFps);
+
+      uniforms.iTime.value = t;
+
+      const cdt = Math.min(0.033, Math.max(0.001, dt));
+      (uniforms.uFlowTime.value as number) += cdt;
+      (uniforms.uFogTime.value as number) += cdt;
+
+      if (!hasFadedRef.current) {
+        const fadeDur = 1.0;
+        fade = Math.min(1, fade + cdt / fadeDur);
+        uniforms.uFade.value = fade;
+        if (fade >= 1) hasFadedRef.current = true;
+      }
+
+      const tau = Math.max(1e-3, mouseSmoothTime);
+      const alpha = 1 - Math.exp(-cdt / tau);
+      mouseSmooth.lerp(mouseTarget, alpha);
+      uniforms.iMouse.value.set(mouseSmooth.x, mouseSmooth.y, 0, 0);
+
+      renderer.render(scene, camera);
+
+      adjustDprIfNeeded(performance.now());
+    };
+
+    animate();
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      io.disconnect();
+      document.removeEventListener('visibilitychange', onVis);
+      canvas.removeEventListener('pointermove', onMove as any);
+      canvas.removeEventListener('pointerdown', onMove as any);
+      canvas.removeEventListener('pointerenter', onMove as any);
+      canvas.removeEventListener('pointerleave', onLeave as any);
+      canvas.removeEventListener('webglcontextlost', onCtxLost);
+      canvas.removeEventListener('webglcontextrestored', onCtxRestored);
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+      if (mount.contains(canvas)) mount.removeChild(canvas);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dpr]);
+
+  useEffect(() => {
+    const uniforms = uniformsRef.current;
+    if (!uniforms) return;
+
+    uniforms.uWispDensity.value = wispDensity;
+    uniforms.uTiltScale.value = mouseTiltStrength;
+    uniforms.uBeamXFrac.value = horizontalBeamOffset;
+    uniforms.uBeamYFrac.value = verticalBeamOffset;
+    uniforms.uFlowSpeed.value = flowSpeed;
+    uniforms.uVLenFactor.value = verticalSizing;
+    uniforms.uHLenFactor.value = horizontalSizing;
+    uniforms.uFogIntensity.value = fogIntensity;
+    uniforms.uFogScale.value = fogScale;
+    uniforms.uWSpeed.value = wispSpeed;
+    uniforms.uWIntensity.value = wispIntensity;
+    uniforms.uFlowStrength.value = flowStrength;
+    uniforms.uDecay.value = decay;
+    uniforms.uFalloffStart.value = falloffStart;
+    uniforms.uFogFallSpeed.value = fogFallSpeed;
+
+    const { r, g, b } = hexToRGB(color || '#FFFFFF');
+    uniforms.uColor.value.set(r, g, b);
+  }, [
+    wispDensity,
+    mouseTiltStrength,
+    horizontalBeamOffset,
+    verticalBeamOffset,
+    flowSpeed,
+    verticalSizing,
+    horizontalSizing,
+    fogIntensity,
+    fogScale,
+    wispSpeed,
+    wispIntensity,
+    flowStrength,
+    decay,
+    falloffStart,
+    fogFallSpeed,
+    color
+  ]);
+
+  return <div ref={mountRef} className={`w-full h-full relative ${className || ''}`} style={style} />;
+};
+
+export default LaserFlow;
+
+
+===== LOCATION: src/components/landing/bgEffects/MagicBento.tsx =====
+
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { gsap } from 'gsap';
+
+export interface BentoCardProps {
+  color?: string;
+  title?: string;
+  description?: string;
+  label?: string;
+  textAutoHide?: boolean;
+  disableAnimations?: boolean;
+}
+
+export interface BentoProps {
+  textAutoHide?: boolean;
+  enableStars?: boolean;
+  enableSpotlight?: boolean;
+  enableBorderGlow?: boolean;
+  disableAnimations?: boolean;
+  spotlightRadius?: number;
+  particleCount?: number;
+  enableTilt?: boolean;
+  glowColor?: string;
+  clickEffect?: boolean;
+  enableMagnetism?: boolean;
+}
+
+const DEFAULT_PARTICLE_COUNT = 12;
+const DEFAULT_SPOTLIGHT_RADIUS = 300;
+const DEFAULT_GLOW_COLOR = '132, 0, 255';
+const MOBILE_BREAKPOINT = 768;
+
+const cardData: BentoCardProps[] = [
+  {
+    color: '#060010',
+    title: 'Analytics',
+    description: 'Track user behavior',
+    label: 'Insights'
+  },
+  {
+    color: '#060010',
+    title: 'Dashboard',
+    description: 'Centralized data view',
+    label: 'Overview'
+  },
+  {
+    color: '#060010',
+    title: 'Collaboration',
+    description: 'Work together seamlessly',
+    label: 'Teamwork'
+  },
+  {
+    color: '#060010',
+    title: 'Automation',
+    description: 'Streamline workflows',
+    label: 'Efficiency'
+  },
+  {
+    color: '#060010',
+    title: 'Integration',
+    description: 'Connect favorite tools',
+    label: 'Connectivity'
+  },
+  {
+    color: '#060010',
+    title: 'Security',
+    description: 'Enterprise-grade protection',
+    label: 'Protection'
+  }
+];
+
+const createParticleElement = (x: number, y: number, color: string = DEFAULT_GLOW_COLOR): HTMLDivElement => {
+  const el = document.createElement('div');
+  el.className = 'particle';
+  el.style.cssText = `
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(${color}, 1);
+    box-shadow: 0 0 6px rgba(${color}, 0.6);
+    pointer-events: none;
+    z-index: 100;
+    left: ${x}px;
+    top: ${y}px;
+  `;
+  return el;
+};
+
+const calculateSpotlightValues = (radius: number) => ({
+  proximity: radius * 0.5,
+  fadeDistance: radius * 0.75
+});
+
+const updateCardGlowProperties = (card: HTMLElement, mouseX: number, mouseY: number, glow: number, radius: number) => {
+  const rect = card.getBoundingClientRect();
+  const relativeX = ((mouseX - rect.left) / rect.width) * 100;
+  const relativeY = ((mouseY - rect.top) / rect.height) * 100;
+
+  card.style.setProperty('--glow-x', `${relativeX}%`);
+  card.style.setProperty('--glow-y', `${relativeY}%`);
+  card.style.setProperty('--glow-intensity', glow.toString());
+  card.style.setProperty('--glow-radius', `${radius}px`);
+};
+
+const ParticleCard: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+  disableAnimations?: boolean;
+  style?: React.CSSProperties;
+  particleCount?: number;
+  glowColor?: string;
+  enableTilt?: boolean;
+  clickEffect?: boolean;
+  enableMagnetism?: boolean;
+}> = ({
+  children,
+  className = '',
+  disableAnimations = false,
+  style,
+  particleCount = DEFAULT_PARTICLE_COUNT,
+  glowColor = DEFAULT_GLOW_COLOR,
+  enableTilt = true,
+  clickEffect = false,
+  enableMagnetism = false
+}) => {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const particlesRef = useRef<HTMLDivElement[]>([]);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const isHoveredRef = useRef(false);
+  const memoizedParticles = useRef<HTMLDivElement[]>([]);
+  const particlesInitialized = useRef(false);
+  const magnetismAnimationRef = useRef<gsap.core.Tween | null>(null);
+
+  const initializeParticles = useCallback(() => {
+    if (particlesInitialized.current || !cardRef.current) return;
+
+    const { width, height } = cardRef.current.getBoundingClientRect();
+    memoizedParticles.current = Array.from({ length: particleCount }, () =>
+      createParticleElement(Math.random() * width, Math.random() * height, glowColor)
+    );
+    particlesInitialized.current = true;
+  }, [particleCount, glowColor]);
+
+  const clearAllParticles = useCallback(() => {
+    timeoutsRef.current.forEach(clearTimeout);
+    timeoutsRef.current = [];
+    magnetismAnimationRef.current?.kill();
+
+    particlesRef.current.forEach(particle => {
+      gsap.to(particle, {
+        scale: 0,
+        opacity: 0,
+        duration: 0.3,
+        ease: 'back.in(1.7)',
+        onComplete: () => {
+          particle.parentNode?.removeChild(particle);
+        }
+      });
+    });
+    particlesRef.current = [];
+  }, []);
+
+  const animateParticles = useCallback(() => {
+    if (!cardRef.current || !isHoveredRef.current) return;
+
+    if (!particlesInitialized.current) {
+      initializeParticles();
+    }
+
+    memoizedParticles.current.forEach((particle, index) => {
+      const timeoutId = setTimeout(() => {
+        if (!isHoveredRef.current || !cardRef.current) return;
+
+        const clone = particle.cloneNode(true) as HTMLDivElement;
+        cardRef.current.appendChild(clone);
+        particlesRef.current.push(clone);
+
+        gsap.fromTo(clone, { scale: 0, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: 'back.out(1.7)' });
+
+        gsap.to(clone, {
+          x: (Math.random() - 0.5) * 100,
+          y: (Math.random() - 0.5) * 100,
+          rotation: Math.random() * 360,
+          duration: 2 + Math.random() * 2,
+          ease: 'none',
+          repeat: -1,
+          yoyo: true
+        });
+
+        gsap.to(clone, {
+          opacity: 0.3,
+          duration: 1.5,
+          ease: 'power2.inOut',
+          repeat: -1,
+          yoyo: true
+        });
+      }, index * 100);
+
+      timeoutsRef.current.push(timeoutId);
+    });
+  }, [initializeParticles]);
+
+  useEffect(() => {
+    if (disableAnimations || !cardRef.current) return;
+
+    const element = cardRef.current;
+
+    const handleMouseEnter = () => {
+      isHoveredRef.current = true;
+      animateParticles();
+
+      if (enableTilt) {
+        gsap.to(element, {
+          rotateX: 5,
+          rotateY: 5,
+          duration: 0.3,
+          ease: 'power2.out',
+          transformPerspective: 1000
+        });
+      }
+    };
+
+    const handleMouseLeave = () => {
+      isHoveredRef.current = false;
+      clearAllParticles();
+
+      if (enableTilt) {
+        gsap.to(element, {
+          rotateX: 0,
+          rotateY: 0,
+          duration: 0.3,
+          ease: 'power2.out'
+        });
+      }
+
+      if (enableMagnetism) {
+        gsap.to(element, {
+          x: 0,
+          y: 0,
+          duration: 0.3,
+          ease: 'power2.out'
+        });
+      }
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!enableTilt && !enableMagnetism) return;
+
+      const rect = element.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+
+      if (enableTilt) {
+        const rotateX = ((y - centerY) / centerY) * -10;
+        const rotateY = ((x - centerX) / centerX) * 10;
+
+        gsap.to(element, {
+          rotateX,
+          rotateY,
+          duration: 0.1,
+          ease: 'power2.out',
+          transformPerspective: 1000
+        });
+      }
+
+      if (enableMagnetism) {
+        const magnetX = (x - centerX) * 0.05;
+        const magnetY = (y - centerY) * 0.05;
+
+        magnetismAnimationRef.current = gsap.to(element, {
+          x: magnetX,
+          y: magnetY,
+          duration: 0.3,
+          ease: 'power2.out'
+        });
+      }
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      if (!clickEffect) return;
+
+      const rect = element.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const maxDistance = Math.max(
+        Math.hypot(x, y),
+        Math.hypot(x - rect.width, y),
+        Math.hypot(x, y - rect.height),
+        Math.hypot(x - rect.width, y - rect.height)
+      );
+
+      const ripple = document.createElement('div');
+      ripple.style.cssText = `
+        position: absolute;
+        width: ${maxDistance * 2}px;
+        height: ${maxDistance * 2}px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(${glowColor}, 0.4) 0%, rgba(${glowColor}, 0.2) 30%, transparent 70%);
+        left: ${x - maxDistance}px;
+        top: ${y - maxDistance}px;
+        pointer-events: none;
+        z-index: 1000;
+      `;
+
+      element.appendChild(ripple);
+
+      gsap.fromTo(
+        ripple,
+        {
+          scale: 0,
+          opacity: 1
+        },
+        {
+          scale: 1,
+          opacity: 0,
+          duration: 0.8,
+          ease: 'power2.out',
+          onComplete: () => ripple.remove()
+        }
+      );
+    };
+
+    element.addEventListener('mouseenter', handleMouseEnter);
+    element.addEventListener('mouseleave', handleMouseLeave);
+    element.addEventListener('mousemove', handleMouseMove);
+    element.addEventListener('click', handleClick);
+
+    return () => {
+      isHoveredRef.current = false;
+      element.removeEventListener('mouseenter', handleMouseEnter);
+      element.removeEventListener('mouseleave', handleMouseLeave);
+      element.removeEventListener('mousemove', handleMouseMove);
+      element.removeEventListener('click', handleClick);
+      clearAllParticles();
+    };
+  }, [animateParticles, clearAllParticles, disableAnimations, enableTilt, enableMagnetism, clickEffect, glowColor]);
+
+  return (
+    <div
+      ref={cardRef}
+      className={`${className} relative overflow-hidden`}
+      style={{ ...style, position: 'relative', overflow: 'hidden' }}
+    >
+      {children}
+    </div>
+  );
+};
+
+const GlobalSpotlight: React.FC<{
+  gridRef: React.RefObject<HTMLDivElement | null>;
+  disableAnimations?: boolean;
+  enabled?: boolean;
+  spotlightRadius?: number;
+  glowColor?: string;
+}> = ({
+  gridRef,
+  disableAnimations = false,
+  enabled = true,
+  spotlightRadius = DEFAULT_SPOTLIGHT_RADIUS,
+  glowColor = DEFAULT_GLOW_COLOR
+}) => {
+  const spotlightRef = useRef<HTMLDivElement | null>(null);
+  const isInsideSection = useRef(false);
+
+  useEffect(() => {
+    if (disableAnimations || !gridRef?.current || !enabled) return;
+
+    const spotlight = document.createElement('div');
+    spotlight.className = 'global-spotlight';
+    spotlight.style.cssText = `
+      position: fixed;
+      width: 800px;
+      height: 800px;
+      border-radius: 50%;
+      pointer-events: none;
+      background: radial-gradient(circle,
+        rgba(${glowColor}, 0.15) 0%,
+        rgba(${glowColor}, 0.08) 15%,
+        rgba(${glowColor}, 0.04) 25%,
+        rgba(${glowColor}, 0.02) 40%,
+        rgba(${glowColor}, 0.01) 65%,
+        transparent 70%
+      );
+      z-index: 200;
+      opacity: 0;
+      transform: translate(-50%, -50%);
+      mix-blend-mode: screen;
+    `;
+    document.body.appendChild(spotlight);
+    spotlightRef.current = spotlight;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!spotlightRef.current || !gridRef.current) return;
+
+      const section = gridRef.current.closest('.bento-section');
+      const rect = section?.getBoundingClientRect();
+      const mouseInside =
+        rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+
+      isInsideSection.current = mouseInside || false;
+      const cards = gridRef.current.querySelectorAll('.card');
+
+      if (!mouseInside) {
+        gsap.to(spotlightRef.current, {
+          opacity: 0,
+          duration: 0.3,
+          ease: 'power2.out'
+        });
+        cards.forEach(card => {
+          (card as HTMLElement).style.setProperty('--glow-intensity', '0');
+        });
+        return;
+      }
+
+      const { proximity, fadeDistance } = calculateSpotlightValues(spotlightRadius);
+      let minDistance = Infinity;
+
+      cards.forEach(card => {
+        const cardElement = card as HTMLElement;
+        const cardRect = cardElement.getBoundingClientRect();
+        const centerX = cardRect.left + cardRect.width / 2;
+        const centerY = cardRect.top + cardRect.height / 2;
+        const distance =
+          Math.hypot(e.clientX - centerX, e.clientY - centerY) - Math.max(cardRect.width, cardRect.height) / 2;
+        const effectiveDistance = Math.max(0, distance);
+
+        minDistance = Math.min(minDistance, effectiveDistance);
+
+        let glowIntensity = 0;
+        if (effectiveDistance <= proximity) {
+          glowIntensity = 1;
+        } else if (effectiveDistance <= fadeDistance) {
+          glowIntensity = (fadeDistance - effectiveDistance) / (fadeDistance - proximity);
+        }
+
+        updateCardGlowProperties(cardElement, e.clientX, e.clientY, glowIntensity, spotlightRadius);
+      });
+
+      gsap.to(spotlightRef.current, {
+        left: e.clientX,
+        top: e.clientY,
+        duration: 0.1,
+        ease: 'power2.out'
+      });
+
+      const targetOpacity =
+        minDistance <= proximity
+          ? 0.8
+          : minDistance <= fadeDistance
+            ? ((fadeDistance - minDistance) / (fadeDistance - proximity)) * 0.8
+            : 0;
+
+      gsap.to(spotlightRef.current, {
+        opacity: targetOpacity,
+        duration: targetOpacity > 0 ? 0.2 : 0.5,
+        ease: 'power2.out'
+      });
+    };
+
+    const handleMouseLeave = () => {
+      isInsideSection.current = false;
+      gridRef.current?.querySelectorAll('.card').forEach(card => {
+        (card as HTMLElement).style.setProperty('--glow-intensity', '0');
+      });
+      if (spotlightRef.current) {
+        gsap.to(spotlightRef.current, {
+          opacity: 0,
+          duration: 0.3,
+          ease: 'power2.out'
+        });
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseleave', handleMouseLeave);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseleave', handleMouseLeave);
+      spotlightRef.current?.parentNode?.removeChild(spotlightRef.current);
+    };
+  }, [gridRef, disableAnimations, enabled, spotlightRadius, glowColor]);
+
+  return null;
+};
+
+const BentoCardGrid: React.FC<{
+  children: React.ReactNode;
+  gridRef?: React.RefObject<HTMLDivElement | null>;
+}> = ({ children, gridRef }) => (
+  <div
+    className="bento-section grid gap-2 p-3 max-w-[54rem] select-none relative"
+    style={{ fontSize: 'clamp(1rem, 0.9rem + 0.5vw, 1.5rem)' }}
+    ref={gridRef}
+  >
+    {children}
+  </div>
+);
+
+const useMobileDetection = () => {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth <= MOBILE_BREAKPOINT);
+
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  return isMobile;
+};
+
+const MagicBento: React.FC<BentoProps> = ({
+  textAutoHide = true,
+  enableStars = true,
+  enableSpotlight = true,
+  enableBorderGlow = true,
+  disableAnimations = false,
+  spotlightRadius = DEFAULT_SPOTLIGHT_RADIUS,
+  particleCount = DEFAULT_PARTICLE_COUNT,
+  enableTilt = false,
+  glowColor = DEFAULT_GLOW_COLOR,
+  clickEffect = true,
+  enableMagnetism = true
+}) => {
+  const gridRef = useRef<HTMLDivElement>(null);
+  const isMobile = useMobileDetection();
+  const shouldDisableAnimations = disableAnimations || isMobile;
+
+  return (
+    <>
+      <style>
+        {`
+          .bento-section {
+            --glow-x: 50%;
+            --glow-y: 50%;
+            --glow-intensity: 0;
+            --glow-radius: 200px;
+            --glow-color: ${glowColor};
+            --border-color: #392e4e;
+            --background-dark: #060010;
+            --white: hsl(0, 0%, 100%);
+            --purple-primary: rgba(132, 0, 255, 1);
+            --purple-glow: rgba(132, 0, 255, 0.2);
+            --purple-border: rgba(132, 0, 255, 0.8);
+          }
+          
+          .card-responsive {
+            grid-template-columns: 1fr;
+            width: 90%;
+            margin: 0 auto;
+            padding: 0.5rem;
+          }
+          
+          @media (min-width: 600px) {
+            .card-responsive {
+              grid-template-columns: repeat(2, 1fr);
+            }
+          }
+          
+          @media (min-width: 1024px) {
+            .card-responsive {
+              grid-template-columns: repeat(4, 1fr);
+            }
+            
+            .card-responsive .card:nth-child(3) {
+              grid-column: span 2;
+              grid-row: span 2;
+            }
+            
+            .card-responsive .card:nth-child(4) {
+              grid-column: 1 / span 2;
+              grid-row: 2 / span 2;
+            }
+            
+            .card-responsive .card:nth-child(6) {
+              grid-column: 4;
+              grid-row: 3;
+            }
+          }
+          
+          .card--border-glow::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            padding: 6px;
+            background: radial-gradient(var(--glow-radius) circle at var(--glow-x) var(--glow-y),
+                rgba(${glowColor}, calc(var(--glow-intensity) * 0.8)) 0%,
+                rgba(${glowColor}, calc(var(--glow-intensity) * 0.4)) 30%,
+                transparent 60%);
+            border-radius: inherit;
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            mask-composite: exclude;
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.3s ease;
+            z-index: 1;
+          }
+          
+          .card--border-glow:hover::after {
+            opacity: 1;
+          }
+          
+          .card--border-glow:hover {
+            box-shadow: 0 4px 20px rgba(46, 24, 78, 0.4), 0 0 30px rgba(${glowColor}, 0.2);
+          }
+          
+          .particle::before {
+            content: '';
+            position: absolute;
+            top: -2px;
+            left: -2px;
+            right: -2px;
+            bottom: -2px;
+            background: rgba(${glowColor}, 0.2);
+            border-radius: 50%;
+            z-index: -1;
+          }
+          
+          .particle-container:hover {
+            box-shadow: 0 4px 20px rgba(46, 24, 78, 0.2), 0 0 30px rgba(${glowColor}, 0.2);
+          }
+          
+          .text-clamp-1 {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 1;
+            line-clamp: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          
+          .text-clamp-2 {
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          
+          @media (max-width: 599px) {
+            .card-responsive {
+              grid-template-columns: 1fr;
+              width: 90%;
+              margin: 0 auto;
+              padding: 0.5rem;
+            }
+            
+            .card-responsive .card {
+              width: 100%;
+              min-height: 180px;
+            }
+          }
+        `}
+      </style>
+
+      {enableSpotlight && (
+        <GlobalSpotlight
+          gridRef={gridRef}
+          disableAnimations={shouldDisableAnimations}
+          enabled={enableSpotlight}
+          spotlightRadius={spotlightRadius}
+          glowColor={glowColor}
+        />
+      )}
+
+      <BentoCardGrid gridRef={gridRef}>
+        <div className="card-responsive grid gap-2">
+          {cardData.map((card, index) => {
+            const baseClassName = `card flex flex-col justify-between relative aspect-[4/3] min-h-[200px] w-full max-w-full p-5 rounded-[20px] border border-solid font-light overflow-hidden transition-colors duration-300 ease-in-out hover:-translate-y-0.5 hover:shadow-[0_8px_25px_rgba(0,0,0,0.15)] ${
+              enableBorderGlow ? 'card--border-glow' : ''
+            }`;
+
+            const cardStyle = {
+              backgroundColor: card.color || 'var(--background-dark)',
+              borderColor: 'var(--border-color)',
+              color: 'var(--white)',
+              '--glow-x': '50%',
+              '--glow-y': '50%',
+              '--glow-intensity': '0',
+              '--glow-radius': '200px'
+            } as React.CSSProperties;
+
+            if (enableStars) {
+              return (
+                <ParticleCard
+                  key={index}
+                  className={baseClassName}
+                  style={cardStyle}
+                  disableAnimations={shouldDisableAnimations}
+                  particleCount={particleCount}
+                  glowColor={glowColor}
+                  enableTilt={enableTilt}
+                  clickEffect={clickEffect}
+                  enableMagnetism={enableMagnetism}
+                >
+                  <div className="card__header flex justify-between gap-3 relative text-white">
+                    <span className="card__label text-base">{card.label}</span>
+                  </div>
+                  <div className="card__content flex flex-col relative text-white">
+                    <h3 className={`card__title font-normal text-base m-0 mb-1 ${textAutoHide ? 'text-clamp-1' : ''}`}>
+                      {card.title}
+                    </h3>
+                    <p
+                      className={`card__description text-xs leading-5 opacity-90 ${textAutoHide ? 'text-clamp-2' : ''}`}
+                    >
+                      {card.description}
+                    </p>
+                  </div>
+                </ParticleCard>
+              );
+            }
+
+            return (
+              <div
+                key={index}
+                className={baseClassName}
+                style={cardStyle}
+                ref={el => {
+                  if (!el) return;
+
+                  const handleMouseMove = (e: MouseEvent) => {
+                    if (shouldDisableAnimations) return;
+
+                    const rect = el.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+
+                    if (enableTilt) {
+                      const rotateX = ((y - centerY) / centerY) * -10;
+                      const rotateY = ((x - centerX) / centerX) * 10;
+
+                      gsap.to(el, {
+                        rotateX,
+                        rotateY,
+                        duration: 0.1,
+                        ease: 'power2.out',
+                        transformPerspective: 1000
+                      });
+                    }
+
+                    if (enableMagnetism) {
+                      const magnetX = (x - centerX) * 0.05;
+                      const magnetY = (y - centerY) * 0.05;
+
+                      gsap.to(el, {
+                        x: magnetX,
+                        y: magnetY,
+                        duration: 0.3,
+                        ease: 'power2.out'
+                      });
+                    }
+                  };
+
+                  const handleMouseLeave = () => {
+                    if (shouldDisableAnimations) return;
+
+                    if (enableTilt) {
+                      gsap.to(el, {
+                        rotateX: 0,
+                        rotateY: 0,
+                        duration: 0.3,
+                        ease: 'power2.out'
+                      });
+                    }
+
+                    if (enableMagnetism) {
+                      gsap.to(el, {
+                        x: 0,
+                        y: 0,
+                        duration: 0.3,
+                        ease: 'power2.out'
+                      });
+                    }
+                  };
+
+                  const handleClick = (e: MouseEvent) => {
+                    if (!clickEffect || shouldDisableAnimations) return;
+
+                    const rect = el.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    const maxDistance = Math.max(
+                      Math.hypot(x, y),
+                      Math.hypot(x - rect.width, y),
+                      Math.hypot(x, y - rect.height),
+                      Math.hypot(x - rect.width, y - rect.height)
+                    );
+
+                    const ripple = document.createElement('div');
+                    ripple.style.cssText = `
+                      position: absolute;
+                      width: ${maxDistance * 2}px;
+                      height: ${maxDistance * 2}px;
+                      border-radius: 50%;
+                      background: radial-gradient(circle, rgba(${glowColor}, 0.4) 0%, rgba(${glowColor}, 0.2) 30%, transparent 70%);
+                      left: ${x - maxDistance}px;
+                      top: ${y - maxDistance}px;
+                      pointer-events: none;
+                      z-index: 1000;
+                    `;
+
+                    el.appendChild(ripple);
+
+                    gsap.fromTo(
+                      ripple,
+                      {
+                        scale: 0,
+                        opacity: 1
+                      },
+                      {
+                        scale: 1,
+                        opacity: 0,
+                        duration: 0.8,
+                        ease: 'power2.out',
+                        onComplete: () => ripple.remove()
+                      }
+                    );
+                  };
+
+                  el.addEventListener('mousemove', handleMouseMove);
+                  el.addEventListener('mouseleave', handleMouseLeave);
+                  el.addEventListener('click', handleClick);
+                }}
+              >
+                <div className="card__header flex justify-between gap-3 relative text-white">
+                  <span className="card__label text-base">{card.label}</span>
+                </div>
+                <div className="card__content flex flex-col relative text-white">
+                  <h3 className={`card__title font-normal text-base m-0 mb-1 ${textAutoHide ? 'text-clamp-1' : ''}`}>
+                    {card.title}
+                  </h3>
+                  <p className={`card__description text-xs leading-5 opacity-90 ${textAutoHide ? 'text-clamp-2' : ''}`}>
+                    {card.description}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </BentoCardGrid>
+    </>
+  );
+};
+
+export default MagicBento;
+
+
+===== LOCATION: src/components/landing/bgEffects/Noise.tsx =====
+
+import { useRef, useEffect } from 'react';
+
+const Noise = ({
+  patternSize = 250,
+  patternScaleX = 1,
+  patternScaleY = 1,
+  patternRefreshInterval = 2,
+  patternAlpha = 15
+}) => {
+  const grainRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = grainRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d', { alpha: true });
+    if (!ctx) return;
+
+    let frame = 0;
+    let animationId;
+    const canvasSize = 1024;
+
+    const resize = () => {
+      if (!canvas) return;
+      canvas.width = canvasSize;
+      canvas.height = canvasSize;
+
+      canvas.style.width = '100vw';
+      canvas.style.height = '100vh';
+    };
+
+    const drawGrain = () => {
+      const imageData = ctx.createImageData(canvasSize, canvasSize);
+      const data = imageData.data;
+
+      for (let i = 0; i < data.length; i += 4) {
+        const value = Math.random() * 255;
+        data[i] = value;
+        data[i + 1] = value;
+        data[i + 2] = value;
+        data[i + 3] = patternAlpha;
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+    };
+
+    const loop = () => {
+      if (frame % patternRefreshInterval === 0) {
+        drawGrain();
+      }
+      frame++;
+      animationId = window.requestAnimationFrame(loop);
+    };
+
+    window.addEventListener('resize', resize);
+    resize();
+    loop();
+
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.cancelAnimationFrame(animationId);
+    };
+  }, [patternSize, patternScaleX, patternScaleY, patternRefreshInterval, patternAlpha]);
+
+  return (
+    <canvas
+      className="pointer-events-none absolute inset-0 w-full h-full"
+      ref={grainRef}
+      style={{ imageRendering: 'pixelated' }}
+    />
+  );
+};
+
+export default Noise;
+
+
+===== LOCATION: src/components/landing/bgEffects/PartnersSection.tsx =====
+
+import React from 'react';
+
+// Simple text-based SVGs to simulate editorial logos without external assets
+const LOGOS = [
+  {
+    name: "VOGUE",
+    svg: (
+      <svg viewBox="0 0 120 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="serif" fontSize="28" fontWeight="bold" letterSpacing="2">VOGUE</text>
+      </svg>
+    )
+  },
+  {
+    name: "BRIDES",
+    svg: (
+      <svg viewBox="0 0 120 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="serif" fontSize="26" fontStyle="italic" letterSpacing="1">Brides</text>
+      </svg>
+    )
+  },
+  {
+    name: "THE KNOT",
+    svg: (
+      <svg viewBox="0 0 140 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="sans-serif" fontSize="22" fontWeight="900" letterSpacing="0">the knot</text>
+      </svg>
+    )
+  },
+  {
+    name: "BAZAAR",
+    svg: (
+      <svg viewBox="0 0 140 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="serif" fontSize="24" fontWeight="bold" letterSpacing="4">BAZAAR</text>
+      </svg>
+    )
+  },
+  {
+    name: "MARTHA STEWART",
+    svg: (
+      <svg viewBox="0 0 200 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="serif" fontSize="20" fontWeight="500" letterSpacing="1">MARTHA STEWART</text>
+      </svg>
+    )
+  },
+  {
+    name: "GQ",
+    svg: (
+      <svg viewBox="0 0 80 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="sans-serif" fontSize="32" fontWeight="900" letterSpacing="-2">GQ</text>
+      </svg>
+    )
+  },
+  {
+    name: "Vanity Fair",
+    svg: (
+      <svg viewBox="0 0 160 40" fill="currentColor" className="h-8 w-auto">
+        <text x="50%" y="50%" dominantBaseline="middle" textAnchor="middle" fontFamily="serif" fontSize="24" fontWeight="bold" letterSpacing="0">VANITY FAIR</text>
+      </svg>
+    )
+  }
+];
+
+export default function PartnersSection() {
+  return (
+    <section className="md:py-12 relative overflow-hidden">
+      <div className="wp-container">
+        
+        {/* <div className="text-center mb-8">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-500">
+                Editorial & Partners
+            </p>
+        </div> */}
+
+        <div className="relative w-full overflow-hidden">
+          {/* Fade Masks */}
+          <div className="absolute top-0 left-0 h-full w-20 md:w-40 bg-gradient-to-r from-[#09090b] to-transparent z-10 pointer-events-none"></div>
+          <div className="absolute top-0 right-0 h-full w-20 md:w-40 bg-gradient-to-l from-[#09090b] to-transparent z-10 pointer-events-none"></div>
+
+          {/* Scrolling Container */}
+          <div className="flex w-max animate-logo-scroll hover:[animation-play-state:paused]">
+            
+            {/* First Set of Logos */}
+            <div className="flex items-center gap-16 md:gap-24 px-8 md:px-12">
+              {LOGOS.map((logo, idx) => (
+                <div 
+                  key={`l1-${idx}`} 
+                  className="text-gray-500 hover:text-white transition-colors duration-300 opacity-60 hover:opacity-100 cursor-default select-none grayscale hover:grayscale-0"
+                  title={logo.name}
+                >
+                  {logo.svg}
+                </div>
+              ))}
+            </div>
+
+            {/* Duplicate Set for Infinite Loop */}
+            <div className="flex items-center gap-16 md:gap-24 px-8 md:px-12" aria-hidden="true">
+              {LOGOS.map((logo, idx) => (
+                <div 
+                  key={`l2-${idx}`} 
+                  className="text-gray-500 hover:text-white transition-colors duration-300 opacity-60 hover:opacity-100 cursor-default select-none grayscale hover:grayscale-0"
+                >
+                  {logo.svg}
+                </div>
+              ))}
+            </div>
+             {/* Triplicate Set for smooth large screens */}
+            <div className="flex items-center gap-16 md:gap-24 px-8 md:px-12" aria-hidden="true">
+              {LOGOS.map((logo, idx) => (
+                <div 
+                  key={`l3-${idx}`} 
+                  className="text-gray-500 hover:text-white transition-colors duration-300 opacity-60 hover:opacity-100 cursor-default select-none grayscale hover:grayscale-0"
+                >
+                  {logo.svg}
+                </div>
+              ))}
+            </div>
+
+          </div>
+        </div>
+      </div>
+      
+      <style>{`
+        @keyframes scroll {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-33.33%); }
+        }
+        .animate-logo-scroll {
+          animation: scroll 40s linear infinite;
+        }
+      `}</style>
+    </section>
+  );
+}
+
+
+===== LOCATION: src/components/landing/bgEffects/PixelBlast.tsx =====
+
+import React, { useEffect, useRef } from 'react';
+import * as THREE from 'three';
+import { EffectComposer, EffectPass, RenderPass, Effect } from 'postprocessing';
+
+type PixelBlastVariant = 'square' | 'circle' | 'triangle' | 'diamond';
+
+interface TouchPoint {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  force: number;
+  age: number;
+}
+
+interface TouchTexture {
+  canvas: HTMLCanvasElement;
+  texture: THREE.Texture;
+  addTouch: (norm: { x: number; y: number }) => void;
+  update: () => void;
+  radiusScale: number;
+  size: number;
+}
+
+interface ReinitConfig {
+  antialias: boolean;
+  liquid: boolean;
+  noiseAmount: number;
+}
+
+type PixelBlastProps = {
+  variant?: PixelBlastVariant;
+  pixelSize?: number;
+  color?: string;
+  className?: string;
+  style?: React.CSSProperties;
+  antialias?: boolean;
+  patternScale?: number;
+  patternDensity?: number;
+  liquid?: boolean;
+  liquidStrength?: number;
+  liquidRadius?: number;
+  pixelSizeJitter?: number;
+  enableRipples?: boolean;
+  rippleIntensityScale?: number;
+  rippleThickness?: number;
+  rippleSpeed?: number;
+  liquidWobbleSpeed?: number;
+  autoPauseOffscreen?: boolean;
+  speed?: number;
+  transparent?: boolean;
+  edgeFade?: number;
+  noiseAmount?: number;
+};
+
+const createTouchTexture = (): TouchTexture => {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('2D context not available');
+  ctx.fillStyle = 'black';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const texture = new THREE.Texture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.magFilter = THREE.LinearFilter;
+  texture.generateMipmaps = false;
+  const trail: TouchPoint[] = [];
+  let last: { x: number; y: number } | null = null;
+  const maxAge = 64;
+  let radius = 0.1 * size;
+  const speed = 1 / maxAge;
+  const clear = () => {
+    ctx.fillStyle = 'black';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  };
+  const drawPoint = (p: TouchPoint) => {
+    const pos = { x: p.x * size, y: (1 - p.y) * size };
+    let intensity = 1;
+    const easeOutSine = (t: number) => Math.sin((t * Math.PI) / 2);
+    const easeOutQuad = (t: number) => -t * (t - 2);
+    if (p.age < maxAge * 0.3) intensity = easeOutSine(p.age / (maxAge * 0.3));
+    else intensity = easeOutQuad(1 - (p.age - maxAge * 0.3) / (maxAge * 0.7)) || 0;
+    intensity *= p.force;
+    const color = `${((p.vx + 1) / 2) * 255}, ${((p.vy + 1) / 2) * 255}, ${intensity * 255}`;
+    const offset = size * 5;
+    ctx.shadowOffsetX = offset;
+    ctx.shadowOffsetY = offset;
+    ctx.shadowBlur = radius;
+    ctx.shadowColor = `rgba(${color},${0.22 * intensity})`;
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(255,0,0,1)';
+    ctx.arc(pos.x - offset, pos.y - offset, radius, 0, Math.PI * 2);
+    ctx.fill();
+  };
+  const addTouch = (norm: { x: number; y: number }) => {
+    let force = 0;
+    let vx = 0;
+    let vy = 0;
+    if (last) {
+      const dx = norm.x - last.x;
+      const dy = norm.y - last.y;
+      if (dx === 0 && dy === 0) return;
+      const dd = dx * dx + dy * dy;
+      const d = Math.sqrt(dd);
+      vx = dx / (d || 1);
+      vy = dy / (d || 1);
+      force = Math.min(dd * 10000, 1);
+    }
+    last = { x: norm.x, y: norm.y };
+    trail.push({ x: norm.x, y: norm.y, age: 0, force, vx, vy });
+  };
+  const update = () => {
+    clear();
+    for (let i = trail.length - 1; i >= 0; i--) {
+      const point = trail[i];
+      const f = point.force * speed * (1 - point.age / maxAge);
+      point.x += point.vx * f;
+      point.y += point.vy * f;
+      point.age++;
+      if (point.age > maxAge) trail.splice(i, 1);
+    }
+    for (let i = 0; i < trail.length; i++) drawPoint(trail[i]);
+    texture.needsUpdate = true;
+  };
+  return {
+    canvas,
+    texture,
+    addTouch,
+    update,
+    set radiusScale(v: number) {
+      radius = 0.1 * size * v;
+    },
+    get radiusScale() {
+      return radius / (0.1 * size);
+    },
+    size
+  };
+};
+
+const createLiquidEffect = (texture: THREE.Texture, opts?: { strength?: number; freq?: number }) => {
+  const fragment = `
+    uniform sampler2D uTexture;
+    uniform float uStrength;
+    uniform float uTime;
+    uniform float uFreq;
+
+    void mainUv(inout vec2 uv) {
+      vec4 tex = texture2D(uTexture, uv);
+      float vx = tex.r * 2.0 - 1.0;
+      float vy = tex.g * 2.0 - 1.0;
+      float intensity = tex.b;
+
+      float wave = 0.5 + 0.5 * sin(uTime * uFreq + intensity * 6.2831853);
+
+      float amt = uStrength * intensity * wave;
+
+      uv += vec2(vx, vy) * amt;
+    }
+    `;
+  return new Effect('LiquidEffect', fragment, {
+    uniforms: new Map<string, THREE.Uniform>([
+      ['uTexture', new THREE.Uniform(texture)],
+      ['uStrength', new THREE.Uniform(opts?.strength ?? 0.025)],
+      ['uTime', new THREE.Uniform(0)],
+      ['uFreq', new THREE.Uniform(opts?.freq ?? 4.5)]
+    ])
+  });
+};
+
+const SHAPE_MAP: Record<PixelBlastVariant, number> = {
+  square: 0,
+  circle: 1,
+  triangle: 2,
+  diamond: 3
+};
+
+const VERTEX_SRC = `
+void main() {
+  gl_Position = vec4(position, 1.0);
+}
+`;
+const FRAGMENT_SRC = `
+precision highp float;
+
+uniform vec3  uColor;
+uniform vec2  uResolution;
+uniform float uTime;
+uniform float uPixelSize;
+uniform float uScale;
+uniform float uDensity;
+uniform float uPixelJitter;
+uniform int   uEnableRipples;
+uniform float uRippleSpeed;
+uniform float uRippleThickness;
+uniform float uRippleIntensity;
+uniform float uEdgeFade;
+
+uniform int   uShapeType;
+const int SHAPE_SQUARE   = 0;
+const int SHAPE_CIRCLE   = 1;
+const int SHAPE_TRIANGLE = 2;
+const int SHAPE_DIAMOND  = 3;
+
+const int   MAX_CLICKS = 10;
+
+uniform vec2  uClickPos  [MAX_CLICKS];
+uniform float uClickTimes[MAX_CLICKS];
+
+out vec4 fragColor;
+
+float Bayer2(vec2 a) {
+  a = floor(a);
+  return fract(a.x / 2. + a.y * a.y * .75);
+}
+#define Bayer4(a) (Bayer2(.5*(a))*0.25 + Bayer2(a))
+#define Bayer8(a) (Bayer4(.5*(a))*0.25 + Bayer2(a))
+
+#define FBM_OCTAVES     5
+#define FBM_LACUNARITY  1.25
+#define FBM_GAIN        1.0
+
+float hash11(float n){ return fract(sin(n)*43758.5453); }
+
+float vnoise(vec3 p){
+  vec3 ip = floor(p);
+  vec3 fp = fract(p);
+  float n000 = hash11(dot(ip + vec3(0.0,0.0,0.0), vec3(1.0,57.0,113.0)));
+  float n100 = hash11(dot(ip + vec3(1.0,0.0,0.0), vec3(1.0,57.0,113.0)));
+  float n010 = hash11(dot(ip + vec3(0.0,1.0,0.0), vec3(1.0,57.0,113.0)));
+  float n110 = hash11(dot(ip + vec3(1.0,1.0,0.0), vec3(1.0,57.0,113.0)));
+  float n001 = hash11(dot(ip + vec3(0.0,0.0,1.0), vec3(1.0,57.0,113.0)));
+  float n101 = hash11(dot(ip + vec3(1.0,0.0,1.0), vec3(1.0,57.0,113.0)));
+  float n011 = hash11(dot(ip + vec3(0.0,1.0,1.0), vec3(1.0,57.0,113.0)));
+  float n111 = hash11(dot(ip + vec3(1.0,1.0,1.0), vec3(1.0,57.0,113.0)));
+  vec3 w = fp*fp*fp*(fp*(fp*6.0-15.0)+10.0);
+  float x00 = mix(n000, n100, w.x);
+  float x10 = mix(n010, n110, w.x);
+  float x01 = mix(n001, n101, w.x);
+  float x11 = mix(n011, n111, w.x);
+  float y0  = mix(x00, x10, w.y);
+  float y1  = mix(x01, x11, w.y);
+  return mix(y0, y1, w.z) * 2.0 - 1.0;
+}
+
+float fbm2(vec2 uv, float t){
+  vec3 p = vec3(uv * uScale, t);
+  float amp = 1.0;
+  float freq = 1.0;
+  float sum = 1.0;
+  for (int i = 0; i < FBM_OCTAVES; ++i){
+    sum  += amp * vnoise(p * freq);
+    freq *= FBM_LACUNARITY;
+    amp  *= FBM_GAIN;
+  }
+  return sum * 0.5 + 0.5;
+}
+
+float maskCircle(vec2 p, float cov){
+  float r = sqrt(cov) * .25;
+  float d = length(p - 0.5) - r;
+  float aa = 0.5 * fwidth(d);
+  return cov * (1.0 - smoothstep(-aa, aa, d * 2.0));
+}
+
+float maskTriangle(vec2 p, vec2 id, float cov){
+  bool flip = mod(id.x + id.y, 2.0) > 0.5;
+  if (flip) p.x = 1.0 - p.x;
+  float r = sqrt(cov);
+  float d  = p.y - r*(1.0 - p.x);
+  float aa = fwidth(d);
+  return cov * clamp(0.5 - d/aa, 0.0, 1.0);
+}
+
+float maskDiamond(vec2 p, float cov){
+  float r = sqrt(cov) * 0.564;
+  return step(abs(p.x - 0.49) + abs(p.y - 0.49), r);
+}
+
+void main(){
+  float pixelSize = uPixelSize;
+  vec2 fragCoord = gl_FragCoord.xy - uResolution * .5;
+  float aspectRatio = uResolution.x / uResolution.y;
+
+  vec2 pixelId = floor(fragCoord / pixelSize);
+  vec2 pixelUV = fract(fragCoord / pixelSize);
+
+  float cellPixelSize = 8.0 * pixelSize;
+  vec2 cellId = floor(fragCoord / cellPixelSize);
+  vec2 cellCoord = cellId * cellPixelSize;
+  vec2 uv = cellCoord / uResolution * vec2(aspectRatio, 1.0);
+
+  float base = fbm2(uv, uTime * 0.05);
+  base = base * 0.5 - 0.65;
+
+  float feed = base + (uDensity - 0.5) * 0.3;
+
+  float speed     = uRippleSpeed;
+  float thickness = uRippleThickness;
+  const float dampT     = 1.0;
+  const float dampR     = 10.0;
+
+  if (uEnableRipples == 1) {
+    for (int i = 0; i < MAX_CLICKS; ++i){
+      vec2 pos = uClickPos[i];
+      if (pos.x < 0.0) continue;
+      float cellPixelSize = 8.0 * pixelSize;
+      vec2 cuv = (((pos - uResolution * .5 - cellPixelSize * .5) / (uResolution))) * vec2(aspectRatio, 1.0);
+      float t = max(uTime - uClickTimes[i], 0.0);
+      float r = distance(uv, cuv);
+      float waveR = speed * t;
+      float ring  = exp(-pow((r - waveR) / thickness, 2.0));
+      float atten = exp(-dampT * t) * exp(-dampR * r);
+      feed = max(feed, ring * atten * uRippleIntensity);
+    }
+  }
+
+  float bayer = Bayer8(fragCoord / uPixelSize) - 0.5;
+  float bw = step(0.5, feed + bayer);
+
+  float h = fract(sin(dot(floor(fragCoord / uPixelSize), vec2(127.1, 311.7))) * 43758.5453);
+  float jitterScale = 1.0 + (h - 0.5) * uPixelJitter;
+  float coverage = bw * jitterScale;
+  float M;
+  if      (uShapeType == SHAPE_CIRCLE)   M = maskCircle (pixelUV, coverage);
+  else if (uShapeType == SHAPE_TRIANGLE) M = maskTriangle(pixelUV, pixelId, coverage);
+  else if (uShapeType == SHAPE_DIAMOND)  M = maskDiamond(pixelUV, coverage);
+  else                                   M = coverage;
+
+  if (uEdgeFade > 0.0) {
+    vec2 norm = gl_FragCoord.xy / uResolution;
+    float edge = min(min(norm.x, norm.y), min(1.0 - norm.x, 1.0 - norm.y));
+    float fade = smoothstep(0.0, uEdgeFade, edge);
+    M *= fade;
+  }
+
+  vec3 color = uColor;
+
+  // sRGB gamma correction - convert linear to sRGB for accurate color output
+  vec3 srgbColor = mix(
+    color * 12.92,
+    1.055 * pow(color, vec3(1.0 / 2.4)) - 0.055,
+    step(0.0031308, color)
+  );
+
+  fragColor = vec4(srgbColor, M);
+}
+`;
+
+const MAX_CLICKS = 10;
+
+const PixelBlast: React.FC<PixelBlastProps> = ({
+  variant = 'square',
+  pixelSize = 3,
+  color = '#B19EEF',
+  className,
+  style,
+  antialias = true,
+  patternScale = 2,
+  patternDensity = 1,
+  liquid = false,
+  liquidStrength = 0.1,
+  liquidRadius = 1,
+  pixelSizeJitter = 0,
+  enableRipples = true,
+  rippleIntensityScale = 1,
+  rippleThickness = 0.1,
+  rippleSpeed = 0.3,
+  liquidWobbleSpeed = 4.5,
+  autoPauseOffscreen = true,
+  speed = 0.5,
+  transparent = true,
+  edgeFade = 0.5,
+  noiseAmount = 0
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const visibilityRef = useRef({ visible: true });
+  const speedRef = useRef(speed);
+
+  const threeRef = useRef<{
+    renderer: THREE.WebGLRenderer;
+    scene: THREE.Scene;
+    camera: THREE.OrthographicCamera;
+    material: THREE.ShaderMaterial;
+    clock: THREE.Clock;
+    clickIx: number;
+    uniforms: {
+      uResolution: { value: THREE.Vector2 };
+      uTime: { value: number };
+      uColor: { value: THREE.Color };
+      uClickPos: { value: THREE.Vector2[] };
+      uClickTimes: { value: Float32Array };
+      uShapeType: { value: number };
+      uPixelSize: { value: number };
+      uScale: { value: number };
+      uDensity: { value: number };
+      uPixelJitter: { value: number };
+      uEnableRipples: { value: number };
+      uRippleSpeed: { value: number };
+      uRippleThickness: { value: number };
+      uRippleIntensity: { value: number };
+      uEdgeFade: { value: number };
+    };
+    resizeObserver?: ResizeObserver;
+    raf?: number;
+    quad?: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>;
+    timeOffset?: number;
+    composer?: EffectComposer;
+    touch?: ReturnType<typeof createTouchTexture>;
+    liquidEffect?: Effect;
+  } | null>(null);
+  const prevConfigRef = useRef<ReinitConfig | null>(null);
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    speedRef.current = speed;
+    const needsReinitKeys: (keyof ReinitConfig)[] = ['antialias', 'liquid', 'noiseAmount'];
+    const cfg: ReinitConfig = { antialias, liquid, noiseAmount };
+    let mustReinit = false;
+    if (!threeRef.current) mustReinit = true;
+    else if (prevConfigRef.current) {
+      for (const k of needsReinitKeys)
+        if (prevConfigRef.current[k] !== cfg[k]) {
+          mustReinit = true;
+          break;
+        }
+    }
+    if (mustReinit) {
+      if (threeRef.current) {
+        const t = threeRef.current;
+        t.resizeObserver?.disconnect();
+        cancelAnimationFrame(t.raf!);
+        t.quad?.geometry.dispose();
+        t.material.dispose();
+        t.composer?.dispose();
+        t.renderer.dispose();
+        if (t.renderer.domElement.parentElement === container) container.removeChild(t.renderer.domElement);
+        threeRef.current = null;
+      }
+      const canvas = document.createElement('canvas');
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias,
+        alpha: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.domElement.style.width = '100%';
+      renderer.domElement.style.height = '100%';
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      container.appendChild(renderer.domElement);
+      if (transparent) renderer.setClearAlpha(0);
+      else renderer.setClearColor(0x000000, 1);
+      const uniforms = {
+        uResolution: { value: new THREE.Vector2(0, 0) },
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(color) },
+        uClickPos: {
+          value: Array.from({ length: MAX_CLICKS }, () => new THREE.Vector2(-1, -1))
+        },
+        uClickTimes: { value: new Float32Array(MAX_CLICKS) },
+        uShapeType: { value: SHAPE_MAP[variant] ?? 0 },
+        uPixelSize: { value: pixelSize * renderer.getPixelRatio() },
+        uScale: { value: patternScale },
+        uDensity: { value: patternDensity },
+        uPixelJitter: { value: pixelSizeJitter },
+        uEnableRipples: { value: enableRipples ? 1 : 0 },
+        uRippleSpeed: { value: rippleSpeed },
+        uRippleThickness: { value: rippleThickness },
+        uRippleIntensity: { value: rippleIntensityScale },
+        uEdgeFade: { value: edgeFade }
+      };
+      const scene = new THREE.Scene();
+      const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const material = new THREE.ShaderMaterial({
+        vertexShader: VERTEX_SRC,
+        fragmentShader: FRAGMENT_SRC,
+        uniforms,
+        transparent: true,
+        depthTest: false,
+        depthWrite: false,
+        glslVersion: THREE.GLSL3
+      });
+      const quadGeom = new THREE.PlaneGeometry(2, 2);
+      const quad = new THREE.Mesh(quadGeom, material);
+      scene.add(quad);
+      const clock = new THREE.Clock();
+      const setSize = () => {
+        const w = container.clientWidth || 1;
+        const h = container.clientHeight || 1;
+        renderer.setSize(w, h, false);
+        uniforms.uResolution.value.set(renderer.domElement.width, renderer.domElement.height);
+        if (threeRef.current?.composer)
+          threeRef.current.composer.setSize(renderer.domElement.width, renderer.domElement.height);
+        uniforms.uPixelSize.value = pixelSize * renderer.getPixelRatio();
+      };
+      setSize();
+      const ro = new ResizeObserver(setSize);
+      ro.observe(container);
+      const randomFloat = (): number => {
+        if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+          const u32 = new Uint32Array(1);
+          window.crypto.getRandomValues(u32);
+          return u32[0] / 0xffffffff;
+        }
+        return Math.random();
+      };
+      const timeOffset = randomFloat() * 1000;
+      let composer: EffectComposer | undefined;
+      let touch: ReturnType<typeof createTouchTexture> | undefined;
+      let liquidEffect: Effect | undefined;
+      if (liquid) {
+        touch = createTouchTexture();
+        touch.radiusScale = liquidRadius;
+        composer = new EffectComposer(renderer);
+        const renderPass = new RenderPass(scene, camera);
+        liquidEffect = createLiquidEffect(touch.texture, {
+          strength: liquidStrength,
+          freq: liquidWobbleSpeed
+        });
+        const effectPass = new EffectPass(camera, liquidEffect);
+        effectPass.renderToScreen = true;
+        composer.addPass(renderPass);
+        composer.addPass(effectPass);
+      }
+      if (noiseAmount > 0) {
+        if (!composer) {
+          composer = new EffectComposer(renderer);
+          composer.addPass(new RenderPass(scene, camera));
+        }
+        const noiseEffect = new Effect(
+          'NoiseEffect',
+          `uniform float uTime; uniform float uAmount; float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453);} void mainUv(inout vec2 uv){} void mainImage(const in vec4 inputColor,const in vec2 uv,out vec4 outputColor){ float n=hash(floor(uv*vec2(1920.0,1080.0))+floor(uTime*60.0)); float g=(n-0.5)*uAmount; outputColor=inputColor+vec4(vec3(g),0.0);} `,
+          {
+            uniforms: new Map<string, THREE.Uniform>([
+              ['uTime', new THREE.Uniform(0)],
+              ['uAmount', new THREE.Uniform(noiseAmount)]
+            ])
+          }
+        );
+        const noisePass = new EffectPass(camera, noiseEffect);
+        noisePass.renderToScreen = true;
+        if (composer && composer.passes.length > 0) {
+          composer.passes.forEach(p => {
+            const pass = p as { renderToScreen?: boolean };
+            pass.renderToScreen = false;
+          });
+        }
+        composer.addPass(noisePass);
+      }
+      if (composer) composer.setSize(renderer.domElement.width, renderer.domElement.height);
+      const mapToPixels = (e: PointerEvent) => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        const scaleX = renderer.domElement.width / rect.width;
+        const scaleY = renderer.domElement.height / rect.height;
+        const fx = (e.clientX - rect.left) * scaleX;
+        const fy = (rect.height - (e.clientY - rect.top)) * scaleY;
+        return {
+          fx,
+          fy,
+          w: renderer.domElement.width,
+          h: renderer.domElement.height
+        };
+      };
+      const onPointerDown = (e: PointerEvent) => {
+        const { fx, fy } = mapToPixels(e);
+        const ix = threeRef.current?.clickIx ?? 0;
+        uniforms.uClickPos.value[ix].set(fx, fy);
+        uniforms.uClickTimes.value[ix] = uniforms.uTime.value;
+        if (threeRef.current) threeRef.current.clickIx = (ix + 1) % MAX_CLICKS;
+      };
+      const onPointerMove = (e: PointerEvent) => {
+        if (!touch) return;
+        const { fx, fy, w, h } = mapToPixels(e);
+        touch.addTouch({ x: fx / w, y: fy / h });
+      };
+      renderer.domElement.addEventListener('pointerdown', onPointerDown, {
+        passive: true
+      });
+      renderer.domElement.addEventListener('pointermove', onPointerMove, {
+        passive: true
+      });
+      let raf = 0;
+      const animate = () => {
+        if (autoPauseOffscreen && !visibilityRef.current.visible) {
+          raf = requestAnimationFrame(animate);
+          return;
+        }
+        uniforms.uTime.value = timeOffset + clock.getElapsedTime() * speedRef.current;
+        if (liquidEffect) {
+          const liqEffect = liquidEffect as Effect & { uniforms: Map<string, THREE.Uniform> };
+          const timeUniform = liqEffect.uniforms.get('uTime');
+          if (timeUniform) timeUniform.value = uniforms.uTime.value;
+        }
+        if (composer) {
+          if (touch) touch.update();
+          composer.passes.forEach(p => {
+            const pass = p as { effects?: Array<Effect & { uniforms: Map<string, THREE.Uniform> }> };
+            if (pass.effects) {
+              pass.effects.forEach(eff => {
+                const timeUniform = eff.uniforms?.get('uTime');
+                if (timeUniform) timeUniform.value = uniforms.uTime.value;
+              });
+            }
+          });
+          composer.render();
+        } else renderer.render(scene, camera);
+        raf = requestAnimationFrame(animate);
+      };
+      raf = requestAnimationFrame(animate);
+      threeRef.current = {
+        renderer,
+        scene,
+        camera,
+        material,
+        clock,
+        clickIx: 0,
+        uniforms,
+        resizeObserver: ro,
+        raf,
+        quad,
+        timeOffset,
+        composer,
+        touch,
+        liquidEffect
+      };
+    } else {
+      const t = threeRef.current!;
+      t.uniforms.uShapeType.value = SHAPE_MAP[variant] ?? 0;
+      t.uniforms.uPixelSize.value = pixelSize * t.renderer.getPixelRatio();
+      t.uniforms.uColor.value.set(color);
+      t.uniforms.uScale.value = patternScale;
+      t.uniforms.uDensity.value = patternDensity;
+      t.uniforms.uPixelJitter.value = pixelSizeJitter;
+      t.uniforms.uEnableRipples.value = enableRipples ? 1 : 0;
+      t.uniforms.uRippleIntensity.value = rippleIntensityScale;
+      t.uniforms.uRippleThickness.value = rippleThickness;
+      t.uniforms.uRippleSpeed.value = rippleSpeed;
+      t.uniforms.uEdgeFade.value = edgeFade;
+      if (transparent) t.renderer.setClearAlpha(0);
+      else t.renderer.setClearColor(0x000000, 1);
+      if (t.liquidEffect) {
+        const liqEffect = t.liquidEffect as Effect & { uniforms: Map<string, THREE.Uniform> };
+        const uStrength = liqEffect.uniforms.get('uStrength');
+        if (uStrength) uStrength.value = liquidStrength;
+        const uFreq = liqEffect.uniforms.get('uFreq');
+        if (uFreq) uFreq.value = liquidWobbleSpeed;
+      }
+      if (t.touch) t.touch.radiusScale = liquidRadius;
+    }
+    prevConfigRef.current = cfg;
+    return () => {
+      if (threeRef.current && mustReinit) return;
+      if (!threeRef.current) return;
+      const t = threeRef.current;
+      t.resizeObserver?.disconnect();
+      cancelAnimationFrame(t.raf!);
+      t.quad?.geometry.dispose();
+      t.material.dispose();
+      t.composer?.dispose();
+      t.renderer.dispose();
+      if (t.renderer.domElement.parentElement === container) container.removeChild(t.renderer.domElement);
+      threeRef.current = null;
+    };
+  }, [
+    antialias,
+    liquid,
+    noiseAmount,
+    pixelSize,
+    patternScale,
+    patternDensity,
+    enableRipples,
+    rippleIntensityScale,
+    rippleThickness,
+    rippleSpeed,
+    pixelSizeJitter,
+    edgeFade,
+    transparent,
+    liquidStrength,
+    liquidRadius,
+    liquidWobbleSpeed,
+    autoPauseOffscreen,
+    variant,
+    color,
+    speed
+  ]);
+
+  return (
+    <div
+      ref={containerRef}
+      className={`w-full h-full relative overflow-hidden ${className ?? ''}`}
+      style={style}
+      aria-label="PixelBlast interactive background"
+    />
+  );
+};
+
+export default PixelBlast;
+
+
+===== LOCATION: src/components/landing/bgEffects/ScrollStack.tsx =====
+
+import React, { useLayoutEffect, useRef, useCallback } from 'react';
+import type { ReactNode } from 'react';
+import Lenis from 'lenis';
+
+export interface ScrollStackItemProps {
+  itemClassName?: string;
+  children: ReactNode;
+}
+
+export const ScrollStackItem: React.FC<ScrollStackItemProps> = ({ children, itemClassName = '' }) => (
+  <div
+    className={`scroll-stack-card relative w-full h-80 my-8 p-12 rounded-[40px] shadow-[0_0_30px_rgba(0,0,0,0.1)] box-border origin-top will-change-transform ${itemClassName}`.trim()}
+    style={{
+      backfaceVisibility: 'hidden',
+      transformStyle: 'preserve-3d'
+    }}
+  >
+    {children}
+  </div>
+);
+
+interface ScrollStackProps {
+  className?: string;
+  children: ReactNode;
+  itemDistance?: number;
+  itemScale?: number;
+  itemStackDistance?: number;
+  stackPosition?: string;
+  scaleEndPosition?: string;
+  baseScale?: number;
+  scaleDuration?: number;
+  rotationAmount?: number;
+  blurAmount?: number;
+  useWindowScroll?: boolean;
+  onStackComplete?: () => void;
+}
+
+const ScrollStack: React.FC<ScrollStackProps> = ({
+  children,
+  className = '',
+  itemDistance = 100,
+  itemScale = 0.03,
+  itemStackDistance = 30,
+  stackPosition = '20%',
+  scaleEndPosition = '10%',
+  baseScale = 0.85,
+  scaleDuration = 0.5,
+  rotationAmount = 0,
+  blurAmount = 0,
+  useWindowScroll = false,
+  onStackComplete
+}) => {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const stackCompletedRef = useRef(false);
+  const animationFrameRef = useRef<number | null>(null);
+  const lenisRef = useRef<Lenis | null>(null);
+  const cardsRef = useRef<HTMLElement[]>([]);
+  const lastTransformsRef = useRef(new Map<number, any>());
+  const isUpdatingRef = useRef(false);
+
+  const calculateProgress = useCallback((scrollTop: number, start: number, end: number) => {
+    if (scrollTop < start) return 0;
+    if (scrollTop > end) return 1;
+    return (scrollTop - start) / (end - start);
+  }, []);
+
+  const parsePercentage = useCallback((value: string | number, containerHeight: number) => {
+    if (typeof value === 'string' && value.includes('%')) {
+      return (parseFloat(value) / 100) * containerHeight;
+    }
+    return parseFloat(value as string);
+  }, []);
+
+  const getScrollData = useCallback(() => {
+    if (useWindowScroll) {
+      return {
+        scrollTop: window.scrollY,
+        containerHeight: window.innerHeight,
+        scrollContainer: document.documentElement
+      };
+    } else {
+      const scroller = scrollerRef.current;
+      return {
+        scrollTop: scroller ? scroller.scrollTop : 0,
+        containerHeight: scroller ? scroller.clientHeight : 0,
+        scrollContainer: scroller
+      };
+    }
+  }, [useWindowScroll]);
+
+  const getElementOffset = useCallback(
+    (element: HTMLElement) => {
+      if (useWindowScroll) {
+        const rect = element.getBoundingClientRect();
+        return rect.top + window.scrollY;
+      } else {
+        return element.offsetTop;
+      }
+    },
+    [useWindowScroll]
+  );
+
+  const updateCardTransforms = useCallback(() => {
+    if (!cardsRef.current.length || isUpdatingRef.current) return;
+
+    isUpdatingRef.current = true;
+
+    const { scrollTop, containerHeight, scrollContainer } = getScrollData();
+    const stackPositionPx = parsePercentage(stackPosition, containerHeight);
+    const scaleEndPositionPx = parsePercentage(scaleEndPosition, containerHeight);
+
+    const endElement = useWindowScroll
+      ? (document.querySelector('.scroll-stack-end') as HTMLElement | null)
+      : (scrollerRef.current?.querySelector('.scroll-stack-end') as HTMLElement | null);
+
+    const endElementTop = endElement ? getElementOffset(endElement) : 0;
+
+    cardsRef.current.forEach((card, i) => {
+      if (!card) return;
+
+      const cardTop = getElementOffset(card);
+      const triggerStart = cardTop - stackPositionPx - itemStackDistance * i;
+      const triggerEnd = cardTop - scaleEndPositionPx;
+      const pinStart = cardTop - stackPositionPx - itemStackDistance * i;
+      const pinEnd = endElementTop - containerHeight / 2;
+
+      const scaleProgress = calculateProgress(scrollTop, triggerStart, triggerEnd);
+      const targetScale = baseScale + i * itemScale;
+      const scale = 1 - scaleProgress * (1 - targetScale);
+      const rotation = rotationAmount ? i * rotationAmount * scaleProgress : 0;
+
+      let blur = 0;
+      if (blurAmount) {
+        let topCardIndex = 0;
+        for (let j = 0; j < cardsRef.current.length; j++) {
+          const jCardTop = getElementOffset(cardsRef.current[j]);
+          const jTriggerStart = jCardTop - stackPositionPx - itemStackDistance * j;
+          if (scrollTop >= jTriggerStart) {
+            topCardIndex = j;
+          }
+        }
+
+        if (i < topCardIndex) {
+          const depthInStack = topCardIndex - i;
+          blur = Math.max(0, depthInStack * blurAmount);
+        }
+      }
+
+      let translateY = 0;
+      const isPinned = scrollTop >= pinStart && scrollTop <= pinEnd;
+
+      if (isPinned) {
+        translateY = scrollTop - cardTop + stackPositionPx + itemStackDistance * i;
+      } else if (scrollTop > pinEnd) {
+        translateY = pinEnd - cardTop + stackPositionPx + itemStackDistance * i;
+      }
+
+      const newTransform = {
+        translateY: Math.round(translateY * 100) / 100,
+        scale: Math.round(scale * 1000) / 1000,
+        rotation: Math.round(rotation * 100) / 100,
+        blur: Math.round(blur * 100) / 100
+      };
+
+      const lastTransform = lastTransformsRef.current.get(i);
+      const hasChanged =
+        !lastTransform ||
+        Math.abs(lastTransform.translateY - newTransform.translateY) > 0.1 ||
+        Math.abs(lastTransform.scale - newTransform.scale) > 0.001 ||
+        Math.abs(lastTransform.rotation - newTransform.rotation) > 0.1 ||
+        Math.abs(lastTransform.blur - newTransform.blur) > 0.1;
+
+      if (hasChanged) {
+        const transform = `translate3d(0, ${newTransform.translateY}px, 0) scale(${newTransform.scale}) rotate(${newTransform.rotation}deg)`;
+        const filter = newTransform.blur > 0 ? `blur(${newTransform.blur}px)` : '';
+
+        card.style.transform = transform;
+        card.style.filter = filter;
+
+        lastTransformsRef.current.set(i, newTransform);
+      }
+
+      if (i === cardsRef.current.length - 1) {
+        const isInView = scrollTop >= pinStart && scrollTop <= pinEnd;
+        if (isInView && !stackCompletedRef.current) {
+          stackCompletedRef.current = true;
+          onStackComplete?.();
+        } else if (!isInView && stackCompletedRef.current) {
+          stackCompletedRef.current = false;
+        }
+      }
+    });
+
+    isUpdatingRef.current = false;
+  }, [
+    itemScale,
+    itemStackDistance,
+    stackPosition,
+    scaleEndPosition,
+    baseScale,
+    rotationAmount,
+    blurAmount,
+    useWindowScroll,
+    onStackComplete,
+    calculateProgress,
+    parsePercentage,
+    getScrollData,
+    getElementOffset
+  ]);
+
+  const handleScroll = useCallback(() => {
+    updateCardTransforms();
+  }, [updateCardTransforms]);
+
+  const setupLenis = useCallback(() => {
+    if (useWindowScroll) {
+      const lenis = new Lenis({
+        duration: 1.2,
+        easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        touchMultiplier: 2,
+        infinite: false,
+        wheelMultiplier: 1,
+        lerp: 0.1,
+        syncTouch: true,
+        syncTouchLerp: 0.075
+      });
+
+      lenis.on('scroll', handleScroll);
+
+      const raf = (time: number) => {
+        lenis.raf(time);
+        animationFrameRef.current = requestAnimationFrame(raf);
+      };
+      animationFrameRef.current = requestAnimationFrame(raf);
+
+      lenisRef.current = lenis;
+      return lenis;
+    } else {
+      const scroller = scrollerRef.current;
+      if (!scroller) return;
+
+      const lenis = new Lenis({
+        wrapper: scroller,
+        content: scroller.querySelector('.scroll-stack-inner') as HTMLElement,
+        duration: 1.2,
+        easing: t => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+        smoothWheel: true,
+        touchMultiplier: 2,
+        infinite: false,
+        gestureOrientation: 'vertical',
+        wheelMultiplier: 1,
+        lerp: 0.1,
+        syncTouch: true,
+        syncTouchLerp: 0.075
+      });
+
+      lenis.on('scroll', handleScroll);
+
+      const raf = (time: number) => {
+        lenis.raf(time);
+        animationFrameRef.current = requestAnimationFrame(raf);
+      };
+      animationFrameRef.current = requestAnimationFrame(raf);
+
+      lenisRef.current = lenis;
+      return lenis;
+    }
+  }, [handleScroll, useWindowScroll]);
+
+  useLayoutEffect(() => {
+    if (!useWindowScroll && !scrollerRef.current) return;
+
+    const cards = Array.from(
+      useWindowScroll
+        ? document.querySelectorAll('.scroll-stack-card')
+        : (scrollerRef.current?.querySelectorAll('.scroll-stack-card') ?? [])
+    ) as HTMLElement[];
+    cardsRef.current = cards;
+    const transformsCache = lastTransformsRef.current;
+
+    cards.forEach((card, i) => {
+      if (i < cards.length - 1) {
+        card.style.marginBottom = `${itemDistance}px`;
+      }
+      card.style.willChange = 'transform, filter';
+      card.style.transformOrigin = 'top center';
+      card.style.backfaceVisibility = 'hidden';
+      card.style.transform = 'translateZ(0)';
+      card.style.webkitTransform = 'translateZ(0)';
+      card.style.perspective = '1000px';
+      card.style.webkitPerspective = '1000px';
+    });
+
+    setupLenis();
+
+    updateCardTransforms();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (lenisRef.current) {
+        lenisRef.current.destroy();
+      }
+      stackCompletedRef.current = false;
+      cardsRef.current = [];
+      transformsCache.clear();
+      isUpdatingRef.current = false;
+    };
+  }, [
+    itemDistance,
+    itemScale,
+    itemStackDistance,
+    stackPosition,
+    scaleEndPosition,
+    baseScale,
+    scaleDuration,
+    rotationAmount,
+    blurAmount,
+    useWindowScroll,
+    onStackComplete,
+    setupLenis,
+    updateCardTransforms
+  ]);
+
+  return (
+    <div
+      className={`relative w-full h-full overflow-y-auto overflow-x-visible ${className}`.trim()}
+      ref={scrollerRef}
+      style={{
+        overscrollBehavior: 'contain',
+        WebkitOverflowScrolling: 'touch',
+        scrollBehavior: 'smooth',
+        WebkitTransform: 'translateZ(0)',
+        transform: 'translateZ(0)',
+        willChange: 'scroll-position'
+      }}
+    >
+      <div className="scroll-stack-inner pt-[20vh] px-20 pb-[50rem] min-h-screen">
+        {children}
+        {/* Spacer so the last pin can release cleanly */}
+        <div className="scroll-stack-end w-full h-px" />
+      </div>
+    </div>
+  );
+};
+
+export default ScrollStack;
+
+
+===== LOCATION: src/components/landing/ui/icons.tsx =====
+
+/* ─── All project icons as typed React components ─────────────────── */
+
+type IconProps = { size?: number; color?: string; strokeWidth?: number };
+
+export const ArrowRight = ({ size = 16 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <path d="M5 12h14M12 5l7 7-7 7" />
+  </svg>
+);
+
+export const Play = ({ size = 14 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <polygon points="5 3 19 12 5 21" />
+  </svg>
+);
+
+export const Lock = ({ size = 10 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+  </svg>
+);
+
+export const Check = ({ size = 9, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+export const Plus = ({ size = 12 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <line x1="12" y1="5" x2="12" y2="19" />
+    <line x1="5"  y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+export const Star = ({ size = 14 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="#f59e0b">
+    <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+  </svg>
+);
+
+export const Zap = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+  </svg>
+);
+
+export const Cursor = ({ size = 20 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="#818cf8" stroke="#fff" strokeWidth="1">
+    <path d="M4 2l16 10-8 2-4 8z" />
+  </svg>
+);
+
+export const Menu = ({ size = 18 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <line x1="3"  y1="6"  x2="21" y2="6"  />
+    <line x1="3"  y1="12" x2="21" y2="12" />
+    <line x1="3"  y1="18" x2="21" y2="18" />
+  </svg>
+);
+
+export const Link = ({ size = 11 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+  </svg>
+);
+
+export const Mail = ({ size = 20 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+  </svg>
+);
+
+export const Grid = ({ size = 20 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="3"  y="3"  width="7" height="7" />
+    <rect x="14" y="3"  width="7" height="7" />
+    <rect x="14" y="14" width="7" height="7" />
+    <rect x="3"  y="14" width="7" height="7" />
+  </svg>
+);
+
+export const CreditCard = ({ size = 20 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <rect x="2" y="5" width="20" height="14" rx="2" />
+    <line x1="2" y1="10" x2="22" y2="10" />
+  </svg>
+);
+
+export const Eye = ({ size = 9, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+export const MailSmall = ({ size = 9, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2">
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />
+  </svg>
+);
+
+export const CheckSmall = ({ size = 9, color = "currentColor" }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3">
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+);
+
+export const Dot = ({ size = 8 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="12" cy="12" r="12" />
+  </svg>
+);
+
+
+===== LOCATION: src/components/landing/effectText/AnimatedList/AnimatedList .tsx =====
+
+import React, { useRef, useState, useEffect, useCallback, ReactNode, UIEvent } from 'react';
+import { motion, useInView } from 'motion/react';
+
+interface AnimatedItemProps {
+  children: ReactNode;
+  delay?: number;
+  index: number;
+  onMouseEnter?: () => void;
+  onClick?: () => void;
+}
+
+const AnimatedItem: React.FC<AnimatedItemProps> = ({ children, delay = 0, index, onMouseEnter, onClick }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  const inView = useInView(ref, { amount: 0.5, once: false });
+
+  return (
+    <motion.div
+      ref={ref}
+      data-index={index}
+      onMouseEnter={onMouseEnter}
+      onClick={onClick}
+      initial={{ scale: 0.7, opacity: 0 }}
+      animate={inView ? { scale: 1, opacity: 1 } : { scale: 0.7, opacity: 0 }}
+      transition={{ duration: 0.2, delay }}
+      className="mb-4 cursor-pointer"
+    >
+      {children}
+    </motion.div>
+  );
+};
+
+interface AnimatedListProps<T> {
+  items: T[];
+  renderItem: (item: T, index: number) => ReactNode;
+  onItemSelect?: (item: T, index: number) => void;
+  showGradients?: boolean;
+  enableArrowNavigation?: boolean;
+  className?: string;
+  itemClassName?: string;
+  displayScrollbar?: boolean;
+  initialSelectedIndex?: number;
+}
+
+function AnimatedList<T>({
+  items,
+  renderItem,
+  onItemSelect,
+  showGradients = true,
+  enableArrowNavigation = true,
+  className = '',
+  itemClassName = '',
+  displayScrollbar = true,
+  initialSelectedIndex = -1
+}: AnimatedListProps<T>) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [selectedIndex, setSelectedIndex] = useState(initialSelectedIndex);
+  const [keyboardNav, setKeyboardNav] = useState(false);
+  const [topGradientOpacity, setTopGradientOpacity] = useState(0);
+  const [bottomGradientOpacity, setBottomGradientOpacity] = useState(1);
+
+  const handleItemMouseEnter = (index: number) => {
+    setSelectedIndex(index);
+  };
+
+  const handleItemClick = (item: T, index: number) => {
+    setSelectedIndex(index);
+    if (onItemSelect) onItemSelect(item, index);
+  };
+
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    setTopGradientOpacity(Math.min(scrollTop / 50, 1));
+    const bottomDistance = scrollHeight - (scrollTop + clientHeight);
+    setBottomGradientOpacity(scrollHeight <= clientHeight ? 0 : Math.min(bottomDistance / 50, 1));
+  };
+
+  useEffect(() => {
+    if (!enableArrowNavigation) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
+        e.preventDefault();
+        setKeyboardNav(true);
+        setSelectedIndex(prev => Math.min(prev + 1, items.length - 1));
+      } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
+        e.preventDefault();
+        setKeyboardNav(true);
+        setSelectedIndex(prev => Math.max(prev - 1, 0));
+      } else if (e.key === 'Enter') {
+        if (selectedIndex >= 0 && selectedIndex < items.length) {
+          e.preventDefault();
+          onItemSelect?.(items[selectedIndex], selectedIndex);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [items, selectedIndex, onItemSelect, enableArrowNavigation]);
+
+  useEffect(() => {
+    if (!keyboardNav || selectedIndex < 0 || !listRef.current) return;
+    const container = listRef.current;
+    const selectedItem = container.querySelector(`[data-index="${selectedIndex}"]`) as HTMLElement | null;
+    if (selectedItem) {
+      const extraMargin = 50;
+      const containerScrollTop = container.scrollTop;
+      const containerHeight = container.clientHeight;
+      const itemTop = selectedItem.offsetTop;
+      const itemBottom = itemTop + selectedItem.offsetHeight;
+      if (itemTop < containerScrollTop + extraMargin) {
+        container.scrollTo({ top: itemTop - extraMargin, behavior: 'smooth' });
+      } else if (itemBottom > containerScrollTop + containerHeight - extraMargin) {
+        container.scrollTo({ top: itemBottom - containerHeight + extraMargin, behavior: 'smooth' });
+      }
+    }
+    setKeyboardNav(false);
+  }, [selectedIndex, keyboardNav]);
+
+  return (
+    <div className={`relative  ${className}`}>
+      <div
+        ref={listRef}
+        className={`max-h-[400px] overflow-y-auto p-4 ${
+          displayScrollbar
+            ? '[&::-webkit-scrollbar]:w-[8px] [&::-webkit-scrollbar-track]:bg-[#060010] [&::-webkit-scrollbar-thumb]:bg-[#222] [&::-webkit-scrollbar-thumb]:rounded-[4px]'
+            : 'scrollbar-hide'
+        }`}
+        onScroll={handleScroll}
+        style={{ scrollbarWidth: displayScrollbar ? 'thin' : 'none', scrollbarColor: '#222 #060010' }}
+      >
+        {items.map((item, index) => (
+          <AnimatedItem
+            key={index}
+            delay={0.1}
+            index={index}
+            onMouseEnter={() => handleItemMouseEnter(index)}
+            onClick={() => handleItemClick(item, index)}
+          >
+            {renderItem(item, index)}
+          </AnimatedItem>
+        ))}
+      </div>
+
+      {showGradients && (
+        <>
+          <div
+            className="absolute top-0 left-0 right-0 h-[50px]  to-transparent pointer-events-none transition-opacity duration-300 ease"
+            style={{ opacity: topGradientOpacity }}
+          />
+          <div
+            className="absolute bottom-0 left-0 right-0 h-[100px] to-transparent pointer-events-none transition-opacity duration-300 ease"
+            style={{ opacity: bottomGradientOpacity }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+export default AnimatedList;
+
+===== LOCATION: src/components/landing/effectText/ShinyText/ShinyText.css =====
+
+.shiny-text {
+  display: inline-block;
+}
+
+
+===== LOCATION: src/components/landing/effectText/ShinyText/ShinyText.tsx =====
+
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { motion, useMotionValue, useAnimationFrame, useTransform } from 'motion/react';
+import './ShinyText.css';
+
+const ShinyText = ({
+  text,
+  disabled = false,
+  speed = 2,
+  className = '',
+  color = '#b5b5b5',
+  shineColor = '#ffffff',
+  spread = 120,
+  yoyo = false,
+  pauseOnHover = false,
+  direction = 'left',
+  delay = 0
+}) => {
+  const [isPaused, setIsPaused] = useState(false);
+  const progress = useMotionValue(0);
+  const elapsedRef = useRef(0);
+  const lastTimeRef = useRef(null);
+  const directionRef = useRef(direction === 'left' ? 1 : -1);
+
+  const animationDuration = speed * 1000;
+  const delayDuration = delay * 1000;
+
+  useAnimationFrame(time => {
+    if (disabled || isPaused) {
+      lastTimeRef.current = null;
+      return;
+    }
+
+    if (lastTimeRef.current === null) {
+      lastTimeRef.current = time;
+      return;
+    }
+
+    const deltaTime = time - lastTimeRef.current;
+    lastTimeRef.current = time;
+
+    elapsedRef.current += deltaTime;
+
+    if (yoyo) {
+      const cycleDuration = animationDuration + delayDuration;
+      const fullCycle = cycleDuration * 2;
+      const cycleTime = elapsedRef.current % fullCycle;
+
+      if (cycleTime < animationDuration) {
+        // Forward animation: 0 -> 100
+        const p = (cycleTime / animationDuration) * 100;
+        progress.set(directionRef.current === 1 ? p : 100 - p);
+      } else if (cycleTime < cycleDuration) {
+        // Delay at end
+        progress.set(directionRef.current === 1 ? 100 : 0);
+      } else if (cycleTime < cycleDuration + animationDuration) {
+        // Reverse animation: 100 -> 0
+        const reverseTime = cycleTime - cycleDuration;
+        const p = 100 - (reverseTime / animationDuration) * 100;
+        progress.set(directionRef.current === 1 ? p : 100 - p);
+      } else {
+        // Delay at start
+        progress.set(directionRef.current === 1 ? 0 : 100);
+      }
+    } else {
+      const cycleDuration = animationDuration + delayDuration;
+      const cycleTime = elapsedRef.current % cycleDuration;
+
+      if (cycleTime < animationDuration) {
+        // Animation phase: 0 -> 100
+        const p = (cycleTime / animationDuration) * 100;
+        progress.set(directionRef.current === 1 ? p : 100 - p);
+      } else {
+        // Delay phase - hold at end (shine off-screen)
+        progress.set(directionRef.current === 1 ? 100 : 0);
+      }
+    }
+  });
+
+  useEffect(() => {
+    directionRef.current = direction === 'left' ? 1 : -1;
+    elapsedRef.current = 0;
+    progress.set(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [direction]);
+
+  // Transform: p=0 -> 150% (shine off right), p=100 -> -50% (shine off left)
+  const backgroundPosition = useTransform(progress, p => `${150 - p * 2}% center`);
+
+  const handleMouseEnter = useCallback(() => {
+    if (pauseOnHover) setIsPaused(true);
+  }, [pauseOnHover]);
+
+  const handleMouseLeave = useCallback(() => {
+    if (pauseOnHover) setIsPaused(false);
+  }, [pauseOnHover]);
+
+  const gradientStyle = {
+    backgroundImage: `linear-gradient(${spread}deg, ${color} 0%, ${color} 35%, ${shineColor} 50%, ${color} 65%, ${color} 100%)`,
+    backgroundSize: '200% auto',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    WebkitTextFillColor: 'transparent'
+  };
+
+  return (
+    <motion.span
+      className={`shiny-text ${className}`}
+      style={{ ...gradientStyle, backgroundPosition }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {text}
+    </motion.span>
+  );
+};
+
+export default ShinyText;
+
+
+===== LOCATION: src/components/landing/effectText/FallingText/FallingText.tsx =====
+
+import { useRef, useState, useEffect } from 'react';
+import Matter from 'matter-js';
+
+interface FallingTextProps {
+  text?: string;
+  highlightWords?: string[];
+  trigger?: 'auto' | 'scroll' | 'click' | 'hover';
+  backgroundColor?: string;
+  wireframes?: boolean;
+  gravity?: number;
+  mouseConstraintStiffness?: number;
+  fontSize?: string;
+}
+
+const FallingText: React.FC<FallingTextProps> = ({
+  text = '',
+  highlightWords = [],
+  trigger = 'auto',
+  backgroundColor = 'transparent',
+  wireframes = false,
+  gravity = 1,
+  mouseConstraintStiffness = 0.2,
+  fontSize = '1rem'
+}) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const textRef = useRef<HTMLDivElement | null>(null);
+  const canvasContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const [effectStarted, setEffectStarted] = useState(false);
+
+  useEffect(() => {
+    if (!textRef.current) return;
+    const words = text.split(' ');
+
+    const newHTML = words
+  .map(word => {
+    const isHighlighted = highlightWords.some(hw => word.startsWith(hw));
+    return `<span
+      class="inline-block mx-[2px] select-none ${
+        isHighlighted 
+          ? 'bg-gradient-to-br from-[var(--primary)] to-[var(--accent)] bg-clip-text text-transparent font-bold' 
+          : ''
+      }"
+    >
+      ${word}
+    </span>`;
+  })
+  .join(' ');
+
+    textRef.current.innerHTML = newHTML;
+  }, [text, highlightWords]);
+
+  useEffect(() => {
+    if (trigger === 'auto') {
+      setEffectStarted(true);
+      return;
+    }
+    if (trigger === 'scroll' && containerRef.current) {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting) {
+            setEffectStarted(true);
+            observer.disconnect();
+          }
+        },
+        { threshold: 0.1 }
+      );
+      observer.observe(containerRef.current);
+      return () => observer.disconnect();
+    }
+  }, [trigger]);
+
+  useEffect(() => {
+    if (!effectStarted) return;
+
+    const { Engine, Render, World, Bodies, Runner, Mouse, MouseConstraint } = Matter;
+
+    if (!containerRef.current || !canvasContainerRef.current) return;
+
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const width = containerRect.width;
+    const height = containerRect.height;
+
+    if (width <= 0 || height <= 0) return;
+
+    const engine = Engine.create();
+    engine.world.gravity.y = gravity;
+
+    const render = Render.create({
+      element: canvasContainerRef.current,
+      engine,
+      options: {
+        width,
+        height,
+        background: backgroundColor,
+        wireframes
+      }
+    });
+
+    const boundaryOptions = {
+      isStatic: true,
+      render: { fillStyle: 'transparent' }
+    };
+    const floor = Bodies.rectangle(width / 2, height + 25, width, 50, boundaryOptions);
+    const leftWall = Bodies.rectangle(-25, height / 2, 50, height, boundaryOptions);
+    const rightWall = Bodies.rectangle(width + 25, height / 2, 50, height, boundaryOptions);
+    const ceiling = Bodies.rectangle(width / 2, -25, width, 50, boundaryOptions);
+
+    if (!textRef.current) return;
+    const wordSpans = textRef.current.querySelectorAll('span');
+    const wordBodies = [...wordSpans].map(elem => {
+      const rect = elem.getBoundingClientRect();
+
+      const x = rect.left - containerRect.left + rect.width / 2;
+      const y = rect.top - containerRect.top + rect.height / 2;
+
+      const body = Bodies.rectangle(x, y, rect.width, rect.height, {
+        render: { fillStyle: 'transparent' },
+        restitution: 0.8,
+        frictionAir: 0.01,
+        friction: 0.2
+      });
+      Matter.Body.setVelocity(body, {
+        x: (Math.random() - 0.5) * 5,
+        y: 0
+      });
+      Matter.Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.05);
+
+      return { elem, body };
+    });
+
+    wordBodies.forEach(({ elem, body }) => {
+      elem.style.position = 'absolute';
+      elem.style.left = `${body.position.x - body.bounds.max.x + body.bounds.min.x / 2}px`;
+      elem.style.top = `${body.position.y - body.bounds.max.y + body.bounds.min.y / 2}px`;
+      elem.style.transform = 'none';
+    });
+
+    const mouse = Mouse.create(containerRef.current);
+    const mouseConstraint = MouseConstraint.create(engine, {
+      mouse,
+      constraint: {
+        stiffness: mouseConstraintStiffness,
+        render: { visible: false }
+      }
+    });
+    render.mouse = mouse;
+
+    World.add(engine.world, [floor, leftWall, rightWall, ceiling, mouseConstraint, ...wordBodies.map(wb => wb.body)]);
+
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+    Render.run(render);
+
+    const updateLoop = () => {
+      wordBodies.forEach(({ body, elem }) => {
+        const { x, y } = body.position;
+        elem.style.left = `${x}px`;
+        elem.style.top = `${y}px`;
+        elem.style.transform = `translate(-50%, -50%) rotate(${body.angle}rad)`;
+      });
+      Matter.Engine.update(engine);
+      requestAnimationFrame(updateLoop);
+    };
+    updateLoop();
+
+    return () => {
+      Render.stop(render);
+      Runner.stop(runner);
+      if (render.canvas && canvasContainerRef.current) {
+        canvasContainerRef.current.removeChild(render.canvas);
+      }
+      World.clear(engine.world, false);
+      Engine.clear(engine);
+    };
+  }, [effectStarted, gravity, wireframes, backgroundColor, mouseConstraintStiffness]);
+
+  const handleTrigger = () => {
+    if (!effectStarted && (trigger === 'click' || trigger === 'hover')) {
+      setEffectStarted(true);
+    }
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative z-[1] w-full h-full cursor-pointer text-center pt-8 overflow-hidden"
+      onClick={trigger === 'click' ? handleTrigger : undefined}
+      onMouseEnter={trigger === 'hover' ? handleTrigger : undefined}
+    >
+      <div
+        ref={textRef}
+        className="inline-block"
+        style={{
+    fontSize: `clamp(1.3rem, 3vw, 1.5rem)`, // min 1rem pe mobil, max 3rem pe desktop
+    lineHeight: 1.4
+  }}
+      />
+
+      <div className="absolute top-0 left-0 z-0" ref={canvasContainerRef} />
+    </div>
+  );
+};
+
+export default FallingText;
+
+
+===== LOCATION: src/components/landing/effectText/BlurText/BlurText .tsx =====
+
+import { motion, Transition, Easing } from 'motion/react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+
+type BlurTextProps = {
+  text?: string;
+  delay?: number;
+  className?: string;
+  animateBy?: 'words' | 'letters';
+  direction?: 'top' | 'bottom';
+  threshold?: number;
+  rootMargin?: string;
+  animationFrom?: Record<string, string | number>;
+  animationTo?: Array<Record<string, string | number>>;
+  easing?: Easing | Easing[];
+  onAnimationComplete?: () => void;
+  stepDuration?: number;
+};
+
+const buildKeyframes = (
+  from: Record<string, string | number>,
+  steps: Array<Record<string, string | number>>
+): Record<string, Array<string | number>> => {
+  const keys = new Set<string>([...Object.keys(from), ...steps.flatMap(s => Object.keys(s))]);
+
+  const keyframes: Record<string, Array<string | number>> = {};
+  keys.forEach(k => {
+    keyframes[k] = [from[k], ...steps.map(s => s[k])];
+  });
+  return keyframes;
+};
+
+const BlurText: React.FC<BlurTextProps> = ({
+  text = '',
+  delay = 200,
+  className = '',
+  animateBy = 'words',
+  direction = 'top',
+  threshold = 0.1,
+  rootMargin = '0px',
+  animationFrom,
+  animationTo,
+  easing = (t: number) => t,
+  onAnimationComplete,
+  stepDuration = 0.35
+}) => {
+  const elements = animateBy === 'words'
+  ? text.split(' ').map(w => (w === '\n' ? <br /> : w))
+  : text.split('').map(c => (c === '\n' ? <br /> : c));
+  const [inView, setInView] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setInView(true);
+          observer.unobserve(ref.current as Element);
+        }
+      },
+      { threshold, rootMargin }
+    );
+    observer.observe(ref.current);
+    return () => observer.disconnect();
+  }, [threshold, rootMargin]);
+
+  const defaultFrom = useMemo(
+    () =>
+      direction === 'top' ? { filter: 'blur(10px)', opacity: 0, y: -50 } : { filter: 'blur(10px)', opacity: 0, y: 50 },
+    [direction]
+  );
+
+  const defaultTo = useMemo(
+    () => [
+      {
+        filter: 'blur(5px)',
+        opacity: 0.5,
+        y: direction === 'top' ? 5 : -5
+      },
+      { filter: 'blur(0px)', opacity: 1, y: 0 }
+    ],
+    [direction]
+  );
+
+  const fromSnapshot = animationFrom ?? defaultFrom;
+  const toSnapshots = animationTo ?? defaultTo;
+
+  const stepCount = toSnapshots.length + 1;
+  const totalDuration = stepDuration * (stepCount - 1);
+  const times = Array.from({ length: stepCount }, (_, i) => (stepCount === 1 ? 0 : i / (stepCount - 1)));
+
+  return (
+    <p ref={ref} className={`blur-text ${className} flex flex-wrap`}>
+      {elements.map((segment, index) => {
+        const animateKeyframes = buildKeyframes(fromSnapshot, toSnapshots);
+
+        const spanTransition: Transition = {
+          duration: totalDuration,
+          times,
+          delay: (index * delay) / 1000,
+          ease: easing
+        };
+
+        return (
+          <motion.span
+  key={index}
+  initial={fromSnapshot}
+  animate={inView ? animateKeyframes : fromSnapshot}
+  transition={spanTransition}
+  onAnimationComplete={index === elements.length - 1 ? onAnimationComplete : undefined}
+  style={{
+    display: 'inline-block',
+    willChange: 'transform, filter, opacity',
+    background: 'linear-gradient(180deg, #fafafa 0%, rgba(250, 250, 250, 0.5) 100%)',
+    WebkitBackgroundClip: 'text',
+    backgroundClip: 'text',
+    color: 'transparent' // text-transparent
+  }}
+>
+  {segment === ' ' ? '\u00A0' : segment}
+  {animateBy === 'words' && index < elements.length - 1 && '\u00A0'}
+</motion.span>
+        );
+      })}
+    </p>
+  );
+};
+
+export default BlurText;
+
+
+===== LOCATION: src/components/landing/effectText/TrueFocus/TrueFocus.tsx =====
+
+import { useEffect, useRef, useState } from 'react';
+import { motion } from 'motion/react';
+
+interface TrueFocusProps {
+  sentence?: string;
+  separator?: string;
+  manualMode?: boolean;
+  blurAmount?: number;
+  borderColor?: string;
+  glowColor?: string;
+  animationDuration?: number;
+  pauseBetweenAnimations?: number;
+  fontSize?: string;
+}
+
+interface FocusRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const TrueFocus: React.FC<TrueFocusProps> = ({
+  sentence = 'True Focus',
+  separator = ' ',
+  manualMode = false,
+  blurAmount = 5,
+  borderColor = 'green',
+  glowColor = 'rgba(0, 255, 0, 0.6)',
+  animationDuration = 0.5,
+  pauseBetweenAnimations = 1,
+  fontSize = '3rem'
+}) => {
+  const words = sentence.split(separator);
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  const [lastActiveIndex, setLastActiveIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const wordRefs = useRef<(HTMLSpanElement | null)[]>([]);
+  const [focusRect, setFocusRect] = useState<FocusRect>({ x: 0, y: 0, width: 0, height: 0 });
+
+  useEffect(() => {
+    if (!manualMode) {
+      const interval = setInterval(
+        () => {
+          setCurrentIndex(prev => (prev + 1) % words.length);
+        },
+        (animationDuration + pauseBetweenAnimations) * 1000
+      );
+
+      return () => clearInterval(interval);
+    }
+  }, [manualMode, animationDuration, pauseBetweenAnimations, words.length]);
+
+  useEffect(() => {
+    if (currentIndex === null || currentIndex === -1) return;
+    if (!wordRefs.current[currentIndex] || !containerRef.current) return;
+
+    const parentRect = containerRef.current.getBoundingClientRect();
+    const activeRect = wordRefs.current[currentIndex]!.getBoundingClientRect();
+
+    setFocusRect({
+      x: activeRect.left - parentRect.left,
+      y: activeRect.top - parentRect.top,
+      width: activeRect.width,
+      height: activeRect.height
+    });
+  }, [currentIndex, words.length]);
+
+  const handleMouseEnter = (index: number) => {
+    if (manualMode) {
+      setLastActiveIndex(index);
+      setCurrentIndex(index);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (manualMode) {
+      setCurrentIndex(lastActiveIndex!);
+    }
+  };
+
+  return (
+    <div
+      className="relative flex gap-1 justify-left items-center flex-wrap"
+      ref={containerRef}
+      style={{ outline: 'none', userSelect: 'none' }}
+    >
+      {words.map((word, index) => {
+          const isActive = index === currentIndex; // 👈 IMPORTANT
+
+          return (
+            <span
+              key={index}
+              ref={el => {
+                wordRefs.current[index] = el;
+              }}
+              className="relative font-black cursor-pointer"
+              style={{
+                fontSize,
+                filter: isActive ? `blur(0px)` : `blur(${blurAmount}px)`,
+                transition: `filter ${animationDuration}s ease`,
+                outline: 'none',
+                userSelect: 'none'
+              }}
+              onMouseEnter={() => handleMouseEnter(index)}
+              onMouseLeave={handleMouseLeave}
+            >
+              {word}
+            </span>
+          );
+        })}
+
+      <motion.div
+        className="absolute top-0 left-0 pointer-events-none box-border border-0"
+        animate={{
+          x: focusRect.x,
+          y: focusRect.y,
+          width: focusRect.width,
+          height: focusRect.height,
+          opacity: currentIndex >= 0 ? 1 : 0
+        }}
+        transition={{
+          duration: animationDuration
+        }}
+        style={
+          {
+            '--border-color': borderColor,
+            '--glow-color': glowColor
+          } as React.CSSProperties
+        }
+      >
+        <span
+          className="absolute w-4 h-4 border-[3px] rounded-[3px] top-[-10px] left-[-10px] border-r-0 border-b-0"
+          style={{
+            borderColor: 'var(--border-color)',
+            filter: 'drop-shadow(0 0 4px var(--border-color))'
+          }}
+        ></span>
+        <span
+          className="absolute w-4 h-4 border-[3px] rounded-[3px] top-[-10px] right-[-10px] border-l-0 border-b-0"
+          style={{
+            borderColor: 'var(--border-color)',
+            filter: 'drop-shadow(0 0 4px var(--border-color))'
+          }}
+        ></span>
+        <span
+          className="absolute w-4 h-4 border-[3px] rounded-[3px] bottom-[-10px] left-[-10px] border-r-0 border-t-0"
+          style={{
+            borderColor: 'var(--border-color)',
+            filter: 'drop-shadow(0 0 4px var(--border-color))'
+          }}
+        ></span>
+        <span
+          className="absolute w-4 h-4 border-[3px] rounded-[3px] bottom-[-10px] right-[-10px] border-l-0 border-t-0"
+          style={{
+            borderColor: 'var(--border-color)',
+            filter: 'drop-shadow(0 0 4px var(--border-color))'
+          }}
+        ></span>
+      </motion.div>
+    </div>
+  );
+};
+
+export default TrueFocus;
+
+
+===== LOCATION: src/components/landing/effectText/TextType/TextType.css =====
+
+.text-type {
+  display: inline-block;
+  white-space: pre-wrap;
+}
+
+.text-type__cursor {
+  margin-left: 0.25rem;
+  display: inline-block;
+  opacity: 1;
+}
+
+.text-type__cursor--hidden {
+  display: none;
+}
+
+
+===== LOCATION: src/components/landing/effectText/TextType/TextType.tsx =====
+
+'use client';
+
+import { useEffect, useRef, useState, createElement, useMemo, useCallback } from 'react';
+import { gsap } from 'gsap';
+import './TextType.css';
+
+const TextType = ({
+  text,
+  as: Component = 'div',
+  typingSpeed = 50,
+  initialDelay = 0,
+  pauseDuration = 2000,
+  deletingSpeed = 30,
+  loop = true,
+  className = '',
+  showCursor = true,
+  hideCursorWhileTyping = false,
+  cursorCharacter = '|',
+  cursorClassName = '',
+  cursorBlinkDuration = 0.5,
+  textColors = [],
+  variableSpeed,
+  onSentenceComplete,
+  startOnVisible = false,
+  reverseMode = false,
+  ...props
+}) => {
+  const [displayedText, setDisplayedText] = useState('');
+  const [currentCharIndex, setCurrentCharIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [currentTextIndex, setCurrentTextIndex] = useState(0);
+  const [isVisible, setIsVisible] = useState(!startOnVisible);
+  const cursorRef = useRef(null);
+  const containerRef = useRef(null);
+
+  const textArray = useMemo(() => (Array.isArray(text) ? text : [text]), [text]);
+
+  const getRandomSpeed = useCallback(() => {
+    if (!variableSpeed) return typingSpeed;
+    const { min, max } = variableSpeed;
+    return Math.random() * (max - min) + min;
+  }, [variableSpeed, typingSpeed]);
+
+  const getCurrentTextColor = () => {
+    if (textColors.length === 0) return 'inherit';
+    return textColors[currentTextIndex % textColors.length];
+  };
+
+  useEffect(() => {
+    if (!startOnVisible || !containerRef.current) return;
+
+    const observer = new IntersectionObserver(
+      entries => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+          }
+        });
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [startOnVisible]);
+
+  useEffect(() => {
+    if (showCursor && cursorRef.current) {
+      gsap.set(cursorRef.current, { opacity: 1 });
+      gsap.to(cursorRef.current, {
+        opacity: 0,
+        duration: cursorBlinkDuration,
+        repeat: -1,
+        yoyo: true,
+        ease: 'power2.inOut'
+      });
+    }
+  }, [showCursor, cursorBlinkDuration]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+
+    let timeout;
+    const currentText = textArray[currentTextIndex];
+    const processedText = reverseMode ? currentText.split('').reverse().join('') : currentText;
+
+    const executeTypingAnimation = () => {
+      if (isDeleting) {
+        if (displayedText === '') {
+          setIsDeleting(false);
+          if (currentTextIndex === textArray.length - 1 && !loop) {
+            return;
+          }
+
+          if (onSentenceComplete) {
+            onSentenceComplete(textArray[currentTextIndex], currentTextIndex);
+          }
+
+          setCurrentTextIndex(prev => (prev + 1) % textArray.length);
+          setCurrentCharIndex(0);
+          timeout = setTimeout(() => {}, pauseDuration);
+        } else {
+          timeout = setTimeout(() => {
+            setDisplayedText(prev => prev.slice(0, -1));
+          }, deletingSpeed);
+        }
+      } else {
+        if (currentCharIndex < processedText.length) {
+          timeout = setTimeout(
+            () => {
+              setDisplayedText(prev => prev + processedText[currentCharIndex]);
+              setCurrentCharIndex(prev => prev + 1);
+            },
+            variableSpeed ? getRandomSpeed() : typingSpeed
+          );
+        } else if (textArray.length >= 1) {
+          if (!loop && currentTextIndex === textArray.length - 1) return;
+          timeout = setTimeout(() => {
+            setIsDeleting(true);
+          }, pauseDuration);
+        }
+      }
+    };
+
+    if (currentCharIndex === 0 && !isDeleting && displayedText === '') {
+      timeout = setTimeout(executeTypingAnimation, initialDelay);
+    } else {
+      executeTypingAnimation();
+    }
+
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentCharIndex,
+    displayedText,
+    isDeleting,
+    typingSpeed,
+    deletingSpeed,
+    pauseDuration,
+    textArray,
+    currentTextIndex,
+    loop,
+    initialDelay,
+    isVisible,
+    reverseMode,
+    variableSpeed,
+    onSentenceComplete
+  ]);
+
+  const shouldHideCursor =
+    hideCursorWhileTyping && (currentCharIndex < textArray[currentTextIndex].length || isDeleting);
+
+  return createElement(
+    Component,
+    {
+      ref: containerRef,
+      className: `text-type ${className}`,
+      ...props
+    },
+    <span className="text-type__content" style={{ color: getCurrentTextColor() || 'inherit' }}>
+      {displayedText}
+    </span>,
+    showCursor && (
+      <span
+        ref={cursorRef}
+        className={`text-type__cursor ${cursorClassName} ${shouldHideCursor ? 'text-type__cursor--hidden' : ''}`}
+      >
+        {cursorCharacter}
+      </span>
+    )
+  );
+};
+
+export default TextType;
+

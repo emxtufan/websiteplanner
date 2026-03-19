@@ -1,0 +1,1217 @@
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import ReactDOM from "react-dom";
+import {
+  Heart, Baby, PartyPopper, Briefcase,
+  Save, Trash2, Plus, AlertCircle, Info, RotateCcw, ChevronDown,
+} from "lucide-react";
+import Button from "./ui/button";
+import Input from "./ui/input";
+import { UserSession, UserProfile, TimelineItem, EventType, InvitationBlock } from "../types";
+import { useToast } from "./ui/use-toast";
+import { cn } from "../lib/utils";
+import ClassicTemplate, { ClassicTemplateProps } from "./invitations/ClassicTemplate";
+import RoyalRoseTemplate, { RoyalRoseProps } from "./invitations/RoyalRoseTemplate";
+import DarkRoyalTemplate, { DarkRoyalProps } from "./invitations/DarkRoyalTemplate";
+import BlushBloomTemplate, { BlushBloomProps } from "./invitations/BlushBloomTemplate";
+import GardenRomanticTemplate, { GardenRomanticProps } from "./invitations/GardenRomanticTemplate";
+import VelumTemplate, { VelumProps } from "./invitations/VelumTemplate";
+import EternBotanicaTemplate, { EternBotanicaProps } from "./invitations/EternBotanicaTemplate";
+import TerraBohoTemplate, { TerraBohoProps } from "./invitations/TerraBohoTemplate";
+import ArchRoseTemplate, { ArchRoseProps } from "./invitations/ArchRoseTemplate";
+import BlockPropertiesPanel from "./BlockPropertiesPanel";
+import ChristeningTemplate from "./invitations/ChristeningTemplate";
+import CastleMagicTemplate from "./invitations/CastleMagicTemplateBoy";
+import CastleMagicTemplateBoys from "./invitations/BoyCastelMagicTemplates";
+import CastleMagicTemplateGirl from "./invitations/GirlCastelMagicTemplates";
+import CastleMagicTemplateRomantic from "./invitations/RomanticCastelMagicTemplates";
+import JO from "./invitations/JungleMagicEffect";
+
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES } from "./invitations/castleDefaults";
+import { TemplateMeta } from "./invitations/types";
+
+type EditableTemplateProps = ClassicTemplateProps | RoyalRoseProps | DarkRoyalProps | BlushBloomProps | GardenRomanticProps | VelumProps | EternBotanicaProps | TerraBohoProps | ArchRoseProps;
+const EDITABLE_TEMPLATES: Record<string, React.FC<EditableTemplateProps>> = {
+  'classic':             ClassicTemplate as React.FC<EditableTemplateProps>,
+  'classic-baptism':     ClassicTemplate as React.FC<EditableTemplateProps>,
+  'classic-anniversary': ClassicTemplate as React.FC<EditableTemplateProps>,
+  'classic-kids':        ClassicTemplate as React.FC<EditableTemplateProps>,
+  'royal-rose':          RoyalRoseTemplate as React.FC<EditableTemplateProps>,
+  'dark-royal':          DarkRoyalTemplate as React.FC<EditableTemplateProps>,
+  'blush-bloom':         BlushBloomTemplate as React.FC<EditableTemplateProps>,
+  'garden-romantic':     GardenRomanticTemplate as React.FC<EditableTemplateProps>,
+  'velum':               VelumTemplate as React.FC<EditableTemplateProps>,
+  'etern-botanica':      EternBotanicaTemplate as React.FC<EditableTemplateProps>,
+  'terra-boho':          TerraBohoTemplate as React.FC<EditableTemplateProps>,
+  'arch-rose':           ArchRoseTemplate as React.FC<EditableTemplateProps>,
+  'christening-dark':    ChristeningTemplate as React.FC<EditableTemplateProps>,
+  'castle-magic':        CastleMagicTemplate as React.FC<EditableTemplateProps>,
+  'castle-magic-boys':   CastleMagicTemplateBoys as React.FC<EditableTemplateProps>,
+  'castle-magic-girl':   CastleMagicTemplateGirl as React.FC<EditableTemplateProps>,
+  'romantic':   CastleMagicTemplateRomantic as React.FC<EditableTemplateProps>,
+  'regal':   JO as React.FC<EditableTemplateProps>,
+};
+const getEditableTemplate = (id: string): React.FC<EditableTemplateProps> =>
+  EDITABLE_TEMPLATES[id] || ClassicTemplate as React.FC<EditableTemplateProps>;
+
+interface SettingsViewProps {
+  session: UserSession;
+  onUpdateProfile: (profile: UserProfile) => Promise<void>;
+  selectedTemplate?: string;
+  templateMeta?: TemplateMeta;
+  onCheckActive?: () => boolean;
+}
+
+const API_URL = (import.meta as any)?.env?.VITE_API_URL || "http://localhost:3005/api";
+
+// ─── Micro UI ──────────────────────────────────────────────────────────────────
+const Toggle = ({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) => (
+  <button type="button" role="switch" aria-checked={on}
+    onClick={e => { e.stopPropagation(); onChange(!on); }}
+    className={cn("relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+      on ? "bg-emerald-500" : "bg-zinc-200 dark:bg-zinc-700")}>
+    <span className={cn("pointer-events-none block h-3 w-3 rounded-full bg-white transition-transform", on ? "translate-x-3" : "translate-x-0")} />
+  </button>
+);
+const Lbl = ({ children }: { children: React.ReactNode }) => (
+  <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">{children}</p>
+);
+const SecTitle = ({ children, action }: { children: React.ReactNode; action?: React.ReactNode }) => (
+  <div className="flex items-center justify-between mb-3">
+    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-zinc-400">{children}</span>
+    {action}
+  </div>
+);
+const Collapsible: React.FC<{
+  title: string;
+  defaultOpen?: boolean;
+  hint?: string;
+  children: React.ReactNode;
+}> = ({ title, defaultOpen = true, hint, children }) => {
+  const [open, setOpen] = useState(defaultOpen);
+  const toggleOpen = () => setOpen(o => !o);
+  return (
+    <section>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={toggleOpen}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            toggleOpen();
+          }
+        }}
+        className="w-full flex items-center justify-between group mb-0 py-0.5"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500 dark:text-zinc-400">
+            {title}
+          </span>
+          {!open && hint && (
+            <span className="text-[9px] text-zinc-300 dark:text-zinc-600 font-normal normal-case tracking-normal truncate max-w-[120px]">
+              {hint}
+            </span>
+          )}
+        </div>
+        <ChevronDown
+          className={cn(
+            "w-3.5 h-3.5 text-zinc-300 dark:text-zinc-600 shrink-0",
+            open && "rotate-180"
+          )}
+        />
+      </div>
+      {/* display:block/none — fără max-h, fără animație, fără tăiere conținut */}
+      <div style={{ display: open ? 'block' : 'none', marginTop: 12 }}>
+        {children}
+      </div>
+    </section>
+  );
+};
+
+const Hr = () => <hr className="border-zinc-100 dark:border-zinc-800 my-4" />;
+const EventTypeBadge = ({ et }: { et: string }) => {
+  const m: Record<string, { label: string; icon: any; cls: string }> = {
+    wedding:     { label: "Nuntă",      icon: Heart,       cls: "bg-rose-50 text-rose-700 border-rose-200" },
+    baptism:     { label: "Botez",      icon: Baby,        cls: "bg-blue-50 text-blue-700 border-blue-200" },
+    anniversary: { label: "Aniversare", icon: PartyPopper, cls: "bg-amber-50 text-amber-700 border-amber-200" },
+    office:      { label: "Corporate",  icon: Briefcase,   cls: "bg-zinc-50 text-zinc-700 border-zinc-300" },
+    kids:        { label: "Copii",      icon: PartyPopper, cls: "bg-purple-50 text-purple-700 border-purple-200" },
+  };
+  const c = m[et] || m.wedding;
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold", c.cls)}>
+      <c.icon className="w-3 h-3" />{c.label}
+    </span>
+  );
+};
+
+// ─── Reset Modal ───────────────────────────────────────────────────────────────
+const ResetModal: React.FC<{ resetting: boolean; onCancel: () => void; onConfirm: () => void }> = ({
+  resetting, onCancel, onConfirm,
+}) => ReactDOM.createPortal(
+  <div className="fixed inset-0 z-[9999] flex items-center justify-center">
+    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !resetting && onCancel()} />
+    <div className="relative bg-white dark:bg-zinc-900 rounded-2xl shadow-2xl p-6 w-80 mx-4 flex flex-col gap-4">
+      <div className="w-12 h-12 rounded-full bg-orange-50 flex items-center justify-center mx-auto">
+        <RotateCcw className="w-6 h-6 text-orange-500" />
+      </div>
+      <div className="text-center">
+        <p className="font-bold text-sm text-zinc-900 dark:text-white mb-1">Resetezi invitația?</p>
+        <p className="text-xs text-zinc-500 leading-relaxed">
+          Toate blocurile, pozele și textele personalizate vor fi înlocuite cu template-ul implicit.<br />
+          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Această acțiune nu poate fi anulată.</span>
+        </p>
+      </div>
+      <div className="flex gap-2">
+        <button type="button" onClick={onCancel} disabled={resetting}
+          className="flex-1 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition-colors disabled:opacity-40">
+          Anulează
+        </button>
+        <button type="button" onClick={onConfirm} disabled={resetting}
+          className="flex-1 py-2 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
+          {resetting
+            ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Se resetează...</>
+            : <><RotateCcw className="w-3 h-3" /> Da, resetează</>
+          }
+        </button>
+      </div>
+    </div>
+  </div>,
+  document.body
+);
+
+// ─── Settings Content (shared between mobile and desktop) ─────────────────────
+// ─── Timeline preset moments with icons ───────────────────────────────────────
+const TIMELINE_PRESETS = [
+  { icon: 'diamond',   emoji: '💍', title: 'Pregătirea mirilor' },
+  { icon: 'dress',     emoji: '👗', title: 'Îmbrăcarea miresii' },
+  { icon: 'ceremony',  emoji: '⛪', title: 'Ceremonia civilă' },
+  { icon: 'candles',   emoji: '🕯️', title: 'Ceremonia religioasă' },
+  { icon: 'photo',     emoji: '📷', title: 'Ședința foto' },
+  { icon: 'arch',      emoji: '🌸', title: 'Intrarea în sală' },
+  { icon: 'dance',     emoji: '💃', title: 'Dansul mirilor' },
+  { icon: 'cocktails', emoji: '🍸', title: 'Cocktail & aperitiv' },
+  { icon: 'dinner',    emoji: '🍽️', title: 'Masa festivă' },
+  { icon: 'music',     emoji: '🎵', title: 'Muzică live' },
+  { icon: 'mic',       emoji: '🎤', title: 'Toast & discursuri' },
+  { icon: 'cake',      emoji: '🎂', title: 'Tăierea tortului' },
+  { icon: 'bouquet',   emoji: '💐', title: 'Aruncarea buchetului' },
+  { icon: 'champagne', emoji: '🥂', title: 'Șampanie & felicitări' },
+  { icon: 'car',       emoji: '🚗', title: 'Plecare miri' },
+  { icon: 'disco',     emoji: '🪩', title: 'After party' },
+  { icon: 'fireworks', emoji: '🎆', title: 'Focuri de artificii' },
+  { icon: 'moon',      emoji: '🌙', title: 'Finalul evenimentului' },
+];
+
+const SettingsContent: React.FC<{
+  profile: UserProfile;
+  timeline: TimelineItem[];
+  isActive: boolean;
+  hc: (field: keyof UserProfile, value: any) => void;
+  guard: (fn: () => void) => void;
+  pushTimeline: (nt: TimelineItem[]) => void;
+  selectedTemplate?: string;
+  templateMeta?: TemplateMeta;
+  doorImages?: Record<string, { desktop?: string; mobile?: string }>;
+}> = ({ profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, templateMeta, doorImages = {} }) => {
+  const [expandedTheme, setExpandedTheme] = React.useState<string | null>(null);
+  return (
+  <div className="w-full">
+    <div className="p-4 space-y-5">
+
+      {/* ① DATA & LINK */}
+      <Collapsible title="Data & Link" hint={profile.weddingDate || "neconfigurată"}>
+        <div className="space-y-2">
+          <div>
+            <Lbl>Data evenimentului</Lbl>
+            <Input type="date" value={profile.weddingDate || ""}
+              onChange={(e: any) => hc("weddingDate", e.target.value)}
+              disabled={!isActive} className="h-8 text-xs" />
+            <p className="text-[10px] text-amber-600 flex items-center gap-1 mt-1">
+              <AlertCircle className="w-3 h-3 shrink-0" /> Expiră la 24h după eveniment.
+            </p>
+          </div>
+          {/* Nume parteneri */}
+          {(() => {
+            const tags = templateMeta?.tags ?? [];
+            const eventType = (profile.eventType || 'wedding') as string;
+            const isBaptism = tags.length > 0
+              ? tags.includes('baptism') && !tags.includes('wedding')
+              : (
+                  eventType === 'baptism' ||
+                  eventType === 'kids' ||
+                  selectedTemplate?.includes('baptis') ||
+                  selectedTemplate?.includes('christening') ||
+                  selectedTemplate?.includes('kids')
+                );
+            return isBaptism ? (
+              <div>
+                <Lbl>Numele copilului</Lbl>
+                <Input
+                  value={(profile as any).partner1Name || ''}
+                  onChange={(e: any) => hc('partner1Name' as any, e.target.value)}
+                  placeholder="Prenume copil"
+                  disabled={!isActive}
+                  className="h-8 text-xs w-full"
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Lbl>El — Prenume</Lbl>
+                  <Input
+                    value={(profile as any).partner1Name || ''}
+                    onChange={(e: any) => hc('partner1Name' as any, e.target.value)}
+                    placeholder="Mihai"
+                    disabled={!isActive}
+                    className="h-8 text-xs w-full"
+                  />
+                </div>
+                <div>
+                  <Lbl>Ea — Prenume</Lbl>
+                  <Input
+                    value={(profile as any).partner2Name || ''}
+                    onChange={(e: any) => hc('partner2Name' as any, e.target.value)}
+                    placeholder="Elena"
+                    disabled={!isActive}
+                    className="h-8 text-xs w-full"
+                  />
+                </div>
+              </div>
+            );
+          })()}
+          <div>
+            <Lbl>Link public</Lbl>
+            <div className="flex items-center">
+              <span className="bg-zinc-50 dark:bg-zinc-800 px-2 py-[7px] rounded-l border border-r-0 text-[10px] text-zinc-400 whitespace-nowrap">events/</span>
+              <Input className="rounded-l-none h-8 text-xs" placeholder="slug-url"
+                value={profile.inviteSlug || ""}
+                onChange={(e: any) => hc("inviteSlug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
+                disabled={!isActive} />
+            </div>
+            {profile.inviteSlug && (
+              <p className="mt-1 text-[10px] font-mono text-zinc-400 truncate flex items-center gap-1">
+                <Info className="w-3 h-3 shrink-0" />
+                {typeof window !== "undefined" ? window.location.origin : ""}/events/{profile.inviteSlug}/public
+              </p>
+            )}
+          </div>
+
+         {(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose') && (() => {
+
+  const themes = selectedTemplate === 'castle-magic-boys'
+    ? BOY_THEMES
+    : selectedTemplate === 'castle-magic-girl'
+      ? GIRL_THEMES
+      : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
+        ? ROMANTIC_THEMES
+        : CASTLE_THEMES;
+
+  return (
+            <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <Lbl>🎨 Paleta de culori</Lbl>
+              <div className="space-y-1">
+                {themes.map(t => {
+                  const active = ((profile as any).colorTheme ?? 'default') === t.id;
+                  const selectTheme = () => hc('colorTheme' as any, t.id);
+                  return (
+                    <React.Fragment key={t.id}>
+                    <div
+                      role="button"
+                      tabIndex={isActive ? 0 : -1}
+                      aria-pressed={active}
+                      aria-disabled={!isActive}
+                      onClick={() => { if (isActive) selectTheme(); }}
+                      onKeyDown={(e) => {
+                        if (!isActive) return;
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          selectTheme();
+                        }
+                      }}
+                      className={cn(
+                        "flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg border transition-all text-left",
+                        isActive ? "cursor-pointer" : "opacity-50 pointer-events-none",
+                        active
+                          ? "border-zinc-400 dark:border-zinc-400 bg-zinc-50 dark:bg-zinc-800"
+                          : "border-zinc-100 dark:border-zinc-800 hover:border-zinc-300 bg-white dark:bg-zinc-900"
+                      )}>
+                      <div className="flex gap-1 shrink-0">
+                        {[t.PINK_DARK, t.PINK_L, t.PINK_XL].map((c, i) => (
+                          <span key={i} style={{ width: 11, height: 11, borderRadius: '50%', background: c, border: '1px solid rgba(0,0,0,0.1)', display: 'inline-block' }} />
+                        ))}
+                      </div>
+                      <span className="flex-1 text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">{t.emoji} {t.name}</span>
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); setExpandedTheme(expandedTheme === t.id ? null : t.id); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                        title={doorImages[t.id]?.desktop ? "Vezi imaginile ușilor" : "Fără imagini încărcate"}
+                      >
+                        <svg
+                          width="12" height="12" viewBox="0 0 12 12"
+                          style={{
+                            color: doorImages[t.id]?.desktop ? '#6b7280' : '#d1d5db',
+                            transform: expandedTheme === t.id ? 'rotate(180deg)' : 'none',
+                            transition: 'transform 0.2s',
+                          }}
+                          fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                        >
+                          <polyline points="2,4 6,8 10,4"/>
+                        </svg>
+                      </button>
+                      {active && (
+                        <svg className="w-3 h-3 text-zinc-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                    </div>
+
+                    {/* Collapsible door preview */}
+                    {expandedTheme === t.id && (
+                      <div style={{
+                        marginTop: 4, marginBottom: 4,
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: doorImages[t.id]?.desktop ? t.PINK_DARK + '33' : '#e5e7eb',
+                        overflow: 'hidden',
+                        background: doorImages[t.id]?.desktop ? t.PINK_XL || '#fdf2f8' : '#f9fafb',
+                        padding: doorImages[t.id]?.desktop ? 8 : 10,
+                      }}>
+                        {doorImages[t.id]?.desktop || doorImages[t.id]?.mobile ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                            {/* Desktop preview */}
+                            <div style={{ flex: 1 }}>
+                              <p style={{ margin: '0 0 4px', fontSize: 8, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Desktop</p>
+                              {doorImages[t.id]?.desktop ? (
+                                <div style={{
+                                  width: '100%', paddingTop: '56.25%', position: 'relative',
+                                  borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)',
+                                }}>
+                                  <img
+                                    src={doorImages[t.id]?.desktop}
+                                    alt="Desktop door"
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ width: '100%', paddingTop: '56.25%', position: 'relative', borderRadius: 6, background: '#f3f4f6', border: '1px dashed #e5e7eb' }}>
+                                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af' }}>lipsă</span>
+                                </div>
+                              )}
+                            </div>
+                            {/* Mobile preview */}
+                            <div style={{ width: 44 }}>
+                              <p style={{ margin: '0 0 4px', fontSize: 8, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mobile</p>
+                              {doorImages[t.id]?.mobile ? (
+                                <div style={{
+                                  width: 44, paddingTop: '177%', position: 'relative',
+                                  borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)',
+                                }}>
+                                  <img
+                                    src={doorImages[t.id]?.mobile}
+                                    alt="Mobile door"
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                                  />
+                                </div>
+                              ) : (
+                                <div style={{ width: 44, paddingTop: '177%', position: 'relative', borderRadius: 6, background: '#f3f4f6', border: '1px dashed #e5e7eb' }}>
+                                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af', writingMode: 'vertical-rl' }}>lipsă</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 14 }}>🖼️</span>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#6b7280' }}>Imagini implicite</p>
+                              <p style={{ margin: '1px 0 0', fontSize: 9, color: '#9ca3af' }}>Se folosesc imaginile temei Default</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+              );
+            })()}
+        </div>
+      </Collapsible>
+
+      <Hr />
+
+      {/* ③ OPȚIUNI */}
+      {/* <Collapsible title="Opțiuni" defaultOpen={false}>
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Countdown</p>
+              <p className="text-[10px] text-zinc-400">Numărătoare inversă</p>
+            </div>
+            <Toggle on={!!profile.showCountdown} onChange={v => hc("showCountdown", v)} />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium text-zinc-700 dark:text-zinc-200">Buton RSVP</p>
+              <p className="text-[10px] text-zinc-400">Confirmă prezența</p>
+            </div>
+            <Toggle on={false} onChange={v => hc("showRsvpButton", v)} />
+          </div>
+        </div>
+        <p className="text-[9px] text-zinc-400 mt-2 italic">Textul butonului se editează direct ←</p>
+      </Collapsible>
+
+      <Hr /> */}
+
+      {/* ④ CRONOLOGIE */}
+      <Collapsible title="Cronologie Zi" defaultOpen={false}>
+        <div className="flex items-center gap-2 mb-3">
+          <Toggle on={!!profile.showTimeline} onChange={v => hc("showTimeline", v)} />
+          <button type="button" disabled={!isActive}
+            onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: "", time: "", location: "", icon: "party", notice: "" }]))}
+            className="flex items-center gap-0.5 text-[10px] font-bold text-zinc-400 hover:text-black dark:hover:text-white transition-colors disabled:opacity-30">
+            <Plus className="w-3 h-3" /> Adaugă moment
+          </button>
+        </div>
+
+        {/* Quick-add preset buttons */}
+        <div className={cn("flex flex-wrap gap-1 mb-3", !profile.showTimeline && "opacity-40 pointer-events-none")}>
+          {TIMELINE_PRESETS.map(p => (
+            <button key={p.icon} type="button" disabled={!isActive}
+              onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: p.title, time: "", location: "", icon: p.icon, notice: "" }]))}
+              className="flex items-center gap-1 px-2 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 text-[9px] font-bold text-zinc-500 hover:border-amber-400 hover:text-amber-700 disabled:opacity-30 transition-colors">
+              <span>{p.emoji}</span>{p.title}
+            </button>
+          ))}
+        </div>
+
+        <div className={cn("space-y-2", !profile.showTimeline && "opacity-40 pointer-events-none")}>
+          {timeline.length === 0 && (
+            <p className="text-[10px] text-zinc-400 italic">Niciun moment adăugat. Folosește butoanele de mai sus sau adaugă manual.</p>
+          )}
+          {timeline.map(item => (
+            <div key={item.id} className="rounded-lg border border-zinc-100 dark:border-zinc-800 p-2 space-y-1.5 group">
+              {/* Row 1: icon selector + time + title + delete */}
+              <div className="flex gap-1 items-center">
+                {/* Icon picker */}
+                <select value={item.icon || 'party'} disabled={!isActive}
+                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, icon: e.target.value } : t))}
+                  className="h-7 w-8 text-base border border-zinc-200 dark:border-zinc-700 rounded bg-white dark:bg-zinc-800 shrink-0 text-center cursor-pointer disabled:opacity-30"
+                  style={{ paddingLeft: 2 }}>
+                  {TIMELINE_PRESETS.map(p => (
+                    <option key={p.icon} value={p.icon}>{p.emoji}</option>
+                  ))}
+                </select>
+                <Input type="time" value={item.time} className="w-20 h-7 text-xs shrink-0"
+                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, time: e.target.value } : t))}
+                  disabled={!isActive} />
+                <Input placeholder="Moment..." value={item.title} className="flex-1 h-7 text-xs"
+                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, title: e.target.value } : t))}
+                  disabled={!isActive} />
+                <button type="button" onClick={() => pushTimeline(timeline.filter(t => t.id !== item.id))}
+                  className="opacity-0 group-hover:opacity-100 shrink-0 p-1 hover:text-red-500 text-zinc-300 transition-all" disabled={!isActive}>
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+              {/* Row 2: notice (optional extra info) */}
+              <Input placeholder="Notă (ex: Florin Salam, pauză 30 min...)" value={item.notice || ''} className="h-6 text-[10px] w-full"
+                onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, notice: e.target.value } : t))}
+                disabled={!isActive} />
+            </div>
+          ))}
+        </div>
+      </Collapsible>
+
+      {selectedTemplate?.startsWith('castle-magic') && (
+        <>
+          <Hr />
+          {/* ⑤ TEXTE INTRO CASTEL */}
+          <Collapsible title="Texte Intro Castel" defaultOpen={false}>
+            <div className="space-y-3">
+              <p className="text-[9px] text-zinc-400 italic mb-2">
+                Textele care apar în animația de scroll înainte de deschiderea ușilor.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Rând 1 (deasupra numelui)
+                </label>
+                <Input
+                  value={(profile as any).castleInviteTop ?? 'Cu bucurie vă anunțăm'}
+                  onChange={(e: any) => hc('castleInviteTop', e.target.value)}
+                  placeholder="Cu bucurie vă anunțăm"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Rând 2 (text script central)
+                </label>
+                <Input
+                  value={(profile as any).castleInviteMiddle ?? 'în lumina credinței'}
+                  onChange={(e: any) => hc('castleInviteMiddle', e.target.value)}
+                  placeholder="în lumina credinței"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Rând 3 (sub textul central)
+                </label>
+                <Input
+                  value={(profile as any).castleInviteBottom ?? 'a fost botezat'}
+                  onChange={(e: any) => hc('castleInviteBottom', e.target.value)}
+                  placeholder="a fost botezat"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Tag (ultimul rând)
+                </label>
+                <Input
+                  value={(profile as any).castleInviteTag ?? '✦ deschide porțile ✦'}
+                  onChange={(e: any) => hc('castleInviteTag', e.target.value)}
+                  placeholder="✦ deschide porțile ✦"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Subtitlu uși (sub numele copilului pe uși)
+                </label>
+                <Input
+                  value={(profile as any).castleIntroSubtitle ?? 'in my castle'}
+                  onChange={(e: any) => hc('castleIntroSubtitle', e.target.value)}
+                  placeholder="in my castle"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Text arcuit (Welcome)
+                </label>
+                <Input
+                  value={(profile as any).castleIntroWelcome ?? 'WELCOME'}
+                  onChange={(e: any) => hc('castleIntroWelcome', e.target.value)}
+                  placeholder="WELCOME"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+            </div>
+          </Collapsible>
+
+        </>
+      )}
+
+      {selectedTemplate === 'royal-rose' && (
+        <>
+          <Hr />
+          <Collapsible title="🎬 Video Intro Royal" defaultOpen={false}>
+            <div className="space-y-3">
+              <p className="text-[9px] text-zinc-400 italic">
+                Video care apare ca fundal în intro-ul animat.
+              </p>
+              {(profile as any).castleVideoUrl ? (
+                <div className="relative group rounded-lg overflow-hidden" style={{ aspectRatio: '16/9' }}>
+                  <video
+                    src={(profile as any).castleVideoUrl}
+                    muted loop playsInline autoPlay
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <button
+                      type="button"
+                      onClick={() => guard(() => hc('castleVideoUrl' as any, undefined))}
+                      className="p-2 bg-white rounded-full text-red-500 text-xs font-bold"
+                    >
+                      Șterge
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className={`flex flex-col items-center justify-center gap-1 border-2 border-dashed border-zinc-200 dark:border-zinc-700 rounded-lg cursor-pointer hover:border-zinc-400 transition-colors bg-zinc-50 dark:bg-zinc-900 ${!isActive ? 'opacity-50 pointer-events-none' : ''}`} style={{ aspectRatio: '16/9' }}>
+                  <span className="text-lg">🎬</span>
+                  <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Upload video .mp4</span>
+                  <input
+                    type="file" accept="video/mp4,video/*" className="hidden"
+                    disabled={!isActive}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const form = new FormData();
+                      form.append('file', file);
+                      const tok = JSON.parse(localStorage.getItem('weddingPro_session') || '{}')?.token || '';
+                      try {
+                        const res = await fetch(`${API_URL}/upload`, {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${tok}` },
+                          body: form,
+                        });
+                        const { url } = await res.json();
+                        hc('castleVideoUrl' as any, url);
+                      } catch {}
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          </Collapsible>
+        </>
+      )}
+
+      {!isActive && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[10px] text-amber-700">
+          Evenimentul s-a încheiat. Invitația este în modul de vizualizare.
+        </div>
+      )}
+
+      <div className="h-6" />
+    </div>
+  </div>
+  );
+};
+
+// ─── MobilePhotoPreview — live photo preview with clip/mask applied ──────────────
+const CLIP_CSS: Record<string, string> = {
+  rect:         'none',
+  rounded:      'none',
+  'rounded-lg': 'none',
+  squircle:     'none',
+  circle:       'circle(50% at 50% 50%)',
+  arch:         'polygon(0% 100%, 0% 60%, 50% 0%, 100% 60%, 100% 100%)',
+  'arch-b':     'polygon(0% 0%, 0% 40%, 50% 100%, 100% 40%, 100% 0%)',
+  hexagon:      'polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%)',
+  diamond:      'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)',
+  triangle:     'polygon(50% 0%, 100% 100%, 0% 100%)',
+  star:         'polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%)',
+  heart:        'none',
+  diagonal:     'polygon(0% 0%, 100% 0%, 100% 100%, 0% 80%)',
+  'diagonal-r': 'polygon(0% 0%, 100% 0%, 100% 80%, 0% 100%)',
+  'wave-b':     'polygon(0% 0%, 100% 0%, 100% 75%, 75% 90%, 50% 75%, 25% 90%, 0% 75%)',
+  'wave-t':     'polygon(0% 25%, 25% 10%, 50% 25%, 75% 10%, 100% 25%, 100% 100%, 0% 100%)',
+  'wave-both':  'polygon(0% 25%, 25% 10%, 50% 25%, 75% 10%, 100% 25%, 100% 75%, 75% 90%, 50% 75%, 25% 90%, 0% 75%)',
+  blob:  'none', blob2: 'none', blob3: 'none', blob4: 'none',
+};
+const BORDER_RADIUS: Record<string, string> = {
+  rounded: '0.75rem', 'rounded-lg': '1.5rem', squircle: '40%',
+};
+const MASK_GRADIENT: Record<string, string> = {
+  'fade-b':   'linear-gradient(to bottom, black 50%, transparent 100%)',
+  'fade-t':   'linear-gradient(to top, black 50%, transparent 100%)',
+  'fade-l':   'linear-gradient(to left, black 50%, transparent 100%)',
+  'fade-r':   'linear-gradient(to right, black 50%, transparent 100%)',
+  'vignette': 'radial-gradient(ellipse at center, black 40%, transparent 100%)',
+};
+
+const MobilePhotoPreview: React.FC<{ block: InvitationBlock }> = ({ block }) => {
+  const clip = block.photoClip || 'rect';
+  const masks = block.photoMasks || [];
+  const ar = block.aspectRatio || 'free';
+  const img = block.imageData || '';
+
+  const arPad: Record<string, string> = { '1:1':'100%', '4:3':'75%', '3:4':'133%', '16:9':'56.25%', free:'100%' };
+  const clipPath = CLIP_CSS[clip] || 'none';
+  const borderRadius = BORDER_RADIUS[clip] || (clip === 'rect' ? '0' : '0');
+
+  // Combine masks into a CSS mask-image
+  const maskImage = masks.length
+    ? masks.map(m => MASK_GRADIENT[m] || '').filter(Boolean).join(', ')
+    : 'none';
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-stone-100 gap-2 p-3">
+      <div className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mb-1">Preview live</div>
+      <div className="relative" style={{ width: '140px' }}>
+        <div style={{ paddingBottom: arPad[ar] || '100%', position: 'relative', overflow: 'hidden' }}>
+          <img
+            src={img}
+            alt="preview"
+            className="absolute inset-0 w-full h-full object-cover"
+            style={{
+              clipPath,
+              borderRadius,
+              WebkitMaskImage: maskImage,
+              maskImage,
+              WebkitMaskComposite: 'source-in',
+              maskComposite: 'intersect',
+            }}
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 text-[9px] text-zinc-400">
+        {clip !== 'rect' && <span className="bg-zinc-200 rounded-full px-2 py-0.5">{clip}</span>}
+        {masks.map(m => <span key={m} className="bg-amber-100 text-amber-700 rounded-full px-2 py-0.5">{m}</span>)}
+        <span className="bg-zinc-100 rounded-full px-2 py-0.5">{ar}</span>
+      </div>
+    </div>
+  );
+};
+
+// ─── Theme hook — reads weddingPro_theme from localStorage ──────────────────────
+function useAppDarkMode(): boolean {
+  const [dark, setDark] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('weddingPro_theme');
+    return saved ? saved === 'dark' : true;
+  });
+
+  useEffect(() => {
+    // Cross-tab sync via storage event
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'weddingPro_theme') setDark(e.newValue === 'dark');
+    };
+    window.addEventListener('storage', onStorage);
+
+    // Same-tab sync — only update when the dark class itself changes
+    let prevDark = document.documentElement.classList.contains('dark');
+    const observer = new MutationObserver(() => {
+      const nowDark = document.documentElement.classList.contains('dark');
+      if (nowDark !== prevDark) {
+        prevDark = nowDark;
+        setDark(nowDark);
+      }
+    });
+    observer.observe(document.documentElement, { attributeFilter: ['class'] });
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      observer.disconnect();
+    };
+  }, []);
+
+  return dark;
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+const SettingsView: React.FC<SettingsViewProps> = ({
+  session, onUpdateProfile, selectedTemplate, templateMeta, onCheckActive,
+}) => {
+  const { toast } = useToast();
+  const isActive = !session.isEventCompleted;
+  const isDark   = useAppDarkMode();
+  const et = (session.profile?.eventType || "wedding") as EventType | "office";
+
+  const safeJSON = <T,>(s: string | undefined, fb: T): T => {
+    try { return s ? JSON.parse(s) : fb; } catch { return fb; }
+  };
+
+  // ── Responsive ───────────────────────────────────────────────────────────────
+  const [isMobile,  setIsMobile]  = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
+  const [activeTab, setActiveTab] = useState<'preview' | 'settings' | 'props'>('preview');
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // ── Resizable settings panel (desktop) ───────────────────────────────────────
+  const [settingsW,      setSettingsW]      = useState(288);
+  const [settingsOpen, setSettingsOpen] = useState(true);
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startW: settingsW };
+    const onMove = (mv: MouseEvent) => {
+      if (!dragRef.current) return;
+      setSettingsW(Math.min(480, Math.max(220, dragRef.current.startW + dragRef.current.startX - mv.clientX)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
+  // ── Form state ────────────────────────────────────────────────────────────────
+  const [profile, setProfile] = useState<UserProfile>(() => ({
+    ...session.profile,
+    weddingDate:         session.profile?.weddingDate ? new Date(session.profile.weddingDate).toISOString().split("T")[0] : "",
+    partner1Name:        session.profile?.partner1Name || "",
+    partner2Name:        session.profile?.partner2Name || "",
+    welcomeText:         session.profile?.welcomeText || "Împreună cu familiile noastre",
+    celebrationText:     session.profile?.celebrationText || "nunții noastre",
+    inviteSlug:          session.profile?.inviteSlug || "",
+    showWelcomeText:     session.profile?.showWelcomeText ?? true,
+    showCelebrationText: session.profile?.showCelebrationText ?? true,
+    showTimeline:        session.profile?.showTimeline ?? true,
+    showCountdown:       session.profile?.showCountdown ?? true,
+    showRsvpButton:      session.profile?.showRsvpButton ?? true,
+    rsvpButtonText:      session.profile?.rsvpButtonText || "Confirmă Prezența",
+    godparents:          session.profile?.godparents || JSON.stringify([{ godfather: "Prenume Naș", godmother: "Prenume Nașă" }]),
+    parents:             session.profile?.parents || JSON.stringify({ p1_father: "Tatăl Miresei", p1_mother: "Mama Miresei", p2_father: "Tatăl Mirelui", p2_mother: "Mama Mirelui", others: [] }),
+    customSections:      session.profile?.customSections || "[]",
+  } as UserProfile));
+
+  const [selectedBlock, setSelectedBlock] = useState<{ block: InvitationBlock; idx: number } | null>(null);
+  const [resetKey,      setResetKey]      = useState(0); // increment to force template remount
+  const [localBlocks,   setLocalBlocks]   = useState<InvitationBlock[]>([]);
+  const [timeline,      setTimeline]      = useState<TimelineItem[]>(() => safeJSON(session.profile?.timeline, []));
+
+  // ── Door images preview — fetch din admin config ─────────────────────────────
+  const [doorImages, setDoorImages] = useState<Record<string, { desktop?: string; mobile?: string }>>({});
+  useEffect(() => {
+    if (!selectedTemplate?.startsWith('castle-magic')) return;
+    fetch(`${API_URL}/config/template-defaults/${selectedTemplate}`, {
+      headers: { Authorization: `Bearer ${session?.token || ''}` },
+    })
+      .then(r => r.ok ? r.json() : {})
+      .then((d: any) => setDoorImages(d.themeImages || {}))
+      .catch(() => {});
+  }, [selectedTemplate]);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [resetting,        setResetting]        = useState(false);
+
+  // ── Debounced save ────────────────────────────────────────────────────────────
+  const saveTimer      = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestProfile  = useRef<UserProfile>(profile);
+
+  const scheduleSave = useCallback((next: UserProfile) => {
+    latestProfile.current = next;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { onUpdateProfile(latestProfile.current); }, 600);
+  }, [onUpdateProfile]);
+
+  useEffect(() => () => {
+    if (saveTimer.current) { clearTimeout(saveTimer.current); onUpdateProfile(latestProfile.current); }
+  }, []);
+
+  const patchProfile = useCallback((patch: Partial<UserProfile>) => {
+    if (onCheckActive && !onCheckActive()) return;
+    setProfile(prev => { const next = { ...prev, ...patch }; scheduleSave(next); return next; });
+  }, [scheduleSave, onCheckActive]);
+
+  const hc = (field: keyof UserProfile, value: any) => patchProfile({ [field]: value });
+
+  const saveAll = () => {
+    if (onCheckActive && !onCheckActive()) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    onUpdateProfile({ ...latestProfile.current, timeline: JSON.stringify(timeline) });
+    toast({ title: "Salvat!", description: "Modificările au fost înregistrate." });
+  };
+
+  const resetToDefault = async () => {
+    // Cancel any pending debounced save — prevents old blocks from overwriting the reset
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    setResetting(true);
+    try {
+      const token = session?.token || "";
+      // Step 1: wipe customSections on server so auto-inject fires
+      const wipeRes = await fetch(`${API_URL}/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ profile: { ...latestProfile.current, customSections: "[]" } }),
+      });
+      if (!wipeRes.ok) throw new Error("wipe failed");
+      // Step 2: fetch /me — server auto-injects WEDDING_DEFAULT_BLOCKS since sections are empty
+      const res = await fetch(`${API_URL}/user/me`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!res.ok) throw new Error("fetch failed");
+      const data = await res.json();
+      const freshStr = data.profile?.customSections || "[]";
+      let fresh: InvitationBlock[] = [];
+      try { fresh = JSON.parse(freshStr); } catch {}
+      // Step 3: explicitly save the fresh defaults back so they're persisted
+      await fetch(`${API_URL}/profile`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ profile: { ...latestProfile.current, customSections: freshStr } }),
+      });
+      // Step 4: update all local state — bypass debounce entirely
+      const next = { ...latestProfile.current, customSections: freshStr };
+      latestProfile.current = next;
+      setProfile(next);
+      setLocalBlocks(fresh);
+      setSelectedBlock(null);
+      setResetKey(k => k + 1); // force template remount → kills internal _bt/_pt timers
+      toast({ title: "Reset efectuat!", description: "Invitația a fost resetată la template-ul implicit." });
+    } catch {
+      toast({ title: "Eroare", description: "Nu s-a putut reseta. Încearcă din nou.", variant: "destructive" });
+    } finally {
+      setResetting(false);
+      setShowResetConfirm(false);
+    }
+  };
+
+  const pushTimeline = (nt: TimelineItem[]) => {
+    setTimeline(nt);
+    patchProfile({ timeline: JSON.stringify(nt) });
+  };
+
+  const guard = (fn: () => void) => { if (onCheckActive && !onCheckActive()) return; fn(); };
+
+  const previewData = useMemo(() => {
+    // Pentru castle-magic: dacă profile-ul nu are customSections, injectăm defaulturile
+    const isCastle = selectedTemplate?.startsWith('castle-magic') ?? false;
+    const hasBlocks = profile.customSections && profile.customSections !== '[]' && profile.customSections !== 'null';
+    
+    const baseProfile = { ...profile, timeline: JSON.stringify(timeline) };
+    
+    if (isCastle && !hasBlocks) {
+      // Injectăm datele default pentru previzualizare
+      return {
+        guest:   { name: "Invitat Drag", status: "pending", type: "adult" },
+        project: { selectedTemplate },
+        profile: {
+          ...CASTLE_DEFAULTS,
+          ...baseProfile,
+          weddingDate: baseProfile.weddingDate || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          customSections: JSON.stringify(CASTLE_DEFAULT_BLOCKS),
+        },
+      };
+    }
+
+    return {
+      guest:   { name: "Nume Invitat", status: "pending", type: "adult" },
+      project: { selectedTemplate },
+      profile: baseProfile,
+    };
+  }, [profile, timeline, selectedTemplate]);
+
+  // ── Block selection — photo only ──────────────────────────────────────────────
+  const handleBlockSelect = (block: InvitationBlock | null, idx: number) => {
+    if (!block || block.type !== 'photo') { setSelectedBlock(null); return; }
+    setSelectedBlock({ block: { ...block }, idx });
+  };
+
+  const handleBlockPropertyUpdate = (patch: Partial<InvitationBlock>) => {
+    if (!selectedBlock) return;
+    const updated = { ...selectedBlock.block, ...patch };
+    setSelectedBlock(prev => prev ? { block: updated, idx: prev.idx } : null);
+    const currentBlocks: InvitationBlock[] = localBlocks.length
+      ? [...localBlocks]
+      : safeJSON(profile.customSections, []);
+    const blockIdx = currentBlocks.findIndex(b => b.id === updated.id);
+    if (blockIdx !== -1) {
+      currentBlocks[blockIdx] = updated;
+      setLocalBlocks(currentBlocks);
+      patchProfile({ customSections: JSON.stringify(currentBlocks) });
+    }
+  };
+
+  // ── Template panel JSX — memoized so heavy template doesn't re-render on every state change
+  const EditableTpl = getEditableTemplate(selectedTemplate);
+  const templatePanel = useMemo(() => (
+    <EditableTpl
+      key={resetKey}
+      data={previewData as any}
+      onOpenRSVP={() => {}}
+      editMode={isActive}
+      onProfileUpdate={patch => {
+        if (onCheckActive && !onCheckActive()) return;
+        patchProfile(patch as Partial<UserProfile>);
+      }}
+      onBlocksUpdate={nb => {
+        if (onCheckActive && !onCheckActive()) return;
+        setLocalBlocks([...nb]);
+        patchProfile({ customSections: JSON.stringify(nb) });
+        if (selectedBlock) {
+          const refreshed = nb.find(b => b.id === selectedBlock.block.id);
+          if (refreshed) setSelectedBlock({ block: { ...refreshed }, idx: nb.indexOf(refreshed) });
+        }
+      }}
+      onBlockSelect={(blk, idx) => {
+        handleBlockSelect(blk, idx);
+        if (isMobile && blk && blk.type === 'photo') setActiveTab('props');
+      }}
+      selectedBlockId={selectedBlock?.block.id}
+    />
+  ), [previewData, isActive, onCheckActive, selectedBlock, isMobile, resetKey]);
+
+  const settingsContentProps = { profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, doorImages };
+
+  // ── MOBILE ────────────────────────────────────────────────────────────────────
+  if (isMobile) {
+    const mobileBlocks: any[] = safeJSON(profile.customSections, []);
+    const photoBlocks = mobileBlocks.filter((b: any) => b.type === 'photo');
+    const showProps = selectedBlock != null;
+
+    return (
+      <div className="flex flex-col h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950/50">
+
+        {/* ── TOP 45%: Invitație (mereu vizibilă) ── */}
+        <div className="shrink-0 bg-stone-100 border-b border-zinc-200 overflow-hidden" style={{ height: '45%' }}>
+          <div className="w-full h-full overflow-y-auto overflow-x-hidden">
+            <div style={{ transform: 'scale(0.55)', transformOrigin: 'top center', width: '182%', marginLeft: '-41%' }}>
+              {templatePanel}
+            </div>
+          </div>
+        </div>
+
+        {/* ── BOTTOM 55%: Edit controls ── */}
+        <div className="flex flex-col flex-1 min-h-0 bg-white dark:bg-zinc-900">
+
+          {/* Tab bar — Setări | 🎨 Poză (doar când e poză selectată) */}
+          <div className="shrink-0 flex items-center border-b border-zinc-100 dark:border-zinc-800">
+            <button type="button"
+              onClick={() => { setSelectedBlock(null); setActiveTab('settings'); }}
+              className={cn("flex-1 py-2 text-[11px] font-bold border-b-2",
+                !showProps ? "border-amber-700 text-amber-700" : "border-transparent text-zinc-400")}>
+              ⚙️ Setări
+            </button>
+            {showProps ? (
+              <button type="button" onClick={() => setActiveTab('props')}
+                className="flex-1 py-2 text-[11px] font-bold border-b-2 border-amber-700 text-amber-700">
+                🎨 Proprietăți poză
+              </button>
+            ) : photoBlocks.length > 0 && (
+              <div className="flex items-center gap-1.5 px-3 overflow-x-auto">
+                {photoBlocks.slice(0, 4).map((b: any) => (
+                  <button key={b.id} type="button"
+                    onClick={() => { handleBlockSelect(b, mobileBlocks.indexOf(b)); setActiveTab('props'); }}
+                    className="shrink-0 w-8 h-8 rounded-lg overflow-hidden border-2 border-zinc-200 active:border-amber-500">
+                    <img src={b.imageData || ''} alt="" className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {showProps ? (
+              <BlockPropertiesPanel
+                block={selectedBlock!.block}
+                onUpdate={handleBlockPropertyUpdate}
+                onClose={() => { setSelectedBlock(null); setActiveTab('settings'); }}
+                forceDark={isDark}
+              />
+            ) : (
+              <>
+                <div className="px-4 py-2.5 border-b border-zinc-50 dark:border-zinc-800 flex items-center justify-between gap-2">
+                  <EventTypeBadge et={et} />
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => setShowResetConfirm(true)} disabled={!isActive}
+                      className="h-6 px-2 rounded flex items-center gap-1 text-[10px] font-bold border border-zinc-200 text-zinc-500 disabled:opacity-30">
+                      <RotateCcw className="w-3 h-3" /> Reset
+                    </button>
+                    <Button size="sm" className="h-6 bg-black text-white hover:bg-zinc-800 gap-1 text-[10px]"
+                      onClick={saveAll} disabled={!isActive}>
+                      <Save className="w-3 h-3" /> Salvează
+                    </Button>
+                  </div>
+                </div>
+                <SettingsContent templateMeta={templateMeta} {...settingsContentProps} />
+              </>
+            )}
+          </div>
+        </div>
+
+        {showResetConfirm && (
+          <ResetModal resetting={resetting} onCancel={() => setShowResetConfirm(false)} onConfirm={resetToDefault} />
+        )}
+      </div>
+    );
+  }
+
+  // ── DESKTOP ───────────────────────────────────────────────────────────────────
+  return (
+    <div className="flex h-full overflow-hidden bg-zinc-50 dark:bg-zinc-950/50">
+
+      {/* Invitație */}
+      <div className="flex-1 overflow-y-auto bg-stone-100 min-w-0">
+        {templatePanel}
+      </div>
+
+      {/* ── SETĂRI — spine + panel ── */}
+      <div className="flex shrink-0 h-full">
+
+        {/* Spine cotor */}
+        <div
+          onClick={() => setSettingsOpen(o => !o)}
+          className={cn(
+            "w-8 h-full flex flex-col items-center justify-between py-4 cursor-pointer select-none shrink-0 border-l",
+            "bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800",
+            "hover:bg-zinc-50 dark:hover:bg-zinc-800/60"
+          )}
+        >
+          <ChevronDown className={cn(
+            "w-3.5 h-3.5 text-zinc-400",
+            settingsOpen ? "-rotate-90" : "rotate-90"
+          )} />
+          <span
+            className="text-[9px] font-black uppercase tracking-[0.22em] text-zinc-400 dark:text-zinc-500"
+            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+          >
+            Setări
+          </span>
+          <div className="w-1 h-1 rounded-full bg-amber-400" />
+        </div>
+
+        {/* Panel Setări */}
+        <div
+          style={{ width: settingsOpen ? settingsW : 0 }}
+          className="flex flex-col h-full bg-white dark:bg-zinc-900 overflow-hidden min-h-0"
+        >
+          {/* Drag handle */}
+          <div className="absolute z-10 h-full" style={{ left: 0 }}>
+            <div
+              onMouseDown={startDrag}
+              className="w-1.5 h-full cursor-col-resize hover:bg-amber-400/60 active:bg-amber-500/80 transition-colors"
+              style={{ background: 'rgba(0,0,0,0.04)' }}
+            />
+          </div>
+
+          {/* Header */}
+          <div className="shrink-0 px-4 py-3 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-xs font-black tracking-tight whitespace-nowrap">Setări</span>
+              <EventTypeBadge et={et} />
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button type="button" onClick={() => setShowResetConfirm(true)} disabled={!isActive}
+                className="h-7 px-2 rounded flex items-center gap-1 text-[10px] font-bold border border-zinc-200 text-zinc-500 hover:text-red-500 hover:border-red-200 hover:bg-red-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                <RotateCcw className="w-3 h-3" /> Reset
+              </button>
+              <Button size="sm" className="h-7 bg-black text-white hover:bg-zinc-800 gap-1 text-[10px]"
+                onClick={saveAll} disabled={!isActive}>
+                <Save className="w-3 h-3" /> Salvează
+              </Button>
+            </div>
+          </div>
+
+          {/* Scrollable body — flex-1 + min-h-0 is the correct flexbox scroll pattern */}
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <SettingsContent templateMeta={templateMeta} {...settingsContentProps} />
+          </div>
+        </div>
+      </div>
+
+      {selectedBlock && (
+        <div className="shrink-0 h-full">
+          <BlockPropertiesPanel
+            block={selectedBlock.block}
+            onUpdate={handleBlockPropertyUpdate}
+            onClose={() => setSelectedBlock(null)}
+            forceDark={isDark}
+          />
+        </div>
+      )}
+
+      {showResetConfirm && (
+        <ResetModal resetting={resetting} onCancel={() => setShowResetConfirm(false)} onConfirm={resetToDefault} />
+      )}
+    </div>
+  );
+};
+
+export default React.memo(SettingsView);
