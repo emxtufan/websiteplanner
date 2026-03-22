@@ -61,10 +61,12 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
 export const InlineTime: React.FC<{
   value: string; onChange: (v: string) => void; editMode: boolean;
   className?: string; style?: React.CSSProperties;
-}> = ({ value, onChange, editMode, className, style }) => {
+  inputRef?: React.Ref<HTMLInputElement>;
+}> = ({ value, onChange, editMode, className, style, inputRef }) => {
   if (!editMode) return <span className={className} style={style}>{value}</span>;
   return (
     <input
+      ref={inputRef}
       type="time" value={value} onChange={e => onChange(e.target.value)}
       style={style}
       className={cn(className,
@@ -106,7 +108,7 @@ export const InlineWaze: React.FC<{
             value ? "text-stone-500 hover:bg-stone-100" : "text-stone-300 border border-dashed border-stone-200 hover:border-stone-300 hover:text-stone-400"
           )}>
           <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.6 0 12 0zm0 2c5.5 0 10 4.5 10 10s-4.5 10-10 10S2 17.5 2 12 6.5 2 12 2zm-1 4v7l6 3.5-1 1.7-7-4V6h2z"/></svg>
-          {value ? "Waze" : "+ Waze"}
+          {value ? "Waze · click pentru a edita link" : "+ Waze · click pentru a edita link"}
         </button>
       )}
     </div>

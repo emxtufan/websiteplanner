@@ -14,7 +14,7 @@ interface CanvasProps {
   onPlace: (x: number, y: number) => void;
   onDelete: (id: string) => void;
   onSeatClick: (elId: string, idx: number) => void;
-  onTableClick?: (elId: string) => void; // NOU: click pe corpul mesei
+  onTableClick?: (elId: string) => void;
   onMoveGuest: (fromElId: string, fromIdx: number, toElId: string) => void;
   onUpdateCapacity: (id: string, delta: number) => void;
   lang: Language;
@@ -30,6 +30,7 @@ const Canvas: React.FC<CanvasProps> = memo(({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   
   const [dragInfo, setDragInfo] = useState<{ id: string, startX: number, startY: number, currentX: number, currentY: number } | null>(null);
+  const dragInfoRef = useRef<typeof dragInfo>(null); // ref în sync cu state — evită stale closure în touch handlers
   const [rotateInfo, setRotateInfo] = useState<{ id: string, startAngle: number, initialRotation: number, currentRotation: number } | null>(null);
   const [resizeInfo, setResizeInfo] = useState<{ id: string, startWidth: number, startHeight: number, startX: number, startY: number, startMouseX: number, startMouseY: number, currentWidth: number, currentHeight: number, currentX: number, currentY: number } | null>(null);
 
@@ -150,31 +151,80 @@ const Canvas: React.FC<CanvasProps> = memo(({
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [handleMouseMove, handleMouseUp]);
 
+  // ── Touch handlers cu suport drag elemente ────────────────────────────────
+  // ── Touch handlers ─────────────────────────────────────────────────────────
+  // touchmove/touchend ascultate pe window (ca mousemove/mouseup) pentru că
+  // touch events rămân pe elementul unde a pornit touchstart — chiar și după stopPropagation.
+  // dragInfoRef evită problema stale closure: state-ul async nu e vizibil imediat în listeners.
+
+  const isPanningRef = useRef(false);
+
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (e.touches.length === 1) {
-       if (e.target === containerRef.current) {
-           touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-           setIsPanning(true);
-       }
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+    touchRef.current = { x: touch.clientX, y: touch.clientY };
+    // Panning doar dacă touch-ul pornește pe fundalul gol (nu pe un element)
+    if (e.target === containerRef.current || (e.target as HTMLElement).closest('.canvas-bg')) {
+      isPanningRef.current = true;
+      setIsPanning(true);
     }
   }, []);
 
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (isPanning && e.touches.length === 1 && touchRef.current) {
-        const clientX = e.touches[0].clientX;
-        const clientY = e.touches[0].clientY;
+  // Listeners globali pentru touchmove + touchend — adăugați pe window
+  useEffect(() => {
+    const handleTouchMoveGlobal = (e: TouchEvent) => {
+      if (e.touches.length !== 1 || !touchRef.current) return;
+      e.preventDefault(); // previne scroll-ul paginii în timpul drag
+
+      const clientX = e.touches[0].clientX;
+      const clientY = e.touches[0].clientY;
+      const current = dragInfoRef.current;
+
+      if (current) {
+        // Mișcăm un element
+        const coords = getCanvasCoords(clientX, clientY);
+        const updated = { ...current, currentX: coords.x, currentY: coords.y };
+        dragInfoRef.current = updated;
+        setDragInfo(updated);
+        touchRef.current = { x: clientX, y: clientY };
+        return;
+      }
+
+      if (isPanningRef.current) {
+        // Pan canvas
         const dx = clientX - touchRef.current.x;
         const dy = clientY - touchRef.current.y;
-        
         setConfig(prev => ({ ...prev, panX: prev.panX + dx, panY: prev.panY + dy }));
         touchRef.current = { x: clientX, y: clientY };
-    }
-  }, [isPanning, setConfig]);
+      }
+    };
 
-  const handleTouchEnd = useCallback(() => {
+    const handleTouchEndGlobal = () => {
+      const TOLERANCE = 1;
+      const current = dragInfoRef.current;
+      if (current) {
+        const dx = current.currentX - current.startX;
+        const dy = current.currentY - current.startY;
+        if (Math.abs(dx) > TOLERANCE || Math.abs(dy) > TOLERANCE) {
+          setElements(prev => prev.map(el =>
+            el.id === current.id ? { ...el, x: el.x + dx, y: el.y + dy } : el
+          ));
+        }
+        dragInfoRef.current = null;
+        setDragInfo(null);
+      }
+      isPanningRef.current = false;
       setIsPanning(false);
       touchRef.current = null;
-  }, []);
+    };
+
+    window.addEventListener('touchmove', handleTouchMoveGlobal, { passive: false });
+    window.addEventListener('touchend', handleTouchEndGlobal);
+    return () => {
+      window.removeEventListener('touchmove', handleTouchMoveGlobal);
+      window.removeEventListener('touchend', handleTouchEndGlobal);
+    };
+  }, [getCanvasCoords, setConfig, setElements]);
 
   const getDecorStyles = useCallback((name: string = ''): React.CSSProperties => {
     const n = name.toLowerCase(); const t = translations[lang];
@@ -216,8 +266,6 @@ const Canvas: React.FC<CanvasProps> = memo(({
         onMouseDown={e => { if (placementMode) { const coords = getCanvasCoords(e.clientX, e.clientY); onPlace(coords.x, coords.y); return; } if (e.target === containerRef.current) setIsPanning(true); }} 
         onWheel={e => { const factor = e.deltaY > 0 ? 0.95 : 1.05; setConfig(prev => ({ ...prev, scale: Math.min(Math.max(0.1, prev.scale * factor), 5) })); }}
         onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
     >
       
       <div style={{ transform: `translate3d(${config.panX}px, ${config.panY}px, 0) scale(${config.scale})`, width: config.width, height: config.height, transformOrigin: '0 0' }} className="relative pointer-events-none">
@@ -243,9 +291,8 @@ const Canvas: React.FC<CanvasProps> = memo(({
               key={el.id} el={el} isSelected={selectedId === el.id} isDropTarget={dropTargetId === el.id} isMoving={isM || isR} isResizing={isRes} 
               displayX={dX} displayY={dY} displayWidth={dW} displayHeight={dH} displayRotation={dRot} 
               decorStyle={el.type === ElementType.DECOR ? getDecorStyles(el.name) : {}} 
-              onSelect={(id, sC) => { setSelectedId(id); const c = getCanvasCoords(sC.x, sC.y); setDragInfo({ id, startX: c.x, startY: c.y, currentX: c.x, currentY: c.y }); }} 
+              onSelect={(id, sC) => { setSelectedId(id); const c = getCanvasCoords(sC.x, sC.y); const di = { id, startX: c.x, startY: c.y, currentX: c.x, currentY: c.y }; dragInfoRef.current = di; setDragInfo(di); }} 
               onDelete={onDelete}
-              // NOU: pasăm onTableClick la CanvasItem
               onTableClick={onTableClick}
               onRotateStart={(id, sC) => { 
                 const c = getCanvasCoords(sC.x, sC.y); 

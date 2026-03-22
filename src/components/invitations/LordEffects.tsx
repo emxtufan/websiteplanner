@@ -4,7 +4,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { WeddingIcon } from "../TimelineIcons";
 gsap.registerPlugin(ScrollTrigger);
 import { BlockStyleCtx, BlockStyle } from '../BlockStyleContext';
-import { GIRL_THEMES, getGirlTheme } from './castleDefaults';
+import { CastleColorTheme, getLordTheme } from './castleDefaults';
 
 const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Great+Vibes&family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500;600;700&display=swap";
 import {
@@ -36,39 +36,31 @@ function deleteUploadedFile(url: string | undefined) {
 }
 
 export const meta: TemplateMeta = {
-  id: 'castle-magic-girl',
-  name: 'Boy Castle Magic',
+  id: 'lord-effects',
+  name: 'Lord Effects',
   category: 'wedding',
-  description: 'Design de poveste cu castel roz și efect de deschidere orizontală pe bază de scroll.',
-  colors: ['#fdf2f8', '#be185d', '#f472b6'],
-  previewClass: "bg-pink-50 border-pink-200",
-  elementsClass: "bg-pink-500",
+  tags: ['wedding'],
+  description: 'Elegant wedding design in monochrome tones, with ivory glow doors.',
+  colors: ['#faf7f2', '#161616', '#d9d1c5'],
+  previewClass: "bg-stone-50 border-stone-200",
+  elementsClass: "bg-stone-500",
 };
 
-// ── Color Themes ──────────────────────────────────────────────────────────────
-export interface CastleColorTheme {
-  id: string; name: string; emoji: string;
-  PINK_DARK: string; PINK_D: string; PINK_L: string; PINK_XL: string;
-  CREAM: string; TEXT: string; MUTED: string; GOLD: string;
-}
-
-
-// Runtime color vars — replaced per theme inside component
-let PINK_DARK = '#be185d';
-let PINK_D    = '#9d174d';
-let PINK_L    = '#fbcfe8';
-let PINK_XL   = '#fdf2f8';
-let CREAM     = '#fff5f7';
-let TEXT      = '#4a1d1f';
-let MUTED     = '#9d7074';
-let GOLD      = '#d4af37';
+// Runtime color vars - fixed monochrome palette for this template
+let PINK_DARK = '#161616';
+let PINK_D    = '#2c2c2c';
+let PINK_L    = '#d9d1c5';
+let PINK_XL   = '#faf7f2';
+let CREAM     = '#f3eee6';
+let TEXT      = '#171717';
+let MUTED     = '#6c645b';
+let GOLD      = '#ece4d8';
 
 const SERIF = "'Poppins', sans-serif";
 const SCRIPT = "'Montserrat', cursive";
 const SANS   = "'Montserrat', sans-serif";
 const INTO_TEXT = "'ROMANTIC', cursive";
 const HeroText = "'Cormorant Garamond', serif"
-const FamilyText ="'Great Vibes', cursive "
 // ── Music player ──────────────────────────────────────────────────────────────
 declare global { interface Window { YT: any; onYouTubeIframeAPIReady: () => void; } }
 let ytApiLoaded_cm  = false;
@@ -680,138 +672,110 @@ const DoorHint: React.FC = () => (
   </div>
 );
 
-// ── Seam Particles ────────────────────────────────────────────────────────────
-const _SEAM_PX = Array.from({ length: 150 }, (_, i) => {
-  const a = (Math.imul(i * 2654435761 + 1013904223, 1) >>> 0);
-  const b = (Math.imul((a ^ (a >> 16)) * 2246822519, 1) >>> 0);
-  const c = (Math.imul((b ^ (b >> 13)) * 3266489917, 1) >>> 0);
-  const d = (Math.imul((c ^ (c >> 15)) * 2654435761, 1) >>> 0);
-  const spreadDeg = ((d % 120) - 60);
-  const angleRad  = (spreadDeg * Math.PI) / 180;
-  const dist = 80 + (b % 300);
-  const size = 1 + (10);
-  return {
-    top:    (i / 160) * 98 + 1,
-    ex:     Math.round(Math.cos(angleRad) * dist),
-    ey:     Math.round(Math.sin(angleRad) * dist),
-    size,
-    glow:   size * 2,
-    dur:    `${0.4 + (a % 60) / 10}s`,
-    delay:  `${-(b % 40) / 10}s`,
-    warm:   158 + (b % 97),
-    bright: 0.55 + (c % 5) * 0.09,
-  };
-});
-
-const DoorSeam: React.FC<{ side: 'left' | 'right'; seamColor?: string; glowColor?: string }> = ({ side, seamColor = '#ffffff', glowColor = 'rgba(255,255,255,' }) => (
-  <div className="doors" style={{
+// ── Sun Rays ──────────────────────────────────────────────────────────────────
+// Raze de soare care emană din cusătura dintre uși (linie verticală → raze orizontale)
+const DoorSeam: React.FC<{ side: 'left' | 'right'; seamColor?: string; glowColor?: string }> = ({ side, seamColor = '#ffffff' }) => (
+  <div style={{
     position: 'absolute', top: 0,
-    // [side === 'left' ? 'right' : 'left']: '-3px',
     right: side === 'left' ? '0px' : 'auto',
     left: side === 'right' ? '-2px' : 'auto',
     width: 2, height: '100%',
     pointerEvents: 'none', overflow: 'visible', zIndex: 20,
   }}>
-   <style>{`
-      @keyframes sp-fly {
-        0%   { opacity: 0; transform: translate(var(--sx),var(--sy)) scale(1.3); }
-        15%  { opacity: 1; }
-        70%  { opacity: 0.7; }
-        100% { opacity: 0; transform: translate(var(--ex),var(--ey)) scale(0); }
-      }
-      @keyframes sp-line { 0%,100%{opacity:.75} 50%{opacity:1} }
+    <style>{`
+      @keyframes seam-pulse { 0%,100%{opacity:.88} 50%{opacity:1} }
+      @keyframes seam-halo  { 0%,100%{opacity:.65} 50%{opacity:.95} }
     `}</style>
 
-<div style={{
-  position: 'absolute',
-  top: 0,
-  left: side === 'left' ? '100%' : 0,
-  width: 2,
-  height: '100%',
-        background: `linear-gradient(to bottom, transparent 0%, ${seamColor}14 4%, ${seamColor}e6 32%, ${seamColor} 50%, ${seamColor}e6 68%, ${seamColor}14 96%, transparent 100%)`,
+    {/* Linia centrală — albă, 100% opacitate */}
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: side === 'left' ? '100%' : 0,
+      width: 3,
+      height: '100%',
+      background: `linear-gradient(to bottom,
+        transparent 0%,
+        #ffffff 6%,
+        #ffffff 94%,
+        transparent 100%)`,
+      boxShadow: `
+        0 0  6px  3px #ffffffee,
+        0 0 18px  8px #ffffffcc,
+        0 0 45px 18px #ffffffaa,
+        0 0 90px 35px #ffffff77`,
+      animation: 'seam-pulse 2.8s ease-in-out infinite',
+    }} />
 
-       boxShadow: `0 0 10px 4px ${seamColor}e6, 0 0 30px 12px ${seamColor}b3, 0 0 70px 28px ${seamColor}80, 0 0 120px 45px ${seamColor}40`,
-
-  transform: side === 'left' ? 'translateX(0px)' : 'translateX(0)',
-  animation: 'sp-line 3.5s ease-in-out infinite',
-}} />
-
-<div style={{
-  position: 'absolute',
-  top: 0,
-  left: 0,
-  width: 60,
-  height: '100%',
-  transform: side === 'left' ? 'translateX(-100%)' : 'translateX(0%)',
- background: side === 'left'
-        ? `linear-gradient(to left, ${seamColor}2e 0%, transparent 100%)`
-        : `linear-gradient(to right, ${seamColor}2e 0%, transparent 100%)`,
+    {/* Halo interior larg — glow care se extinde în ușă */}
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: 220,
+      height: '100%',
+      transform: side === 'left' ? 'translateX(-100%)' : 'translateX(0%)',
+      background: side === 'left'
+        ? `linear-gradient(to left,  #ffffff 0%, #ffffffcc 3%, #ffffff88 10%, #ffffff33 30%, #ffffff11 55%, transparent 100%)`
+        : `linear-gradient(to right, #ffffff 0%, #ffffffcc 3%, #ffffff88 10%, #ffffff33 30%, #ffffff11 55%, transparent 100%)`,
+      filter: 'blur(8px)',
+      animation: 'seam-halo 2.8s ease-in-out infinite',
       pointerEvents: 'none',
-}} />
+    }} />
 
-{_SEAM_PX.map((p, i) => {
-  const finalEx = side === 'left' ? -Math.abs(p.ex) : Math.abs(p.ex);
-
-  return (
-    <div
-      key={i}
-      style={{
-        position: 'absolute',
-        top: `${p.top}%`,
-        left: 0,
-        width: p.size,
-        height: p.size,
-        borderRadius: '50%',
-
-        // ✨ bule albe
-        background: `${seamColor}${Math.round(p.bright * 255).toString(16).padStart(2,'0')}`,
-
-        // ✨ glow alb soft
-        // boxShadow: `0 0 ${p.glow}px ${Math.round(p.glow / 2)}px rgba(255,255,255,0.45)`,
-        boxShadow: `0 0 ${p.glow}px ${Math.round(p.glow/2)}px ${seamColor}80`, 
-        animation: `sp-fly ${p.dur} ease-out ${p.delay} infinite`,
-        willChange: 'transform, opacity',
-        transform: 'translate(-50%, -50%)',
-
-        ['--sx' as any]: '0px',
-        ['--sy' as any]: '0px',
-        ['--ex' as any]: `${finalEx}px`,
-        ['--ey' as any]: `${p.ey}px`,
-      }}
-    />
-  );
-})}
+    {/* Halo exterior difuz — glow mare, moale */}
+    <div style={{
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: 400,
+      height: '100%',
+      transform: side === 'left' ? 'translateX(-100%)' : 'translateX(0%)',
+      background: side === 'left'
+        ? `linear-gradient(to left,  #ffffff55 0%, #ffffff22 20%, #ffffff0a 45%, transparent 100%)`
+        : `linear-gradient(to right, #ffffff55 0%, #ffffff22 20%, #ffffff0a 45%, transparent 100%)`,
+      filter: 'blur(28px)',
+      animation: 'seam-halo 2.8s ease-in-out infinite',
+      pointerEvents: 'none',
+    }} />
   </div>
 );
 
-// ── Castle overlay ────────────────────────────────────────────────────────────
 const CastleOverlayText: React.FC<{
   childName: string; subtitle: string; welcomeText: string;
+  partner2Name?: string; isWedding?: boolean;
   editMode?: boolean; overlayRef?: React.RefObject<HTMLDivElement>;
   nameRef?: React.RefObject<HTMLDivElement>; inviteRef?: React.RefObject<HTMLDivElement>;
   onChildNameChange?: (v: string) => void; onSubtitleChange?: (v: string) => void; onWelcomeChange?: (v: string) => void;
   inviteTop?: string; inviteMiddle?: string; inviteBottom?: string; inviteTag?: string; dateStr?: string;
   onInviteTopChange?: (v: string) => void; onInviteMiddleChange?: (v: string) => void; onInviteBottomChange?: (v: string) => void; onInviteTagChange?: (v: string) => void;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
-}> = ({ childName, subtitle, welcomeText, editMode, overlayRef, nameRef, inviteRef,
+}> = ({ childName, subtitle, welcomeText, partner2Name, isWedding, editMode, overlayRef, nameRef, inviteRef,
         onChildNameChange, onSubtitleChange, onWelcomeChange,
         inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr,
         onInviteTopChange, onInviteMiddleChange, onInviteBottomChange, onInviteTagChange,
         themeColors }) => {
   const tc = themeColors ?? { pinkDark: '#be185d', pinkL: '#fbcfe8', pinkXL: '#fff5f7', gold: '#d4af37' };
+  // Shadow negru consistent pentru lizibilitate pe orice fundal
+  const S = '0 2px 8px rgba(0,0,0,0.95), 0 4px 24px rgba(0,0,0,0.8)';
+
+  // Inițialele pentru nuntă: primul caracter din fiecare nume
+  const initial1 = (childName || 'E').trim().charAt(0).toUpperCase();
+  const initial2 = (partner2Name || 'A').trim().charAt(0).toUpperCase();
+
   return (
   <div ref={overlayRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 15, pointerEvents: editMode ? 'auto' : 'none' }}>
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0,0,0,0.15) 0%, transparent 100%)' }} />
     <div style={{ position: 'absolute', top: '15%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
       {editMode ? (
-        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: tc.gold, textShadow: `0 0 14px ${tc.gold}aa` }} />
+        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S }} />
       ) : (
         <svg width="290" height="74" viewBox="0 0 290 74" style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
           <defs>
             <path id="castleArc" d="M 22,68 A 122,122 0 0,1 268,68" />
             <filter id="castleGlow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
           </defs>
-          <text filter="url(#castleGlow)" fontFamily="Cinzel, serif" fontSize="30" fontWeight="700" letterSpacing="11" fill={tc.pinkL}>
+          <text filter="url(#castleGlow)" fontFamily="Cinzel, serif" fontSize="30" fontWeight="700" letterSpacing="11" fill="#ffffff">
             <textPath href="#castleArc" startOffset="50%" textAnchor="middle">{welcomeText}</textPath>
           </text>
         </svg>
@@ -821,10 +785,116 @@ const CastleOverlayText: React.FC<{
     {/* Phase 1 label (edit only) */}
     {editMode && <div style={{ position: 'absolute', top: '1%', left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none' }}><span style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.5rem', fontWeight: 700, letterSpacing: '0.3em', textTransform: 'uppercase', color: `${tc.gold}cc`, background: 'rgba(0,0,0,0.35)', borderRadius: 99, padding: '2px 10px' }}>TEXT UȘI — FAZA 1</span></div>}
 
-    {/* Phase 1: name + subtitle */}
-    <div ref={nameRef} style={{ position: 'absolute', top: editMode ? '18%' : '50%', left: 0, right: 0, transform: editMode ? 'none' : 'translateY(-50%)', textAlign: 'center', zIndex: 1, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: '10px', opacity: editMode ? 0.45 : 1 }}>
-      <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} style={{ fontFamily: INTO_TEXT, fontSize: '5.2rem', lineHeight: 1.15, color: tc.pinkL, textShadow: `0 2px 24px rgba(0,0,0,0.85), 0 0 40px ${tc.gold}55`, margin: '2px 0' }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: tc.pinkL, textShadow: '0 2px 10px rgba(0,0,0,0.75)', marginTop: 2 }} />
+    {/* Phase 1: name / monogramă nuntă */}
+    <div ref={nameRef} style={{ position: 'absolute', top: editMode ? '18%' : '50%', left: 0, right: 0, transform: editMode ? 'none' : 'translateY(-50%)', textAlign: 'center', zIndex: 1, padding: '0 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', opacity: editMode ? 0.45 : 1 }}>
+
+      {isWedding ? (
+        /* ── Monogramă nuntă ── */
+        <>
+          <style>{`
+            @keyframes mono-ray-spin {
+  0%   { transform: translate(-50%, -50%) rotate(0deg); }
+  100% { transform: translate(-50%, -50%) rotate(360deg); }
+}
+            @keyframes mono-glow-pulse { 0%,100%{opacity:0.55;transform:scale(1)} 50%{opacity:1;transform:scale(1.06)} }
+            @keyframes mono-amp-pulse  { 0%,100%{opacity:0.7;transform:scale(1)} 50%{opacity:1;transform:scale(1.03)} }
+          `}</style>
+
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+
+            {/* Raze de soare SVG — rotite lent */}
+            {/* <svg
+              width="320" height="320" viewBox="-160 -160 320 320"
+              style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              animation: 'mono-ray-spin 28s linear infinite',
+              pointerEvents: 'none',
+            }}
+            >
+              {Array.from({ length: 18 }, (_, i) => {
+                const angle = (i / 18) * Math.PI * 2;
+                const innerR = 72 + (i % 3) * 6;
+                const outerR = 118 + (i % 4) * 14;
+                const w = i % 3 === 0 ? 2.5 : 1.2;
+                const op = i % 3 === 0 ? 0.55 : 0.25;
+                const x1 = Math.cos(angle) * innerR;
+                const y1 = Math.sin(angle) * innerR;
+                const x2 = Math.cos(angle) * outerR;
+                const y2 = Math.sin(angle) * outerR;
+                return (
+                  <line key={i}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke="#ffffff"
+                    strokeWidth={w}
+                    strokeOpacity={op}
+                    strokeLinecap="round"
+                  />
+                );
+              })}
+            </svg> */}
+
+            {/* Halo difuz mare */}
+            <div style={{
+              position: 'absolute',
+              width: 200, height: 200,
+              borderRadius: '50%',
+              background: `radial-gradient(ellipse, #ffffff22 0%, #ffffff0f 40%, transparent 72%)`,
+              animation: 'mono-glow-pulse 3.2s ease-in-out infinite',
+              pointerEvents: 'none',
+            }} />
+
+            {/* Inițialele */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.1em', zIndex: 2 }}>
+              {/* Inițiala 1 */}
+              <span style={{
+                fontFamily: INTO_TEXT,
+                fontSize: '6.5rem',
+                lineHeight: 1,
+                color: '#ffffff',
+                textShadow: S,
+                animation: 'mono-amp-pulse 3.2s ease-in-out infinite',
+                display: 'inline-block',
+              }}>{initial1}</span>
+
+              {/* & central */}
+              <span style={{
+                fontFamily: 'Great Vibes, cursive',
+                fontSize: '2.8rem',
+                lineHeight: 1,
+                color: '#ffffff',
+                margin: '0 0.15em',
+                textShadow: S,
+                opacity: 0.9,
+                display: 'inline-block',
+                transform: 'translateY(0.15em)',
+              }}>&amp;</span>
+
+              {/* Inițiala 2 */}
+              <span style={{
+                fontFamily: INTO_TEXT,
+                fontSize: '6.5rem',
+                lineHeight: 1,
+                color: '#ffffff',
+                textShadow: S,
+                animation: 'mono-amp-pulse 3.2s ease-in-out infinite',
+                display: 'inline-block',
+              }}>{initial2}</span>
+            </div>
+          </div>
+
+          {/* Subtitlu nuntă */}
+          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)}
+            style={{ fontFamily: 'Cinzel, serif', fontSize: '0.85rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 4, opacity: 0.9 }} />
+        </>
+      ) : (
+        /* ── Botez — afișare originală ── */
+        <>
+          <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} style={{ fontFamily: INTO_TEXT, fontSize: '5.2rem', lineHeight: 1.15, color: '#ffffff', textShadow: S, margin: '2px 0' }} />
+          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 2 }} />
+        </>
+      )}
     </div>
 
     {/* Phase 2 label (edit only) */}
@@ -833,30 +903,32 @@ const CastleOverlayText: React.FC<{
     {/* Phase 2: invitation text */}
     <div ref={inviteRef} style={{ position: 'absolute', top: editMode ? '52%' : '50%', left: 0, right: 0, transform: editMode ? 'translateY(-50%) scale(1)' : 'translateY(-50%) scale(0.88)', textAlign: 'center', zIndex: 1, padding: '0 36px', display: 'flex', flexDirection: 'column', gap: '12px', opacity: editMode ? 1 : 0, pointerEvents: editMode ? 'auto' : 'none' }}>
       <InlineEdit tag="p" editMode={!!editMode} value={inviteTop || 'Cu bucurie vă anunțăm'} onChange={v => onInviteTopChange?.(v)}
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: `${tc.pinkL}dd`, textShadow: '0 2px 12px rgba(0,0,0,0.8)', margin: 0 }} />
+        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0 }} />
       <InlineEdit tag="p" editMode={!!editMode} value={inviteMiddle || dateStr || 'Data Evenimentului'} onChange={v => onInviteMiddleChange?.(v)}
-        style={{ fontFamily: 'Great Vibes, cursive', fontSize: '2.6rem', lineHeight: 1.2, color: tc.pinkXL, textShadow: `0 2px 32px rgba(0,0,0,0.9), 0 0 60px ${tc.pinkL}77`, margin: 0 }} />
+        style={{ fontFamily: 'Great Vibes, cursive', fontSize: '2.6rem', lineHeight: 1.2, color: '#ffffff', textShadow: S, margin: 0 }} />
       <InlineEdit tag="p" editMode={!!editMode} value={inviteBottom || 'a fost botezat'} onChange={v => onInviteBottomChange?.(v)}
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.68rem', fontWeight: 400, letterSpacing: '0.35em', textTransform: 'uppercase', color: tc.pinkL, textShadow: '0 2px 10px rgba(0,0,0,0.75)', margin: 0, lineHeight: 2 }} />
+        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.68rem', fontWeight: 400, letterSpacing: '0.35em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0, lineHeight: 2 }} />
       <InlineEdit tag="p" editMode={!!editMode} value={inviteTag || '✦ deschide porțile ✦'} onChange={v => onInviteTagChange?.(v)}
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.6em', textTransform: 'uppercase', color: `${tc.pinkL}88`, margin: '2px 0 0', textShadow: `0 0 8px ${tc.pinkL}66` }} />
+        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.6em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', textShadow: S, margin: '2px 0 0' }} />
     </div>
   </div>
   );
 };
 
+
 // ── Castle Intro ──────────────────────────────────────────────────────────────
 const CastleIntro: React.FC<{
   onDone: () => void; castleUrl?: string; castleUrlMobile?: string;
   editMode?: boolean; contentEl?: HTMLElement | null;
-  childName?: string; subtitle?: string; welcomeText?: string;
+  childName?: string; partner2Name?: string; isWedding?: boolean;
+  subtitle?: string; welcomeText?: string;
   inviteTop?: string; inviteMiddle?: string; inviteBottom?: string; inviteTag?: string; dateStr?: string;
   onChildNameChange?: (v: string) => void; onSubtitleChange?: (v: string) => void; onWelcomeChange?: (v: string) => void;
   onInviteTopChange?: (v: string) => void; onInviteMiddleChange?: (v: string) => void; onInviteBottomChange?: (v: string) => void; onInviteTagChange?: (v: string) => void;
   onDoorsOpen?: () => void;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
 }> = ({ onDone, castleUrl, castleUrlMobile, editMode, contentEl,
-        childName = '', subtitle = 'in my castle', welcomeText = 'WELCOME',
+        childName = '', partner2Name = '', isWedding = false, subtitle = 'in my castle', welcomeText = 'WELCOME',
         inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr,
         onChildNameChange, onSubtitleChange, onWelcomeChange,
         onInviteTopChange, onInviteMiddleChange, onInviteBottomChange, onInviteTagChange,
@@ -955,7 +1027,8 @@ const CastleIntro: React.FC<{
         </div>
         <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}><DoorHint /></div>
         <CastleOverlayText
-          childName={childName} subtitle={subtitle} welcomeText={welcomeText} editMode={true}
+          childName={childName} partner2Name={partner2Name} isWedding={isWedding}
+          subtitle={subtitle} welcomeText={welcomeText} editMode={true}
           onChildNameChange={onChildNameChange} onSubtitleChange={onSubtitleChange} onWelcomeChange={onWelcomeChange}
           inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
           onInviteTopChange={onInviteTopChange} onInviteMiddleChange={onInviteMiddleChange}
@@ -984,7 +1057,8 @@ const CastleIntro: React.FC<{
 </div>
       </div>
       <CastleOverlayText
-        childName={childName} subtitle={subtitle} welcomeText={welcomeText}
+        childName={childName} partner2Name={partner2Name} isWedding={isWedding}
+        subtitle={subtitle} welcomeText={welcomeText}
         overlayRef={overlayRef} nameRef={nameRef} inviteRef={inviteRef}
         inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
         themeColors={themeColors} />
@@ -1022,7 +1096,7 @@ const AudioPermissionModal: React.FC<{ childName: string; onAllow: () => void; o
 
 // ── Template Defaults — sursa unică de adevăr ────────────────────────────────
 export const CASTLE_DEFAULTS = {
-  partner1Name:         'Printesa Sofia',
+  partner1Name:         'Printul Adam',
   heroBgImage:          undefined as string | undefined,
   heroBgImageMobile:    undefined as string | undefined,
   heroContentImage:       undefined as string | undefined,
@@ -1034,19 +1108,31 @@ export const CASTLE_DEFAULTS = {
   castleInviteBottom:   'va fii botezată',
   castleInviteTag:      '✦ deschide porțile ✦',
   welcomeText:          'Vă invităm cu drag',
-  celebrationText:      'la botezul prințesei noastre',
+  celebrationText:      'la nunta noastră',
   weddingDate:          '',
-  showRsvpButton:       false,
+  showRsvpButton:       true,
   rsvpButtonText:       'Confirmă Prezența',
   showWelcomeText:      true,
   showCelebrationText:  true,
-  showTimeline:         true,
+  showTimeline:         false,
   showCountdown:        false,
   colorTheme:           'default',
 };
 
-export const CASTLE_DEFAULT_BLOCKS: InvitationBlock[] = [
- {
+export const CASTLE_DEFAULT_BLOCKS = [
+  // ── Muzică ─────────────────────────────────────────────────────────────────
+  {
+    id: 'def-music',
+    type: 'music' as const,
+    show: true,
+    musicTitle: 'Melodia Zilei',
+    musicArtist: 'Artist',
+    musicUrl: '',
+    musicType: 'none' as const,
+  },
+
+  // ── Foto principală — portret arc, fade jos ────────────────────────────────
+  {
     id: 'def-photo-1',
     type: 'photo' as const,
     show: true,
@@ -1056,47 +1142,123 @@ export const CASTLE_DEFAULT_BLOCKS: InvitationBlock[] = [
     photoClip: 'arch' as const,
     photoMasks: ['fade-b'] as any,
   },
-  { id: 'def-text-1', type: 'text', show: true, content: 'O poveste magică începe odată cu venirea pe lume a celui mai iubit copil. Vă așteptăm cu drag să fiți parte din această zi de poveste.' },
-  { id: 'def-countdown', type: 'countdown', show: true, countdownTitle: 'Timp rămas până la Marele Eveniment' },
-  { id: 'def-calendar', type: 'calendar', show: true },
-  { id: 'def-divider-1', type: 'divider', show: true },
-  { id: 'def-text-2', type: 'text', show: true, content: 'Sub ocrotirea și dragostea celor care ne îndrumă pașii și ne sunt alături la fiecare început' },
-  { id: 'def-family-1', type: 'family', show: true, label: 'Părinții', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) },
-  { id: 'def-family-1', type: 'family', show: true, label: 'Nasii', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Nasa', name2: 'Nasul' }]) },
-{ id: 'def-text-1', type: 'text', show: true, content: 'Momentele speciale ale acestei zile vor avea loc în următoarele locații:' },
-  { id: 'def-location-1', type: 'location', show: true, label: 'Slujba Sfintei Taine a Botezului', time: '15:00', locationName: 'Manastirea Pasarea', locationAddress: 'Strada Basmului nr. 1', wazeLink: 'https://www.waze.com/ro/live-map/' },
-  { id: 'def-divider-1', type: 'divider', show: true },
- { id: 'def-location-1', type: 'location', show: true, label: 'Petrecerea', time: '20:00', locationName: 'Restaurant Monato', locationAddress: ' Strada Plaiului 1, 085100', wazeLink: 'https://www.waze.com/ro/live-map/' },
-{ id: 'def-divider-1', type: 'divider', show: true },
-{
+
+  // ── Text poetic ────────────────────────────────────────────────────────────
+  {
+    id: 'def-text-1',
+    type: 'text' as const,
+    show: true,
+    content: 'O poveste magică începe odată cu venirea pe lume a celui mai iubit copil. Vă așteptăm cu drag să fiți parte din această zi de poveste.',
+  },
+
+  // ── Countdown ──────────────────────────────────────────────────────────────
+  {
+  id: 'def-countdown',
+  type: 'countdown' as const,
+  show: true,
+  countdownTitle: 'Timp rămas până la Marele Eveniment',  // adaugă aici
+},
+
+  // ── Calendar ───────────────────────────────────────────────────────────────
+  {
+    id: 'def-calendar',
+    type: 'calendar' as const,
+    show: true,
+  },
+
+  // ── Foto 2 — peisaj ────────────────────────────────────────────────────────
+  {
     id: 'def-photo-2',
     type: 'photo' as const,
     show: true,
     imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
-    altText: 'Fotografia prințesei',
-    aspectRatio: '1:1' as const,
-    photoClip: 'blob' as const,
+    altText: 'Decorațiuni',
+    aspectRatio: '16:9' as const,
+    photoClip: 'rounded' as const,
     photoMasks: [] as any,
   },
 
-{ id: 'def-text-1', type: 'text', show: true, content: 'O piesă de suflet, aleasă cu drag pentru această zi de neuitat, care ne va însoți emoțiile și bucuria fiecărui moment.' },
-  { id: 'def-music-1', type: 'music', show: true, musicTitle: '', musicArtist: '', musicUrl: '', musicType: 'none' },
-{ id: 'def-divider-1', type: 'divider', show: true },
-{ id: 'def-text-1', type: 'text', show: true, content: 'Ne-ar bucura să ne confirmați prezența dumneavoastră, pentru o bună organizare a evenimentului.' },
-  { id: 'def-rsvp-1', type: 'rsvp', show: true, label: 'Confirmă Prezența' },
-{ id: 'def-divider-1', type: 'divider', show: true },
+  // ── Locație Biserică ───────────────────────────────────────────────────────
+  {
+    id: 'def-loc-church',
+    type: 'location' as const,
+    show: true,
+    label: 'Slujba de Botez',
+    time: '11:00',
+    locationName: 'Biserica Sfânta Maria',
+    locationAddress: 'Str. Bisericii nr. 5, București',
+    wazeLink: '',
+  },
 
+  // ── Locație Petrecere ──────────────────────────────────────────────────────
+  {
+    id: 'def-loc-party',
+    type: 'location' as const,
+    show: true,
+    label: 'Petrecere',
+    time: '14:00',
+    locationName: 'Salon Castelul Magic',
+    locationAddress: 'Str. Basmului nr. 1, București',
+    wazeLink: '',
+  },
 
+  // ── Foto 3 — cerc cu vignetă ───────────────────────────────────────────────
+  {
+    id: 'def-photo-3',
+    type: 'photo' as const,
+    show: true,
+    imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
+    altText: 'Fotografie',
+    aspectRatio: '1:1' as const,
+    photoClip: 'circle' as const,
+    photoMasks: ['vignette'] as any,
+  },
 
+  // ── Cadouri ────────────────────────────────────────────────────────────────
+  {
+    id: 'def-gift',
+    type: 'gift' as const,
+    show: true,
+    sectionTitle: 'Sugestie de cadou',
+    content: 'Cel mai frumos cadou este prezența voastră alături de noi. Dacă doriți să contribuiți la viitorul prințesei noastre, vă lăsăm datele de mai jos.',
+    iban: 'RO00 BANK 0000 0000 0000 0000',
+    ibanName: 'Familia Ionescu',
+  },
 
+  // ── Foto finală — blob ─────────────────────────────────────────────────────
+  {
+    id: 'def-photo-4',
+    type: 'photo' as const,
+    show: true,
+    imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
+    altText: 'Fotografie finală',
+    aspectRatio: '3:4' as const,
+    photoClip: 'blob' as const,
+    photoMasks: ['fade-b'] as any,
+  },
 
+  // ── WhatsApp contact ───────────────────────────────────────────────────────
+  {
+    id: 'def-whatsapp',
+    type: 'whatsapp' as const,
+    show: true,
+    label: 'Contactează-ne pe WhatsApp',
+    content: '0700000000',
+  },
+
+  // ── RSVP ───────────────────────────────────────────────────────────────────
+  {
+    id: 'def-rsvp',
+    type: 'rsvp' as const,
+    show: true,
+    label: 'Confirmă Prezența',
+  },
 ];
-
 
 // ── Preview data — folosit de InvitationMarketplace pentru demo ──────────────
 export const CASTLE_PREVIEW_DATA = {
   guest:   { name: "Invitat Drag", status: "pending", type: "adult" },
-  project: { selectedTemplate: 'castle-magic' },
+  project: { selectedTemplate: 'lord-effects' },
   profile: {
     ...CASTLE_DEFAULTS,
     colorTheme: 'default',
@@ -1197,7 +1359,7 @@ const InsertBlockButton: React.FC<{
 };
 
 // ── Main Template ─────────────────────────────────────────────────────────────
-const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
+const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
@@ -1250,22 +1412,16 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
   }, []);
   
   // ── Apply color theme ───────────────────────────────────────────────────────
-  const validGirlThemeIds = new Set(GIRL_THEMES.map(t => t.id));
-  const _userThemeRaw = (pr as any).colorTheme;
-  const _userTheme = validGirlThemeIds.has(_userThemeRaw) ? _userThemeRaw : undefined;
-  const _globalThemeRaw = globalConfig.colorTheme;
-  const _globalTheme = validGirlThemeIds.has(_globalThemeRaw) ? _globalThemeRaw : undefined;
-  const _hasExplicitTheme = !!(_userTheme && _userTheme !== 'default' && _userTheme !== 'undefined' && _userTheme !== '');
-  const activeColorTheme = _hasExplicitTheme ? _userTheme : (_globalTheme || _userTheme || 'default');
-  const theme = getGirlTheme(activeColorTheme);
-  PINK_DARK = theme.PINK_DARK;
-  PINK_D    = theme.PINK_D;
-  PINK_L    = theme.PINK_L;
-  PINK_XL   = theme.PINK_XL;
-  CREAM     = theme.CREAM;
-  TEXT      = theme.TEXT;
-  MUTED     = theme.MUTED;
-  GOLD      = theme.GOLD;
+  const activeColorTheme = (pr as any).colorTheme || 'default';
+  const monoTheme: CastleColorTheme = getLordTheme(activeColorTheme);
+  PINK_DARK = monoTheme.PINK_DARK;
+  PINK_D    = monoTheme.PINK_D;
+  PINK_L    = monoTheme.PINK_L;
+  PINK_XL   = monoTheme.PINK_XL;
+  CREAM     = monoTheme.CREAM;
+  TEXT      = monoTheme.TEXT;
+  MUTED     = monoTheme.MUTED;
+  GOLD      = monoTheme.GOLD;
   // CSS vars for Tailwind-class replacements (injected as <style>)
   const themeCSS = `
     .cm-wrap { --cm-dark:${PINK_DARK}; --cm-d:${PINK_D}; --cm-l:${PINK_L}; --cm-xl:${PINK_XL}; --cm-text:${TEXT}; --cm-muted:${MUTED}; }
@@ -1322,7 +1478,7 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
     }
   }, [profile.customSections]);
 
-  // Imagini uși — din admin per temă activă
+  // Door images come from admin per selected Lord theme.
   const themeImgs   = globalConfig.themeImages?.[activeColorTheme] || {};
   const defaultImgs = globalConfig.themeImages?.['default'] || {};
   const heroBgImage       = themeImgs.desktop || defaultImgs.desktop || globalConfig.heroBgImage;
@@ -1343,7 +1499,6 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
   const [showIntro, setShowIntro] = useState(!editMode);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
-  const timeInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const hasMusicBlock = useCallback(() => {
     return blocks.some(b => b.type === 'music' && b.musicType !== 'none' && b.musicUrl);
@@ -1452,6 +1607,8 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
           castleUrlMobile={heroBgImageMobile}
           contentEl={contentEl}
           childName={p.partner1Name || "Numele Copilului"}
+          partner2Name={p.partner2Name || ''}
+          isWedding={isWeddingTemplate}
           subtitle={castleSubtitle}
           welcomeText={castleWelcome}
           inviteTop={castleInviteTop}
@@ -2171,16 +2328,8 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
                                     marginBottom: 18,
                                   }}
                                 >
-                                  {(block.time || editMode) && (
+                                  {block.time && (
                                     <div
-                                      onClick={() => {
-                                        if (!editMode) return;
-                                        const el = timeInputRefs.current[idx];
-                                        if (el) {
-                                          el.focus();
-                                          if ((el as any).showPicker) (el as any).showPicker();
-                                        }
-                                      }}
                                       style={{
                                         display: "inline-flex",
                                         alignItems: "center",
@@ -2189,7 +2338,6 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
                                         border: `1px solid ${PINK_L}`,
                                         borderRadius: 10,
                                         padding: "5px 11px",
-                                        cursor: editMode ? "pointer" : "default",
                                       }}
                                     >
                                       <svg
@@ -2205,24 +2353,17 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
                                         <circle cx="12" cy="12" r="10" />
                                         <polyline points="12 6 12 12 16 14" />
                                       </svg>
-                                      <InlineTime
-                                        value={block.time || ""}
-                                        onChange={(v) => updBlock(idx, { time: v })}
-                                        editMode={editMode}
+                                      <span
                                         style={{
                                           fontFamily: SANS,
                                           fontSize: "0.65rem",
                                           fontWeight: 700,
                                           color: PINK_DARK,
                                           letterSpacing: "0.04em",
-                                          width: "4.4rem",
-                                          textAlign: "center",
-                                          cursor: editMode ? "pointer" : "default",
                                         }}
-                                        inputRef={(el) => {
-                                          if (el) timeInputRefs.current[idx] = el;
-                                        }}
-                                      />
+                                      >
+                                        {block.time}
+                                      </span>
                                     </div>
                                   )}
                                   {block.label && (
@@ -2287,13 +2428,12 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
                                     }
                                     placeholder="Numele locației..."
                                     style={{
-                                      fontFamily: FamilyText,
+                                      fontFamily: SCRIPT,
                                       fontSize: "1.45rem",
-                                      color: PINK_DARK,
+                                      color: PINK_L,
                                       margin: "0 0 3px",
                                       lineHeight: 1.15,
                                       fontWeight: 600,
-                                      letterSpacing: "0.1em",
                                     }}
                                   />
                                   <InlineEdit
@@ -2599,260 +2739,193 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
                       {block.type === "family" && (
                         <Reveal>
                           {(() => {
-                            const members: { name1: string; name2: string }[] = (() => {
-                              try {
-                                return JSON.parse(block.members || "[]");
-                              } catch {
-                                return [];
-                              }
-                            })();
-                            const updateMembers = (newMembers: { name1: string; name2: string }[]) => {
-                              updBlock(idx, { members: JSON.stringify(newMembers) } as any);
+                            const members: { name1: string; name2: string }[] =
+                              (() => {
+                                try {
+                                  return JSON.parse(block.members || "[]");
+                                } catch {
+                                  return [];
+                                }
+                              })();
+                            const updateMembers = (
+                              newMembers: { name1: string; name2: string }[],
+                            ) => {
+                              updBlock(idx, {
+                                members: JSON.stringify(newMembers),
+                              } as any);
                             };
                             return (
                               <div
                                 style={{
                                   background: "white",
-                                  borderRadius: 20,
-                                  overflow: "hidden",
-                                  boxShadow:
-                                    "0 1px 3px rgba(0,0,0,0.06), 0 4px 20px rgba(190,24,93,0.08)",
                                   border: `1px solid ${PINK_L}`,
+                                  borderRadius: 20,
+                                  padding: "28px 24px",
+                                  textAlign: "center",
                                 }}
                               >
-                                {/* Top accent bar */}
+                                <div style={{ marginBottom: 20 }}>
+                                  <InlineEdit
+                                    tag="p"
+                                    editMode={editMode}
+                                    value={block.label || "Părinții copilului"}
+                                    onChange={(v) =>
+                                      updBlock(idx, { label: v })
+                                    }
+                                    style={{
+                                      fontFamily: SANS,
+                                      fontSize: "0.55rem",
+                                      fontWeight: 700,
+                                      letterSpacing: "0.35em",
+                                      textTransform: "uppercase",
+                                      color: MUTED,
+                                      margin: "0 0 8px",
+                                    }}
+                                  />
+                                  <InlineEdit
+                                    tag="p"
+                                    editMode={editMode}
+                                    value={
+                                      block.content || "Cu drag și recunoștință"
+                                    }
+                                    onChange={(v) =>
+                                      updBlock(idx, { content: v })
+                                    }
+                                    style={{
+                                      fontFamily: SERIF,
+                                      fontStyle: "italic",
+                                      fontSize: "0.9rem",
+                                      color: MUTED,
+                                      margin: 0,
+                                      lineHeight: 1.6,
+                                    }}
+                                  />
+                                </div>
                                 <div
                                   style={{
-                                    height: 3,
-                                    background: `linear-gradient(to right, ${PINK_L}, ${PINK_DARK}, ${PINK_L})`,
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: 14,
                                   }}
-                                />
-
-                                <div style={{ padding: "22px 22px 20px" }}>
-                                  {/* Header row: badge + label */}
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      alignItems: "center",
-                                      gap: 8,
-                                      marginBottom: 18,
-                                    }}
-                                  >
+                                >
+                                  {members.map((m, mi) => (
                                     <div
-                                      style={{
-                                        display: "inline-flex",
-                                        alignItems: "center",
-                                        gap: 5,
-                                        background: PINK_XL,
-                                        border: `1px solid ${PINK_L}`,
-                                        borderRadius: 10,
-                                        padding: "5px 11px",
-                                      }}
+                                      key={mi}
+                                      style={{ position: "relative" }}
                                     >
-                                      <svg
-                                        width="11"
-                                        height="11"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke={PINK_DARK}
-                                        strokeWidth="2.5"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      >
-                                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                                      </svg>
-                                      <InlineEdit
-                                        tag="span"
-                                        editMode={editMode}
-                                        value={block.label || "Părinții copilului"}
-                                        onChange={(v) => updBlock(idx, { label: v })}
+                                      <div
                                         style={{
-                                          fontFamily: SANS,
-                                          fontSize: "0.65rem",
-                                          fontWeight: 700,
-                                          color: PINK_DARK,
-                                          letterSpacing: "0.04em",
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          gap: 10,
+                                          flexWrap: "wrap",
                                         }}
-                                      />
-                                    </div>
-                                    <InlineEdit
-                                      tag="span"
-                                      editMode={editMode}
-                                      value={block.content || "Cu drag și recunoștință"}
-                                      onChange={(v) => updBlock(idx, { content: v })}
-                                      style={{
-                                        fontFamily: SANS,
-                                        fontSize: "0.58rem",
-                                        fontWeight: 700,
-                                        letterSpacing: "0.28em",
-                                        textTransform: "uppercase",
-                                        color: MUTED,
-                                      }}
-                                    />
-                                  </div>
-
-                                  {/* Members list */}
-                                  <div style={{ display: "flex", flexDirection: "column" }}>
-                                    {members.map((m, mi) => (
-                                      <div key={mi}>
-                                        <div
+                                      >
+                                        <InlineEdit
+                                          tag="span"
+                                          editMode={editMode}
+                                          value={m.name1}
+                                          onChange={(v) => {
+                                            const nm = [...members];
+                                            nm[mi] = { ...nm[mi], name1: v };
+                                            updateMembers(nm);
+                                          }}
                                           style={{
-                                            display: "flex",
-                                            alignItems: "center",
-                                            gap: 14,
-                                            padding: "10px 0",
+                                            fontFamily: SCRIPT,
+                                            fontSize: "1.5rem",
+                                            color: PINK_DARK,
+                                          }}
+                                        />
+                                        <span
+                                          style={{
+                                            fontFamily: SERIF,
+                                            fontStyle: "italic",
+                                            color: PINK_L,
+                                            fontSize: "1.3rem",
                                           }}
                                         >
-                                          {/* Icon square */}
-                                          <div
+                                          &amp;
+                                        </span>
+                                        <InlineEdit
+                                          tag="span"
+                                          editMode={editMode}
+                                          value={m.name2}
+                                          onChange={(v) => {
+                                            const nm = [...members];
+                                            nm[mi] = { ...nm[mi], name2: v };
+                                            updateMembers(nm);
+                                          }}
+                                          style={{
+                                            fontFamily: SCRIPT,
+                                            fontSize: "1.5rem",
+                                            color: PINK_DARK,
+                                          }}
+                                        />
+                                        {editMode && members.length > 1 && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateMembers(
+                                                members.filter(
+                                                  (_, i) => i !== mi,
+                                                ),
+                                              )
+                                            }
                                             style={{
-                                              width: 46,
-                                              height: 46,
-                                              borderRadius: 14,
-                                              flexShrink: 0,
-                                              background: `linear-gradient(145deg, ${PINK_XL} 0%, ${PINK_L}44 100%)`,
-                                              border: `1.5px solid ${PINK_L}`,
-                                              display: "flex",
-                                              alignItems: "center",
-                                              justifyContent: "center",
+                                              background: "none",
+                                              border: "none",
+                                              cursor: "pointer",
+                                              color: MUTED,
+                                              fontSize: 14,
+                                              padding: "0 4px",
+                                              opacity: 0.5,
+                                              lineHeight: 1,
                                             }}
                                           >
-                                            <svg
-                                              width="20"
-                                              height="20"
-                                              viewBox="0 0 24 24"
-                                              fill="none"
-                                              stroke={PINK_DARK}
-                                              strokeWidth="1.8"
-                                              strokeLinecap="round"
-                                              strokeLinejoin="round"
-                                            >
-                                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                                              <circle cx="9" cy="7" r="4" />
-                                              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-                                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                                            </svg>
-                                          </div>
-
-                                          {/* Names */}
-                                          <div
-                                            style={{
-                                              flex: 1,
-                                              minWidth: 0,
-                                              display: "flex",
-                                              alignItems: "baseline",
-                                              gap: 8,
-                                              flexWrap: "wrap",
-                                            }}
-                                          >
-                                            <InlineEdit
-                                              tag="span"
-                                              editMode={editMode}
-                                              value={m.name1}
-                                              onChange={(v) => {
-                                                const nm = [...members];
-                                                nm[mi] = { ...nm[mi], name1: v };
-                                                updateMembers(nm);
-                                              }}
-                                              style={{
-                                                fontFamily: FamilyText,
-                                                fontSize: "1.45rem",
-                                                color: PINK_DARK,
-                                                lineHeight: 1.15,
-                                              }}
-                                            />
-                                            <span
-                                              style={{
-                                                fontFamily: FamilyText,
-                                                fontStyle: "italic",
-                                                fontSize: "1.2rem",
-                                                color: PINK_L,
-                                              }}
-                                            >
-                                              &amp;
-                                            </span>
-                                            <InlineEdit
-                                              tag="span"
-                                              editMode={editMode}
-                                              value={m.name2}
-                                              onChange={(v) => {
-                                                const nm = [...members];
-                                                nm[mi] = { ...nm[mi], name2: v };
-                                                updateMembers(nm);
-                                              }}
-                                              style={{
-                                                fontFamily: FamilyText,
-                                                fontSize: "1.80rem",
-                                                color: PINK_DARK,
-                                                lineHeight: 1.15,
-                                              }}
-                                            />
-                                            {editMode && members.length > 1 && (
-                                              <button
-                                                type="button"
-                                                onClick={() =>
-                                                  updateMembers(members.filter((_, i) => i !== mi))
-                                                }
-                                                style={{
-                                                  background: "none",
-                                                  border: "none",
-                                                  cursor: "pointer",
-                                                  color: MUTED,
-                                                  fontSize: 13,
-                                                  padding: "0 4px",
-                                                  opacity: 0.5,
-                                                  lineHeight: 1,
-                                                }}
-                                              >
-                                                ✕
-                                              </button>
-                                            )}
-                                          </div>
-                                        </div>
-
-                                        {/* Separator */}
-                                        {mi < members.length - 1 && (
-                                          <div
-                                            style={{
-                                              height: 1,
-                                              background: `linear-gradient(to right, transparent, ${PINK_L}88, transparent)`,
-                                              margin: "0 4px",
-                                            }}
-                                          />
+                                            ✕
+                                          </button>
                                         )}
                                       </div>
-                                    ))}
-                                  </div>
-
-                                  {/* Add button — edit mode only */}
-                                  {editMode && (
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        updateMembers([
-                                          ...members,
-                                          { name1: "Nume 1", name2: "Nume 2" },
-                                        ])
-                                      }
-                                      style={{
-                                        marginTop: 16,
-                                        background: PINK_XL,
-                                        border: `1px dashed ${PINK_L}`,
-                                        borderRadius: 99,
-                                        padding: "5px 16px",
-                                        cursor: "pointer",
-                                        fontFamily: SANS,
-                                        fontSize: "0.6rem",
-                                        fontWeight: 700,
-                                        letterSpacing: "0.2em",
-                                        textTransform: "uppercase",
-                                        color: PINK_DARK,
-                                      }}
-                                    >
-                                      + Adaugă
-                                    </button>
-                                  )}
+                                      {mi < members.length - 1 && (
+                                        <div
+                                          style={{
+                                            height: 1,
+                                            background: `linear-gradient(to right, transparent, ${PINK_L}88, transparent)`,
+                                            margin: "8px 32px 0",
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  ))}
                                 </div>
+                                {editMode && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      updateMembers([
+                                        ...members,
+                                        { name1: "Nume 1", name2: "Nume 2" },
+                                      ])
+                                    }
+                                    style={{
+                                      marginTop: 16,
+                                      background: PINK_XL,
+                                      border: `1px dashed ${PINK_L}`,
+                                      borderRadius: 99,
+                                      padding: "5px 16px",
+                                      cursor: "pointer",
+                                      fontFamily: SANS,
+                                      fontSize: "0.6rem",
+                                      fontWeight: 700,
+                                      letterSpacing: "0.2em",
+                                      textTransform: "uppercase",
+                                      color: PINK_DARK,
+                                    }}
+                                  >
+                                    + Adaugă
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
@@ -3068,4 +3141,4 @@ const CastleMagicTemplateGirl: React.FC<InvitationTemplateProps & {
   );
 };
 
-export default CastleMagicTemplateGirl;
+export default CastleMagicTemplate;

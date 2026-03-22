@@ -82,8 +82,74 @@ export const ROMANTIC_THEMES: CastleColorTheme[] = [
     GOLD:      '#d4af37',
   },
 ];
+
+export const LORD_MONO_THEMES: CastleColorTheme[] = [
+  {
+    id: 'default',
+    emoji: 'BW',
+    name: 'Monochrome',
+    PINK_DARK: '#161616',
+    PINK_D: '#2c2c2c',
+    PINK_L: '#d9d1c5',
+    PINK_XL: '#faf7f2',
+    CREAM: '#f3eee6',
+    TEXT: '#171717',
+    MUTED: '#6c645b',
+    GOLD: '#ece4d8',
+  },
+  {
+  id: 'RS',
+  emoji: 'RS',
+  name: 'Romantic Sunset',
+  PINK_DARK: '#8c5a5a',
+  PINK_D: '#d9a5a5',
+  PINK_L: '#f2c6a0',
+  PINK_XL: '#fffaf5',
+  CREAM: '#f7e7ce',
+  TEXT: '#3a2e2e',
+  MUTED: '#8a7f7a',
+  GOLD: '#e8d8c3',
+},{
+  id: 'LG',
+  emoji: 'LG',
+  name: 'Luxury Gold',
+  PINK_DARK: '#0f0f0f',
+  PINK_D: '#1f1f1f',
+  PINK_L: '#ffffff',
+  PINK_XL: '#f7f7f7',
+  CREAM: '#f2efe9',
+  TEXT: '#111111',
+  MUTED: '#6e6e6e',
+  GOLD: '#d4af37',
+},{
+  id: 'BN',
+  emoji: 'BN',
+  name: 'Boho Natural',
+  PINK_DARK: '#5e4b3c',
+  PINK_D: '#a78c6d',
+  PINK_L: '#d7c2a3',
+  PINK_XL: '#f8f3ec',
+  CREAM: '#efe6d8',
+  TEXT: '#3b2f2f',
+  MUTED: '#8c7a6b',
+  GOLD: '#c9a97a',
+},
+{
+  id: 'SP',
+  emoji: 'SP',
+  name: 'Soft Pastel',
+  PINK_DARK: '#a68c9b',
+  PINK_D: '#d6b8c4',
+  PINK_L: '#f0dbe4',
+  PINK_XL: '#fdf7fa',
+  CREAM: '#f6efe9',
+  TEXT: '#4a3f45',
+  MUTED: '#9c8f95',
+  GOLD: '#e6d8c9',
+}
+];
 export const getCastleTheme = (id?: string): CastleColorTheme =>
-  [...CASTLE_THEMES, ...GIRL_THEMES, ...ROMANTIC_THEMES, ...BOY_THEMES]
+  [...CASTLE_THEMES, ...GIRL_THEMES, ...ROMANTIC_THEMES, ...BOY_THEMES, ...LORD_MONO_THEMES]
     .find(t => t.id === id) ?? CASTLE_THEMES[0];
 
 export const getGirlTheme  = (id?: string): CastleColorTheme =>
@@ -94,6 +160,9 @@ export const getBoyTheme   = (id?: string): CastleColorTheme =>
 
 export const getRomanticTheme = (id?: string): CastleColorTheme =>
   ROMANTIC_THEMES.find(t => t.id === id) ?? ROMANTIC_THEMES[0];
+
+export const getLordTheme = (id?: string): CastleColorTheme =>
+  LORD_MONO_THEMES.find(t => t.id === id) ?? LORD_MONO_THEMES[0];
 
 
 // ── Valori implicite profil ───────────────────────────────────────────────────

@@ -25,8 +25,9 @@ import CastleMagicTemplateBoys from "./invitations/BoyCastelMagicTemplates";
 import CastleMagicTemplateGirl from "./invitations/GirlCastelMagicTemplates";
 import CastleMagicTemplateRomantic from "./invitations/RomanticCastelMagicTemplates";
 import JO from "./invitations/JungleMagicEffect";
+import LordEffects from "./invitations/LordEffects";
 
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES } from "./invitations/castleDefaults";
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES } from "./invitations/castleDefaults";
 import { TemplateMeta } from "./invitations/types";
 
 type EditableTemplateProps = ClassicTemplateProps | RoyalRoseProps | DarkRoyalProps | BlushBloomProps | GardenRomanticProps | VelumProps | EternBotanicaProps | TerraBohoProps | ArchRoseProps;
@@ -49,6 +50,7 @@ const EDITABLE_TEMPLATES: Record<string, React.FC<EditableTemplateProps>> = {
   'castle-magic-girl':   CastleMagicTemplateGirl as React.FC<EditableTemplateProps>,
   'romantic':   CastleMagicTemplateRomantic as React.FC<EditableTemplateProps>,
   'regal':   JO as React.FC<EditableTemplateProps>,
+  'lord-effects':   LordEffects as React.FC<EditableTemplateProps>,
 };
 const getEditableTemplate = (id: string): React.FC<EditableTemplateProps> =>
   EDITABLE_TEMPLATES[id] || ClassicTemplate as React.FC<EditableTemplateProps>;
@@ -157,10 +159,10 @@ const ResetModal: React.FC<{ resetting: boolean; onCancel: () => void; onConfirm
         <RotateCcw className="w-6 h-6 text-orange-500" />
       </div>
       <div className="text-center">
-        <p className="font-bold text-sm text-zinc-900 dark:text-white mb-1">Resetezi invitația?</p>
+        <p className="font-bold text-sm text-zinc-900 dark:text-white mb-1">Resetezi setarile?</p>
         <p className="text-xs text-zinc-500 leading-relaxed">
-          Toate blocurile, pozele și textele personalizate vor fi înlocuite cu template-ul implicit.<br />
-          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Această acțiune nu poate fi anulată.</span>
+          Se reseteaza doar setarile din panou (ex: toggle-uri, tema).<br />
+          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Blocurile, pozele si textele raman neschimbate.</span>
         </p>
       </div>
       <div className="flex gap-2">
@@ -171,8 +173,8 @@ const ResetModal: React.FC<{ resetting: boolean; onCancel: () => void; onConfirm
         <button type="button" onClick={onConfirm} disabled={resetting}
           className="flex-1 py-2 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-60 flex items-center justify-center gap-1.5">
           {resetting
-            ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Se resetează...</>
-            : <><RotateCcw className="w-3 h-3" /> Da, resetează</>
+            ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Se reseteaza...</>
+            : <><RotateCcw className="w-3 h-3" /> Da, reseteaza</>
           }
         </button>
       </div>
@@ -204,6 +206,42 @@ const TIMELINE_PRESETS = [
   { icon: 'moon',      emoji: '🌙', title: 'Finalul evenimentului' },
 ];
 
+// ─── Default timeline per template (seeded when empty) ────────────────────────
+const DEFAULT_TIMELINE_BASE: Array<{
+  icon: string;
+  title: string;
+  time: string;
+  notice: string;
+}> = [
+  { icon: 'candles', title: 'Ceremonia religioasa', time: '14:00', notice: 'Va rugam sa ajungeti cu 15 min inainte' },
+  { icon: 'photo', title: 'Sedinta foto', time: '15:30', notice: 'Durata aproximativa 30 min' },
+  { icon: 'arch', title: 'Intrarea in sala', time: '17:00', notice: 'Primirea invitatilor' },
+  { icon: 'dinner', title: 'Masa festiva', time: '18:00', notice: 'Deschiderea meniului' },
+  { icon: 'dance', title: 'Dansul mirilor', time: '20:00', notice: 'Deschidem petrecerea' },
+  { icon: 'cake', title: 'Taierea tortului', time: '22:00', notice: 'Momentul dulce al serii' },
+  { icon: 'bouquet', title: 'Aruncarea buchetului', time: '23:00', notice: 'Moment pentru domnisoare' },
+  { icon: 'disco', title: 'After party', time: '00:00', notice: 'Muzica si dans' },
+];
+
+const buildDefaultTimeline = (prefix: string): TimelineItem[] =>
+  DEFAULT_TIMELINE_BASE.map((item, idx) => ({
+    id: `${prefix}-${idx}`,
+    icon: item.icon,
+    title: item.title,
+    time: item.time,
+    location: '',
+    notice: item.notice,
+  }));
+
+const DEFAULT_TIMELINE_BY_TEMPLATE: Record<string, TimelineItem[]> = {
+  'castle-magic': buildDefaultTimeline('castle-magic'),
+  'castle-magic-boys': buildDefaultTimeline('castle-magic-boys'),
+  'castle-magic-girl': buildDefaultTimeline('castle-magic-girl'),
+  'romantic': buildDefaultTimeline('romantic'),
+  'lord-effects': buildDefaultTimeline('lord-effects'),
+  'regal': buildDefaultTimeline('regal'),
+};
+
 const SettingsContent: React.FC<{
   profile: UserProfile;
   timeline: TimelineItem[];
@@ -214,7 +252,9 @@ const SettingsContent: React.FC<{
   selectedTemplate?: string;
   templateMeta?: TemplateMeta;
   doorImages?: Record<string, { desktop?: string; mobile?: string }>;
-}> = ({ profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, templateMeta, doorImages = {} }) => {
+  introVariants?: Record<string, { label: string; desktop?: string; mobile?: string }>;
+  defaultIntroVariant?: string;
+}> = ({ profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, templateMeta, doorImages = {}, introVariants = {}, defaultIntroVariant }) => {
   const [expandedTheme, setExpandedTheme] = React.useState<string | null>(null);
   return (
   <div className="w-full">
@@ -298,10 +338,12 @@ const SettingsContent: React.FC<{
             )}
           </div>
 
-         {(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose') && (() => {
+         {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose') && (() => {
 
-  const themes = selectedTemplate === 'castle-magic-boys'
-    ? BOY_THEMES
+  const themes = selectedTemplate === 'lord-effects'
+    ? LORD_MONO_THEMES
+    : selectedTemplate === 'castle-magic-boys'
+      ? BOY_THEMES
     : selectedTemplate === 'castle-magic-girl'
       ? GIRL_THEMES
       : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
@@ -527,7 +569,7 @@ const SettingsContent: React.FC<{
         </div>
       </Collapsible>
 
-      {selectedTemplate?.startsWith('castle-magic') && (
+      {(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects') && (
         <>
           <Hr />
           {/* ⑤ TEXTE INTRO CASTEL */}
@@ -673,6 +715,229 @@ const SettingsContent: React.FC<{
               )}
             </div>
           </Collapsible>
+        </>
+      )}
+
+      {selectedTemplate === 'regal' && (
+        <>
+          <Hr />
+          <Collapsible title="Texte Intro Jungle" defaultOpen={false}>
+            <div className="space-y-3">
+              <p className="text-[9px] text-zinc-400 italic">
+                Câmpuri dedicate pentru intro-ul template-ului Jungle/Regal.
+              </p>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Text sus
+                </label>
+                <Input
+                  value={(profile as any).jungleHeaderText ?? 'Save The Date'}
+                  onChange={(e: any) => hc('jungleHeaderText' as any, e.target.value)}
+                  placeholder="Save The Date"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Text principal editorial
+                </label>
+                <textarea
+                  value={(profile as any).jungleOverlayText ?? 'Cu bucurie vă invităm să fiți parte din povestea noastră.'}
+                  onChange={(e: any) => hc('jungleOverlayText' as any, e.target.value)}
+                  placeholder="Textul care apare cuvânt cu cuvânt în intro..."
+                  className="w-full min-h-[88px] rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs"
+                  disabled={!isActive}
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest block mb-1">
+                  Text jos
+                </label>
+                <Input
+                  value={(profile as any).jungleFooterText ?? ''}
+                  onChange={(e: any) => hc('jungleFooterText' as any, e.target.value)}
+                  placeholder="Lasă gol pentru a folosi data nunții"
+                  className="h-7 text-xs w-full"
+                  disabled={!isActive}
+                />
+              </div>
+            </div>
+          </Collapsible>
+        </>
+      )}
+
+      {selectedTemplate === 'regal' && (
+        <>
+          {Object.keys(introVariants).length > 0 && (
+            <>
+              <Hr />
+              <Collapsible title="🖼 Variantă Intro" defaultOpen={true}>
+                <div className="space-y-1">
+                  {Object.entries(introVariants).map(([ivId, iv]) => {
+                    const activeVariantId = (profile as any).introVariant ?? defaultIntroVariant ?? Object.keys(introVariants)[0];
+                    const isChosen = activeVariantId === ivId;
+                    const hasImg = !!(iv.desktop || iv.mobile);
+                    const isExpanded = expandedTheme === ivId;
+                    return (
+                      <React.Fragment key={ivId}>
+                        <div
+                          role="button"
+                          tabIndex={isActive ? 0 : -1}
+                          aria-pressed={isChosen}
+                          aria-disabled={!isActive || !hasImg}
+                          onClick={() => { if (isActive && hasImg) guard(() => hc('introVariant' as any, ivId)); }}
+                          onKeyDown={(e) => {
+                            if (!isActive || !hasImg) return;
+                            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); guard(() => hc('introVariant' as any, ivId)); }
+                          }}
+                          className={cn(
+                            "flex items-center gap-2.5 w-full px-2.5 py-2 rounded-lg border transition-all text-left",
+                            (!isActive || !hasImg) ? "opacity-50 pointer-events-none" : "cursor-pointer",
+                            isChosen
+                              ? "border-zinc-400 dark:border-zinc-400 bg-zinc-50 dark:bg-zinc-800"
+                              : "border-zinc-100 dark:border-zinc-800 hover:border-zinc-300 bg-white dark:bg-zinc-900"
+                          )}>
+                          {iv.desktop ? (
+                            <div className="shrink-0 rounded overflow-hidden border border-zinc-200" style={{ width: 32, height: 18 }}>
+                              <img src={iv.desktop} alt={iv.label} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            </div>
+                          ) : (
+                            <div className="shrink-0 rounded bg-zinc-100 border border-dashed border-zinc-300" style={{ width: 32, height: 18 }} />
+                          )}
+                          <span className="flex-1 text-[11px] font-semibold text-zinc-700 dark:text-zinc-200 truncate">{iv.label}</span>
+                          <button
+                            type="button"
+                            onClick={e => { e.stopPropagation(); setExpandedTheme(isExpanded ? null : ivId); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', display: 'flex', alignItems: 'center', flexShrink: 0 }}
+                            title={hasImg ? 'Vezi previzualizare' : 'Fără imagini'}
+                          >
+                            <svg
+                              width="12" height="12" viewBox="0 0 12 12"
+                              style={{
+                                color: hasImg ? '#6b7280' : '#d1d5db',
+                                transform: isExpanded ? 'rotate(180deg)' : 'none',
+                                transition: 'transform 0.2s',
+                              }}
+                              fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                            >
+                              <polyline points="2,4 6,8 10,4"/>
+                            </svg>
+                          </button>
+                          {isChosen && (
+                            <svg className="w-3 h-3 text-zinc-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+
+                        {isExpanded && (
+                          <div style={{
+                        marginTop: 4, marginBottom: 4,
+                        borderRadius: 10,
+                        border: '1px solid',
+                        borderColor: hasImg ? '#92400e33' : '#e5e7eb',
+                        overflow: 'hidden',
+                        background: hasImg ? '#fffbeb' : '#f9fafb',
+                        padding: hasImg ? 8 : 10,
+                      }}>
+                        {hasImg ? (
+                          <div style={{ display: 'flex', gap: 6, alignItems: 'flex-start' }}>
+                            {/* Desktop preview */}
+                            <div style={{ flex: 1 }}>
+                              <p style={{ margin: '0 0 4px', fontSize: 8, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Desktop</p>
+                              {iv.desktop ? (
+                                <div style={{ width: '100%', paddingTop: '56.25%', position: 'relative', borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
+                                  <img src={iv.desktop} alt="Desktop" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </div>
+                              ) : (
+                                <div style={{ width: '100%', paddingTop: '56.25%', position: 'relative', borderRadius: 6, background: '#f3f4f6', border: '1px dashed #e5e7eb' }}>
+                                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af' }}>lipsă</span>
+                                </div>
+                              )}
+                            </div>
+                            {/* Mobile preview */}
+                            <div style={{ width: 44 }}>
+                              <p style={{ margin: '0 0 4px', fontSize: 8, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Mobile</p>
+                              {iv.mobile ? (
+                                <div style={{ width: 44, paddingTop: '177%', position: 'relative', borderRadius: 6, overflow: 'hidden', border: '1px solid rgba(0,0,0,0.08)' }}>
+                                  <img src={iv.mobile} alt="Mobile" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+                                </div>
+                              ) : (
+                                <div style={{ width: 44, paddingTop: '177%', position: 'relative', borderRadius: 6, background: '#f3f4f6', border: '1px dashed #e5e7eb' }}>
+                                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: '#9ca3af', writingMode: 'vertical-rl' }}>lipsă</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 14 }}>🖼️</span>
+                            <div>
+                              <p style={{ margin: 0, fontSize: 10, fontWeight: 700, color: '#6b7280' }}>Fără imagini</p>
+                              <p style={{ margin: '1px 0 0', fontSize: 9, color: '#9ca3af' }}>Configurează imaginile din Admin → Template Management</p>
+                            </div>
+                          </div>
+                        )}
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </Collapsible>
+            </>
+          )}
+
+          <div className={cn(Object.keys(introVariants).length > 0 ? "mt-3" : "")}>
+            <Collapsible title="Stil Intro" defaultOpen={true} hint="animația de deschidere">
+              <div className="space-y-2">
+                {[
+                  {
+                    id: 'dissolve',
+                    title: 'Dissolve',
+                    desc: 'Varianta actuală, cu scroll și efectul canvas.',
+                  },
+                ].map((styleOption) => {
+                  const activeStyle = ((profile as any).jungleIntroStyle || 'dissolve') === styleOption.id;
+                  return (
+                    <button
+                      key={styleOption.id}
+                      type="button"
+                      onClick={() => guard(() => hc('jungleIntroStyle' as any, styleOption.id))}
+                      disabled={!isActive}
+                      className={cn(
+                        "w-full rounded-xl border px-3 py-2 text-left transition-all",
+                        !isActive && "opacity-50 cursor-not-allowed",
+                        activeStyle
+                          ? "border-zinc-400 bg-zinc-50 dark:bg-zinc-800"
+                          : "border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 hover:border-zinc-300"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-bold text-zinc-700 dark:text-zinc-100">
+                            {styleOption.title}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                            {styleOption.desc}
+                          </div>
+                        </div>
+                        {activeStyle && (
+                          <svg className="w-3.5 h-3.5 text-zinc-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </Collapsible>
+          </div>
         </>
       )}
 
@@ -867,16 +1132,33 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const [resetKey,      setResetKey]      = useState(0); // increment to force template remount
   const [localBlocks,   setLocalBlocks]   = useState<InvitationBlock[]>([]);
   const [timeline,      setTimeline]      = useState<TimelineItem[]>(() => safeJSON(session.profile?.timeline, []));
+  const seededTimelineRef = useRef<string | null>(null);
 
   // ── Door images preview — fetch din admin config ─────────────────────────────
   const [doorImages, setDoorImages] = useState<Record<string, { desktop?: string; mobile?: string }>>({});
   useEffect(() => {
-    if (!selectedTemplate?.startsWith('castle-magic')) return;
+    if (!(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects')) return;
     fetch(`${API_URL}/config/template-defaults/${selectedTemplate}`, {
       headers: { Authorization: `Bearer ${session?.token || ''}` },
     })
       .then(r => r.ok ? r.json() : {})
       .then((d: any) => setDoorImages(d.themeImages || {}))
+      .catch(() => {});
+  }, [selectedTemplate]);
+
+  // ── Intro variants — fetch pentru regal ──────────────────────────────────────
+  const [introVariants, setIntroVariants] = useState<Record<string, { label: string; desktop?: string; mobile?: string }>>({});
+  const [defaultIntroVariant, setDefaultIntroVariant] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (selectedTemplate !== 'regal') return;
+    fetch(`${API_URL}/config/template-defaults/regal`, {
+      headers: { Authorization: `Bearer ${session?.token || ''}` },
+    })
+      .then(r => r.ok ? r.json() : {})
+      .then((d: any) => {
+        setIntroVariants(d.introVariants || {});
+        setDefaultIntroVariant(d.defaultIntroVariant || undefined);
+      })
       .catch(() => {});
   }, [selectedTemplate]);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
@@ -910,46 +1192,33 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     toast({ title: "Salvat!", description: "Modificările au fost înregistrate." });
   };
 
-  const resetToDefault = async () => {
-    // Cancel any pending debounced save — prevents old blocks from overwriting the reset
+  const resetToDefault = () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     setResetting(true);
-    try {
-      const token = session?.token || "";
-      // Step 1: wipe customSections on server so auto-inject fires
-      const wipeRes = await fetch(`${API_URL}/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ profile: { ...latestProfile.current, customSections: "[]" } }),
-      });
-      if (!wipeRes.ok) throw new Error("wipe failed");
-      // Step 2: fetch /me — server auto-injects WEDDING_DEFAULT_BLOCKS since sections are empty
-      const res = await fetch(`${API_URL}/user/me`, { headers: { Authorization: `Bearer ${token}` } });
-      if (!res.ok) throw new Error("fetch failed");
-      const data = await res.json();
-      const freshStr = data.profile?.customSections || "[]";
-      let fresh: InvitationBlock[] = [];
-      try { fresh = JSON.parse(freshStr); } catch {}
-      // Step 3: explicitly save the fresh defaults back so they're persisted
-      await fetch(`${API_URL}/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ profile: { ...latestProfile.current, customSections: freshStr } }),
-      });
-      // Step 4: update all local state — bypass debounce entirely
-      const next = { ...latestProfile.current, customSections: freshStr };
-      latestProfile.current = next;
-      setProfile(next);
-      setLocalBlocks(fresh);
-      setSelectedBlock(null);
-      setResetKey(k => k + 1); // force template remount → kills internal _bt/_pt timers
-      toast({ title: "Reset efectuat!", description: "Invitația a fost resetată la template-ul implicit." });
-    } catch {
-      toast({ title: "Eroare", description: "Nu s-a putut reseta. Încearcă din nou.", variant: "destructive" });
-    } finally {
-      setResetting(false);
-      setShowResetConfirm(false);
+    const isCastle = (selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects') ?? false;
+    const settingsDefaults: Record<string, any> = isCastle
+      ? {
+          showWelcomeText: CASTLE_DEFAULTS.showWelcomeText,
+          showCelebrationText: CASTLE_DEFAULTS.showCelebrationText,
+          showTimeline: CASTLE_DEFAULTS.showTimeline,
+          showCountdown: CASTLE_DEFAULTS.showCountdown,
+          showRsvpButton: CASTLE_DEFAULTS.showRsvpButton,
+          colorTheme: CASTLE_DEFAULTS.colorTheme,
+        }
+      : {
+          showWelcomeText: true,
+          showCelebrationText: true,
+          showTimeline: true,
+          showCountdown: true,
+          showRsvpButton: true,
+        };
+    if (selectedTemplate === 'regal') {
+      (settingsDefaults as any).introVariant = defaultIntroVariant;
     }
+    patchProfile(settingsDefaults);
+    toast({ title: "Reset efectuat!", description: "Setarile au fost resetate. Textele si blocurile nu au fost modificate." });
+    setResetting(false);
+    setShowResetConfirm(false);
   };
 
   const pushTimeline = (nt: TimelineItem[]) => {
@@ -957,11 +1226,35 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     patchProfile({ timeline: JSON.stringify(nt) });
   };
 
+  useEffect(() => {
+    if (!isActive) return;
+    const tpl = selectedTemplate || '';
+    if (!tpl) return;
+    if (seededTimelineRef.current === tpl) return;
+    const defaults = DEFAULT_TIMELINE_BY_TEMPLATE[tpl];
+    if (!defaults || defaults.length === 0) {
+      seededTimelineRef.current = tpl;
+      return;
+    }
+    const storedTimeline = typeof profile.timeline === 'string' ? profile.timeline : '';
+    const hasStoredTimeline = !!storedTimeline && storedTimeline !== '[]' && storedTimeline !== 'null';
+    if (hasStoredTimeline) {
+      seededTimelineRef.current = tpl;
+      return;
+    }
+    if (timeline.length === 0) {
+      seededTimelineRef.current = tpl;
+      const seeded = defaults.map((t, i) => ({ ...t, id: `${tpl}-${Date.now()}-${i}` }));
+      pushTimeline(seeded);
+      if (profile.showTimeline !== true) hc('showTimeline', true);
+    }
+  }, [isActive, selectedTemplate, timeline.length, profile.timeline, profile.showTimeline]);
+
   const guard = (fn: () => void) => { if (onCheckActive && !onCheckActive()) return; fn(); };
 
   const previewData = useMemo(() => {
     // Pentru castle-magic: dacă profile-ul nu are customSections, injectăm defaulturile
-    const isCastle = selectedTemplate?.startsWith('castle-magic') ?? false;
+    const isCastle = (selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects') ?? false;
     const hasBlocks = profile.customSections && profile.customSections !== '[]' && profile.customSections !== 'null';
     
     const baseProfile = { ...profile, timeline: JSON.stringify(timeline) };
@@ -1037,7 +1330,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     />
   ), [previewData, isActive, onCheckActive, selectedBlock, isMobile, resetKey]);
 
-  const settingsContentProps = { profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, doorImages };
+  const settingsContentProps = { profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, doorImages, introVariants, defaultIntroVariant };
 
   // ── MOBILE ────────────────────────────────────────────────────────────────────
   if (isMobile) {

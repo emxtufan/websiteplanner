@@ -99,10 +99,29 @@ export default function InvitationMarketplace({
     fetchDynamic();
   }, []);
 
-  // Afișează EXCLUSIV template-urile pentru tipul de eveniment curent — fără filtru/tab
-  const filteredTemplates = [...hardcodedTemplates, ...dynamicTemplates].filter(
-    t => t.category === eventType
-  );
+  // ── Compatibilitate eveniment ↔ template ─────────────────────────────────
+  // Definește ce tag-uri sunt acceptate pentru fiecare tip de eveniment.
+  // Kids/zi-de-naștere acceptă și template-urile de botez (vizual identice).
+  const EVENT_COMPATIBLE_TAGS: Record<string, string[]> = {
+    wedding:     ['wedding'],
+    baptism:     ['baptism'],
+    kids:        ['kids', 'baptism', 'birthday'],
+    anniversary: ['anniversary', 'wedding'],
+    office:      ['office', 'wedding'],
+  };
+
+  function isCompatible(t: any): boolean {
+    const allowed = EVENT_COMPATIBLE_TAGS[eventType] ?? [eventType];
+    // Dacă template-ul are tags explicit definite, le folosim drept criteriu
+    if (t.tags && t.tags.length > 0) {
+      return t.tags.some((tag: string) => allowed.includes(tag));
+    }
+    // Fără tags → fallback la category
+    return allowed.includes(t.category);
+  }
+
+  // Afișează EXCLUSIV template-urile compatibile cu tipul de eveniment curent
+  const filteredTemplates = [...hardcodedTemplates, ...dynamicTemplates].filter(isCompatible);
 
   const handleSelect = (template: any) => {
       if (onCheckActive && !onCheckActive()) return;

@@ -222,6 +222,10 @@ export interface UserProfile {
   castleInviteMiddle?:   string;
   castleInviteBottom?:   string;
   castleInviteTag?:      string;
+  jungleHeaderText?:     string;
+  jungleOverlayText?:    string;
+  jungleFooterText?:     string;
+  jungleIntroStyle?:     'dissolve';
 }
 
 export interface PlanLimits {

@@ -740,7 +740,7 @@ const DISSOLVE_FRAGMENT = `
   }
 `;
 
-const DissolveIntro: React.FC<{
+type JungleIntroProps = {
   castleUrl?: string; castleUrlMobile?: string;
   childName: string; partner2Name?: string; subtitle: string; welcomeText: string;
   inviteTop?: string;
@@ -749,14 +749,20 @@ const DissolveIntro: React.FC<{
   inviteTag?: string;
   dateStr?: string;
   inviteText?: string;
+  headerText?: string;
+  footerText?: string;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
   onRevealed?: () => void;
-}> = ({ castleUrl, castleUrlMobile, childName, partner2Name, subtitle, welcomeText, inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr, inviteText, themeColors, onRevealed }) => {
+};
+
+const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile, childName, partner2Name, subtitle, welcomeText, inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr, inviteText, headerText, footerText, themeColors, onRevealed }) => {
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const heroRef    = useRef<HTMLDivElement>(null);
   const mediaRef   = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const wordRefs   = useRef<HTMLSpanElement[]>([]);
+  const headerRef  = useRef<HTMLDivElement>(null);
+  const footerRef  = useRef<HTMLDivElement>(null);
   const musicFired = useRef(false);
   const matRef     = useRef<THREE.ShaderMaterial | null>(null);
 
@@ -867,6 +873,9 @@ const DissolveIntro: React.FC<{
         const baseProgress = Math.max(0, Math.min(1, self.progress));
         const boostedProgress = Math.min(1, 0.04 + baseProgress * 1.12);
         progress = Math.min(0.30 + boostedProgress * 0.98, 1.02);
+        const textOpacity = baseProgress < 0.58 ? 1 : Math.max(0, 1 - ((baseProgress - 0.58) / 0.2));
+        if (headerRef.current) headerRef.current.style.opacity = String(textOpacity);
+        if (footerRef.current) footerRef.current.style.opacity = String(textOpacity);
 
         if (!musicFired.current && baseProgress > 0.08) {
           musicFired.current = true;
@@ -994,9 +1003,7 @@ const DissolveIntro: React.FC<{
               <span style={{ fontFamily: SANS, fontSize: isMob ? 14 : 16, margin: '0 10px', verticalAlign: 'middle', opacity: 0.7 }}>&</span>
               {initial2}
             </div>
-            <div style={{ marginTop: 10, fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: '0.42em', textTransform: 'uppercase', color: '#666666' }}>
-              Save The Date
-            </div>
+            
           </div>
         </div>
       </div>
@@ -1055,8 +1062,9 @@ const DissolveIntro: React.FC<{
         }}
       >
         <div
+          ref={headerRef}
           style={{
-            position: 'absolute',
+            position: 'fixed',
             top: isMob ? 30 : 34,
             left: 0,
             width: '100%',
@@ -1070,16 +1078,19 @@ const DissolveIntro: React.FC<{
             overflowWrap: 'anywhere',
             textShadow: '0 6px 18px rgba(0,0,0,0.28)',
             fontFamily: '"Tangerine", cursive', // ✅ corect
+            opacity: 1,
+            transition: 'opacity 180ms linear',
 
           }}
         >
-          Save The Date
+          {headerText || 'Save The Date'}
         </div>
 
         <div
+          ref={footerRef}
           style={{
-            position: 'absolute',
-            bottom: isMob ? 120 : 120,
+            position: 'fixed',
+            bottom: isMob ? 30 : 30,
             left: 0,
             width: '100%',
             padding: isMob ? '0 20px' : '0 32px',
@@ -1092,9 +1103,11 @@ const DissolveIntro: React.FC<{
             whiteSpace: 'normal',
             overflowWrap: 'anywhere',
             textShadow: '0 6px 18px rgba(0,0,0,0.28)',
+            opacity: 1,
+            transition: 'opacity 180ms linear',
           }}
         >
-          {monoDate}
+          {footerText || monoDate}
         </div>
       </div>
 
@@ -1193,11 +1206,16 @@ export const CASTLE_DEFAULTS = {
   heroBgImage:          undefined as string | undefined,
   castleVideoUrl:       undefined as string | undefined,
   heroBgImageMobile:    undefined as string | undefined,
+  introVariant:         undefined as string | undefined,
   heroContentImage:       undefined as string | undefined,
   heroContentImageMobile: undefined as string | undefined,
   castleIntroSubtitle:  'into my little kingdom',
   castleIntroWelcome:   'WELCOME',
-  castleInviteTop:      'Cu multă bucurie vă anunțăm',
+  castleInviteTop:      'dqwdqwdwqdqdqw dqwdqwdqwd dqwdqwdqw',
+  jungleHeaderText:     'Save The Date',
+  jungleOverlayText:    'Cu bucurie vă invităm să fiți parte din povestea noastră.',
+  jungleFooterText:     '',
+  jungleIntroStyle:     'dissolve' as const,
   castleInviteMiddle:   '',
   castleInviteBottom:   'va fii botezată',
   castleInviteTag:      '✦ deschide porțile ✦',
@@ -1484,12 +1502,17 @@ const JO: React.FC<InvitationTemplateProps & {
     castleIntroSubtitle: pr.castleIntroSubtitle  ?? CASTLE_DEFAULTS.castleIntroSubtitle,
     castleIntroWelcome:  pr.castleIntroWelcome   ?? CASTLE_DEFAULTS.castleIntroWelcome,
     castleInviteTop:     pr.castleInviteTop      ?? CASTLE_DEFAULTS.castleInviteTop,
+    jungleHeaderText:    pr.jungleHeaderText     ?? CASTLE_DEFAULTS.jungleHeaderText,
+    jungleOverlayText:   pr.jungleOverlayText    ?? CASTLE_DEFAULTS.jungleOverlayText,
+    jungleFooterText:    pr.jungleFooterText     ?? CASTLE_DEFAULTS.jungleFooterText,
+    jungleIntroStyle:    pr.jungleIntroStyle     ?? CASTLE_DEFAULTS.jungleIntroStyle,
     castleInviteMiddle:  pr.castleInviteMiddle   ?? CASTLE_DEFAULTS.castleInviteMiddle,
     castleInviteBottom:  pr.castleInviteBottom   ?? CASTLE_DEFAULTS.castleInviteBottom,
     castleInviteTag:     pr.castleInviteTag      ?? CASTLE_DEFAULTS.castleInviteTag,
     castleVideoUrl:      pr.castleVideoUrl       ?? CASTLE_DEFAULTS.castleVideoUrl,
     heroBgImage:         pr.heroBgImage          ?? CASTLE_DEFAULTS.heroBgImage,
     heroBgImageMobile:   pr.heroBgImageMobile    ?? CASTLE_DEFAULTS.heroBgImageMobile,
+    introVariant:        pr.introVariant          ?? CASTLE_DEFAULTS.introVariant,
     heroContentImage:       pr.heroContentImage       ?? CASTLE_DEFAULTS.heroContentImage,
     heroContentImageMobile: pr.heroContentImageMobile ?? CASTLE_DEFAULTS.heroContentImageMobile,
   };
@@ -1586,11 +1609,16 @@ const JO: React.FC<InvitationTemplateProps & {
     }
   }, [profile.customSections]);
 
-  // Imagini uși — din admin per temă activă
+  // ── Imagini intro — din introVariants (regal) ────────────────────────────
+  const introVariants: Record<string, { label: string; desktop?: string; mobile?: string }> = globalConfig.introVariants || {};
+  const activeIntroVariantId = p.introVariant || globalConfig.defaultIntroVariant || Object.keys(introVariants)[0];
+  const activeIntroVariant = (introVariants[activeIntroVariantId] || {}) as { label?: string; desktop?: string; mobile?: string };
+
+  // Fallback: dacă nu există introVariants (config vechi), folosim heroBgImage/themeImages
   const themeImgs   = globalConfig.themeImages?.[activeColorTheme] || {};
   const defaultImgs = globalConfig.themeImages?.['default'] || {};
-  const heroBgImage       = themeImgs.desktop || defaultImgs.desktop || globalConfig.heroBgImage;
-  const heroBgImageMobile = themeImgs.mobile  || defaultImgs.mobile  || globalConfig.heroBgImageMobile;
+  const heroBgImage       = activeIntroVariant.desktop || themeImgs.desktop || defaultImgs.desktop || globalConfig.heroBgImage;
+  const heroBgImageMobile = activeIntroVariant.mobile  || themeImgs.mobile  || defaultImgs.mobile  || globalConfig.heroBgImageMobile;
   const [heroContentImage, setHeroContentImage] = useState<string | undefined>(p.heroContentImage);
   const [heroContentImageMobile, setHeroContentImageMobile] = useState<string | undefined>(p.heroContentImageMobile);
   useEffect(() => { setHeroContentImage((profile as any).heroContentImage ?? CASTLE_DEFAULTS.heroContentImage); }, [(profile as any).heroContentImage]);
@@ -1599,10 +1627,10 @@ const JO: React.FC<InvitationTemplateProps & {
   // Alias-uri clare pentru câmpurile de profil (din `p`, nu din `profile`)
   const castleSubtitle   = p.castleIntroSubtitle;
   const castleWelcome    = p.castleIntroWelcome;
-  const castleInviteTop  = p.castleInviteTop;
-  const castleInviteMid  = p.castleInviteMiddle;
-  const castleInviteBot  = p.castleInviteBottom;
-  const castleInviteTag  = p.castleInviteTag;
+  const jungleHeaderText = p.jungleHeaderText;
+  const jungleOverlayText = p.jungleOverlayText;
+  const jungleFooterText = p.jungleFooterText;
+  const jungleIntroStyle = p.jungleIntroStyle;
 
   const [showIntro, setShowIntro] = useState(!editMode && !(data.project as any)?.previewMode);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -1714,26 +1742,30 @@ const JO: React.FC<InvitationTemplateProps & {
       )}
 
       {showIntro && (
-        <DissolveIntro
-          castleUrl={heroBgImage}
-          castleUrlMobile={heroBgImageMobile}
-          childName={p.partner1Name || 'El'}
-          partner2Name={p.partner2Name || 'Ea'}
-          subtitle={castleSubtitle}
-          welcomeText={castleWelcome}
-          inviteTop={castleInviteTop}
-          inviteMiddle={castleInviteMid}
-          inviteBottom={castleInviteBot}
-          inviteTag={castleInviteTag}
-          dateStr={dateStr}
-          inviteText={[castleInviteTop, castleInviteMid || dateStr, castleInviteBot].filter(Boolean).join(' ')}
-          themeColors={{ pinkDark: PINK_DARK, pinkL: PINK_L, pinkXL: PINK_XL, gold: GOLD }}
-          onRevealed={() => {
-            if (audioAllowedRef.current && musicPlayRef.current) {
-              musicPlayRef.current.play();
-            }
-          }}
-        />
+        <>
+          <DissolveIntro
+            castleUrl={heroBgImage}
+            castleUrlMobile={heroBgImageMobile}
+            childName={p.partner1Name || 'El'}
+            partner2Name={p.partner2Name || 'Ea'}
+            subtitle={castleSubtitle}
+            welcomeText={castleWelcome}
+            inviteTop={undefined}
+            inviteMiddle={undefined}
+            inviteBottom={undefined}
+            inviteTag={undefined}
+            dateStr={dateStr}
+            inviteText={jungleOverlayText}
+            headerText={jungleHeaderText}
+            footerText={jungleFooterText}
+            themeColors={{ pinkDark: PINK_DARK, pinkL: PINK_L, pinkXL: PINK_XL, gold: GOLD }}
+            onRevealed={() => {
+              if (audioAllowedRef.current && musicPlayRef.current) {
+                musicPlayRef.current.play();
+              }
+            }}
+          />
+        </>
       )}
 
       <div

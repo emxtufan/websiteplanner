@@ -23,7 +23,7 @@ interface CanvasItemProps {
   onRotateStart?: (id: string, coords: { x: number, y: number }) => void;
   onResizeStart?: (id: string, coords: { x: number, y: number }) => void;
   onSeatClick?: (elId: string, idx: number) => void;
-  onTableClick?: (elId: string) => void; // NOU: click pe corpul mesei (fără sidebar)
+  onTableClick?: (elId: string) => void;
   onDragOver?: (id: string) => void;
   onDragLeave?: () => void;
   onDrop?: (id: string, data: string) => void;
@@ -112,6 +112,12 @@ const CanvasItem = memo(({
     };
   };
 
+  // Handler comun selectare + drag (mouse și touch)
+  const handleSelectStart = (clientX: number, clientY: number) => {
+    onTableClick?.(el.id);
+    onSelect?.(el.id, { x: clientX, y: clientY });
+  };
+
   return (
     <>
       <div
@@ -137,9 +143,22 @@ const CanvasItem = memo(({
             target.closest('.control-bar')
           ) return;
           e.stopPropagation();
-          // NOU: cheamă onTableClick (doar selectează, fără a deschide sidebar-ul)
-          onTableClick?.(el.id);
-          onSelect?.(el.id, { x: e.clientX, y: e.clientY });
+          handleSelectStart(e.clientX, e.clientY);
+        }}
+        onTouchStart={e => {
+          if (isGhost) return;
+          const target = e.target as HTMLElement;
+          if (
+            target.closest('.seat-handle') ||
+            target.closest('.rotate-handle') ||
+            target.closest('.delete-handle') ||
+            target.closest('.resize-handle') ||
+            target.closest('.control-bar')
+          ) return;
+          // stopPropagation previne activarea panning-ului în Canvas.handleTouchStart
+          e.stopPropagation();
+          const touch = e.touches[0];
+          handleSelectStart(touch.clientX, touch.clientY);
         }}
       >
         {!isRoom && (
@@ -247,8 +266,8 @@ const CanvasItem = memo(({
               onDragStart={e => { if (isGhost) return; e.dataTransfer.setData("seatTransfer", JSON.stringify({ fromElId: el.id, fromIdx: idx })); }} 
               onClick={e => {
                 if (!isGhost) {
-                  e.stopPropagation(); // previne propagarea la corpul mesei
-                  onSeatClick?.(el.id, idx); // deschide sidebar-ul
+                  e.stopPropagation();
+                  onSeatClick?.(el.id, idx);
                 }
               }} 
               onMouseEnter={(e) => {

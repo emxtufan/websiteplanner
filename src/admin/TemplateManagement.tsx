@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Save, Upload, Check, Loader2, Trash2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, getCastleTheme, CastleColorTheme , ROMANTIC_THEMES} from '../components/invitations/castleDefaults';
+import { Save, Upload, Check, Loader2, Trash2, ChevronDown, ChevronUp, RefreshCw, Plus } from 'lucide-react';
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, getCastleTheme, getLordTheme, CastleColorTheme , ROMANTIC_THEMES, LORD_MONO_THEMES } from '../components/invitations/castleDefaults';
 
 const API_URL =
   (typeof window !== 'undefined' && (window as any).__API_URL__) ||
@@ -12,12 +12,15 @@ const tok = () =>
 
 // ── Tipuri ────────────────────────────────────────────────────────────────────
 interface ThemeImages { desktop?: string; mobile?: string; }
+interface IntroVariant { label: string; desktop?: string; mobile?: string; }
 interface VariantConfig {
   colorTheme: string;
   themeImages: Record<string, ThemeImages>;
   heroBgImage?: string;
   heroBgImageMobile?: string;
   videoUrl?: string;
+  introVariants: Record<string, IntroVariant>;
+  defaultIntroVariant?: string;
 }
 type AllConfigs = Record<string, VariantConfig>;
 
@@ -26,11 +29,12 @@ const VARIANTS = [
   { id: 'castle-magic',      label: 'Castle Magic',   emoji: '🏰', color: '#be185d', bg: '#fdf2f8', desc: 'Versiunea clasică roz pentru botez' },
   { id: 'castle-magic-boys', label: 'Boy Castle',     emoji: '🏯', color: '#1d4ed8', bg: '#eff6ff', desc: 'Versiunea pentru băieți' },
   { id: 'castle-magic-girl', label: 'Girl Castle',    emoji: '🌸', color: '#7c3aed', bg: '#faf5ff', desc: 'Versiunea pentru fete' },
+  { id: 'lord-effects',      label: 'Lord Effects',   emoji: '👑', color: '#1d4ed8', bg: '#eff6ff', desc: 'Varianta Lord Effects cu imagini per temă' },
   { id: 'romantic', label: 'Romantic',    emoji: '🌸', color: '#7f0000', bg: '#faf5ff', desc: 'Versiunea pentru fete' },
   { id: 'regal',         label: 'Regal',        emoji: '👑', color: '#92400e', bg: '#fffbeb', desc: 'Template royal cu video intro' },
 ];
 
-const emptyConfig = (): VariantConfig => ({ colorTheme: 'default', themeImages: {} });
+const emptyConfig = (): VariantConfig => ({ colorTheme: 'default', themeImages: {}, introVariants: {} });
 
 // ── Component ─────────────────────────────────────────────────────────────────
 const TemplateManagement: React.FC = () => {
@@ -39,7 +43,7 @@ const TemplateManagement: React.FC = () => {
   const [saving,   setSaving]   = useState<Record<string, boolean>>({});
   const [saved,    setSaved]    = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    'castle-magic': true, 'castle-magic-boys': true, 'castle-magic-girl': true,
+    'castle-magic': true, 'castle-magic-boys': true, 'castle-magic-girl': true, 'lord-effects': true,
   });
 
   // ── Load all variants on mount ─────────────────────────────────────────────
@@ -61,7 +65,7 @@ const TemplateManagement: React.FC = () => {
       }
       setConfigs(prev => ({
         ...prev,
-        [id]: { colorTheme: d.colorTheme || 'default', themeImages, heroBgImage: d.heroBgImage, heroBgImageMobile: d.heroBgImageMobile, videoUrl: d.videoUrl || undefined },
+        [id]: { colorTheme: d.colorTheme || 'default', themeImages, heroBgImage: d.heroBgImage, heroBgImageMobile: d.heroBgImageMobile, videoUrl: d.videoUrl || undefined, introVariants: d.introVariants || {}, defaultIntroVariant: d.defaultIntroVariant || undefined },
       }));
     } catch {}
     finally { setLoading(prev => ({ ...prev, [id]: false })); }
@@ -78,11 +82,13 @@ const TemplateManagement: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tok()}` },
         body: JSON.stringify({
-          colorTheme:        cfg.colorTheme,
-          themeImages:       cfg.themeImages,
-          heroBgImage:       defaultImgs.desktop || null,
-          heroBgImageMobile: defaultImgs.mobile  || null,
-          videoUrl:          cfg.videoUrl || null,
+          colorTheme:          cfg.colorTheme,
+          themeImages:         cfg.themeImages,
+          heroBgImage:         defaultImgs.desktop || null,
+          heroBgImageMobile:   defaultImgs.mobile  || null,
+          videoUrl:            cfg.videoUrl || null,
+          introVariants:       cfg.introVariants || {},
+          defaultIntroVariant: cfg.defaultIntroVariant || null,
         }),
       });
       setSaved(prev => ({ ...prev, [id]: true }));
@@ -144,6 +150,32 @@ Fișierele vor fi șterse permanent.`)) return;
     });
   };
 
+  // ── Intro Variants helpers (regal) ────────────────────────────────────────
+  const addIntroVariant = (variantId: string) => {
+    const id = `v_${Date.now()}`;
+    setConfigs(prev => {
+      const cfg = prev[variantId] || emptyConfig();
+      return { ...prev, [variantId]: { ...cfg, introVariants: { ...cfg.introVariants, [id]: { label: 'Variantă nouă' } } } };
+    });
+  };
+
+  const updateIntroVariant = (variantId: string, ivId: string, patch: Partial<IntroVariant>) => {
+    setConfigs(prev => {
+      const cfg = prev[variantId] || emptyConfig();
+      return { ...prev, [variantId]: { ...cfg, introVariants: { ...cfg.introVariants, [ivId]: { ...cfg.introVariants[ivId], ...patch } } } };
+    });
+  };
+
+  const removeIntroVariant = (variantId: string, ivId: string) => {
+    setConfigs(prev => {
+      const cfg = { ...(prev[variantId] || emptyConfig()) };
+      const ivs = { ...cfg.introVariants };
+      delete ivs[ivId];
+      const defaultIv = cfg.defaultIntroVariant === ivId ? undefined : cfg.defaultIntroVariant;
+      return { ...prev, [variantId]: { ...cfg, introVariants: ivs, defaultIntroVariant: defaultIv } };
+    });
+  };
+
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 28 }}>
       <style>{`
@@ -185,7 +217,7 @@ Fișierele vor fi șterse permanent.`)) return;
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace', background: '#f3f4f6', padding: '2px 8px', borderRadius: 6 }}>{variant.id}</span>
                 </div>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>
-                  {variant.desc} · Temă implicită: <strong style={{ color: variant.color }}>{getCastleTheme(cfg.colorTheme).emoji} {getCastleTheme(cfg.colorTheme).name}</strong>
+                  {variant.desc} · Temă implicită: <strong style={{ color: variant.color }}>{variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).emoji : getCastleTheme(cfg.colorTheme).emoji} {variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).name : getCastleTheme(cfg.colorTheme).name}</strong>
                   {themesWithImgs > 0 && <> · <span style={{ color: '#4f46e5' }}>🚪 {themesWithImgs} teme cu imagini</span></>}
                 </p>
               </div>
@@ -221,42 +253,94 @@ Fișierele vor fi șterse permanent.`)) return;
         <span style={{ fontSize: 13 }}>Se încarcă configurarea...</span>
       </div>
     ) : variant.id === 'regal' ? (
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🖼 Imagine intro</span>
-          <span style={{ fontSize: 11, color: '#9ca3af' }}>— folosită direct în intro-ul cu dissolve</span>
+      // ── Regal: intro variants grid ────────────────────────────────────────
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {/* Header + Add button */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <span style={{ fontSize: 14, fontWeight: 700, color: '#111' }}>🖼 Variante Intro</span>
+            <span style={{ fontSize: 11, color: '#9ca3af', marginLeft: 8 }}>— utilizatorul alege varianta preferată din Settings</span>
+          </div>
+          <button type="button" onClick={() => addIntroVariant(variant.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9, border: '1.5px dashed #92400e44', background: '#fffbeb', color: '#92400e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+            <Plus size={13} /> Adaugă variantă
+          </button>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10 }}>
-          <MiniImageField
-            label="Desktop 16:9"
-            url={cfg.themeImages?.default?.desktop || cfg.heroBgImage}
-            aspect="56.25%"
-            accentColor="#92400e"
-            onUpload={url => {
-              setThemeImage(variant.id, 'default', 'desktop', url);
-              patchConfig(variant.id, { heroBgImage: url, videoUrl: undefined });
-            }}
-            onRemove={() => {
-              setThemeImage(variant.id, 'default', 'desktop', undefined);
-              patchConfig(variant.id, { heroBgImage: undefined });
-            }}
-          />
-          <MiniImageField
-            label="Mobile 9:16"
-            url={cfg.themeImages?.default?.mobile || cfg.heroBgImageMobile}
-            aspect="177.78%"
-            accentColor="#92400e"
-            width={52}
-            onUpload={url => {
-              setThemeImage(variant.id, 'default', 'mobile', url);
-              patchConfig(variant.id, { heroBgImageMobile: url, videoUrl: undefined });
-            }}
-            onRemove={() => {
-              setThemeImage(variant.id, 'default', 'mobile', undefined);
-              patchConfig(variant.id, { heroBgImageMobile: undefined });
-            }}
-          />
+
+        {Object.keys(cfg.introVariants).length === 0 && (
+          <div style={{ textAlign: 'center', padding: '32px 0', color: '#9ca3af', fontSize: 13, border: '1.5px dashed #e5e7eb', borderRadius: 14 }}>
+            Nicio variantă. Apasă <strong>Adaugă variantă</strong> pentru a începe.
+          </div>
+        )}
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+          {Object.entries(cfg.introVariants).map(([ivId, iv]: [string, IntroVariant]) => {
+            const isDefault = cfg.defaultIntroVariant === ivId;
+            return (
+              <div key={ivId} style={{ borderRadius: 14, border: `1.5px solid ${isDefault ? '#92400e66' : '#e5e7eb'}`, overflow: 'hidden', background: isDefault ? '#fffbeb' : 'white' }}>
+                {/* Header variantă */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid rgba(0,0,0,0.06)' }}>
+                  <input
+                    value={iv.label}
+                    onChange={e => updateIntroVariant(variant.id, ivId, { label: e.target.value })}
+                    style={{ flex: 1, border: 'none', background: 'transparent', fontSize: 13, fontWeight: 700, color: '#111', outline: 'none', minWidth: 0 }}
+                    placeholder="Nume variantă..."
+                  />
+                  {isDefault ? (
+                    <span style={{ fontSize: 9, fontWeight: 700, background: '#92400e', color: 'white', borderRadius: 99, padding: '2px 7px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+                      DEFAULT
+                    </span>
+                  ) : (
+                    <button type="button"
+                      onClick={() => patchConfig(variant.id, { defaultIntroVariant: ivId })}
+                      style={{ fontSize: 9, fontWeight: 700, background: 'transparent', color: '#9ca3af', border: '1px solid #e5e7eb', borderRadius: 99, padding: '2px 8px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      SET DEFAULT
+                    </button>
+                  )}
+                  <button type="button" onClick={() => removeIntroVariant(variant.id, ivId)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: 2 }} title="Șterge varianta">
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+
+                {/* Upload slots desktop + mobile */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, padding: '12px 14px' }}>
+                  <MiniImageField
+                    label="Desktop 16:9"
+                    url={iv.desktop}
+                    aspect="56.25%"
+                    accentColor="#92400e"
+                    onUpload={url => updateIntroVariant(variant.id, ivId, { desktop: url })}
+                    onRemove={() => updateIntroVariant(variant.id, ivId, { desktop: undefined })}
+                  />
+                  <MiniImageField
+                    label="Mobile 9:16"
+                    url={iv.mobile}
+                    aspect="177.78%"
+                    accentColor="#92400e"
+                    width={52}
+                    onUpload={url => updateIntroVariant(variant.id, ivId, { mobile: url })}
+                    onRemove={() => updateIntroVariant(variant.id, ivId, { mobile: undefined })}
+                  />
+                </div>
+
+                {/* Warning dacă nu are imagini */}
+                {!iv.desktop && !iv.mobile && (
+                  <div style={{ padding: '0 14px 10px', fontSize: 9, color: '#b45309' }}>
+                    ⚠ Nicio imagine — varianta nu va fi afișată utilizatorilor
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
+
+        {/* Info box */}
+        {Object.keys(cfg.introVariants).length > 0 && (
+          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', fontSize: 11, color: '#166534' }}>
+            💡 Varianta marcată <strong>DEFAULT</strong> apare automat dacă utilizatorul nu a ales nimic. Apasă <strong>Salvează</strong> după orice modificare.
+          </div>
+        )}
       </div>
     ) : (
       // Secțiunea imagini uși per temă
@@ -267,11 +351,13 @@ Fișierele vor fi șterse permanent.`)) return;
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-          {(variant.id === 'castle-magic-boys'
+          {(variant.id === 'lord-effects'
+            ? LORD_MONO_THEMES
+            : variant.id === 'castle-magic-boys'
             ? BOY_THEMES
             : variant.id === 'castle-magic-girl'
-              ? GIRL_THEMES
-              : variant.id === 'romantic'
+                ? GIRL_THEMES
+                : variant.id === 'romantic'
                 ? ROMANTIC_THEMES
                 : CASTLE_THEMES
           ).map(theme => {

@@ -68,6 +68,8 @@ const SCRIPT = "'Montserrat', cursive";
 const SANS   = "'Montserrat', sans-serif";
 const INTO_TEXT = "'ROMANTIC', cursive";
 const HeroText = "'Cormorant Garamond', serif"
+const FamilyText ="'Great Vibes', cursive "
+
 // ── Music player ──────────────────────────────────────────────────────────────
 declare global { interface Window { YT: any; onYouTubeIframeAPIReady: () => void; } }
 let ytApiLoaded_cm  = false;
@@ -378,13 +380,15 @@ const WazeButton: React.FC<{
             color: PINK_DARK, letterSpacing: '0.15em', textTransform: 'uppercase' as const,
           }}
         >
+          
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
             <path d="M20.54 7.037C19.44 3.96 16.51 2 13.24 2c-4.41 0-8 3.36-8.12 7.77-.06 2.36.82 4.6 2.46 6.27l.67.69c.38.4.6.93.6 1.49v.77h1v2h4v-2h1v-.77c0-.56.22-1.1.6-1.49l.66-.68a8.14 8.14 0 0 0 2.29-4.11.86.86 0 0 0 .03-.23 8.01 8.01 0 0 0 2.1-4.67z" fill={PINK_DARK} opacity="0.2"/>
             <circle cx="9.5" cy="11.5" r="1.5" fill={PINK_DARK}/>
             <circle cx="14.5" cy="11.5" r="1.5" fill={PINK_DARK}/>
             <path d="M10 15s.75 1 2 1 2-1 2-1" stroke={PINK_DARK} strokeWidth="1.5" strokeLinecap="round"/>
           </svg>
-          Deschide în Waze
+          
+          {editMode ? 'Deschide în Waze · click pentru a edita link' : 'Deschide în Waze'}
         </a>
       ) : editMode ? (
         <button type="button" onClick={() => setOpen(true)}
@@ -396,7 +400,7 @@ const WazeButton: React.FC<{
             fontFamily: SANS, fontSize: '0.6rem', fontWeight: 700,
             color: MUTED, letterSpacing: '0.15em', textTransform: 'uppercase' as const,
           }}>
-          + Adaugă link Waze
+          + Adaugă link Waze · click pentru a edita link
         </button>
       ) : null}
     </div>
@@ -1021,16 +1025,16 @@ const AudioPermissionModal: React.FC<{ childName: string; onAllow: () => void; o
 
 // ── Template Defaults — sursa unică de adevăr ────────────────────────────────
 export const CASTLE_DEFAULTS = {
-  partner1Name:         'Printul Adam',
+  partner1Name:         'Ema Sofia Alexandra',
   heroBgImage:          undefined as string | undefined,
   heroBgImageMobile:    undefined as string | undefined,
   heroContentImage:       undefined as string | undefined,
   heroContentImageMobile: undefined as string | undefined,
   castleIntroSubtitle:  'into my little kingdom',
   castleIntroWelcome:   'WELCOME',
-  castleInviteTop:      'Cu multă bucurie vă anunțăm',
+  castleInviteTop:      'Cu inimile pline de bucurie',
   castleInviteMiddle:   '',
-  castleInviteBottom:   'va fii botezată',
+  castleInviteBottom:   'vă anunțăm că va primi Taina Botezului.',
   castleInviteTag:      '✦ deschide porțile ✦',
   welcomeText:          'Vă invităm cu drag',
   celebrationText:      'la botezul prințesei noastre',
@@ -1039,25 +1043,13 @@ export const CASTLE_DEFAULTS = {
   rsvpButtonText:       'Confirmă Prezența',
   showWelcomeText:      true,
   showCelebrationText:  true,
-  showTimeline:         false,
+  showTimeline:         true,
   showCountdown:        false,
   colorTheme:           'powder_blue',
 };
 
-export const CASTLE_DEFAULT_BLOCKS = [
-  // ── Muzică ─────────────────────────────────────────────────────────────────
-  {
-    id: 'def-music',
-    type: 'music' as const,
-    show: true,
-    musicTitle: 'Melodia Zilei',
-    musicArtist: 'Artist',
-    musicUrl: '',
-    musicType: 'none' as const,
-  },
-
-  // ── Foto principală — portret arc, fade jos ────────────────────────────────
-  {
+export const CASTLE_DEFAULT_BLOCKS: InvitationBlock[] = [
+ {
     id: 'def-photo-1',
     type: 'photo' as const,
     show: true,
@@ -1067,122 +1059,45 @@ export const CASTLE_DEFAULT_BLOCKS = [
     photoClip: 'arch' as const,
     photoMasks: ['fade-b'] as any,
   },
-
-  // ── Text poetic ────────────────────────────────────────────────────────────
-  {
-    id: 'def-text-1',
-    type: 'text' as const,
-    show: true,
-    content: 'O poveste magică începe odată cu venirea pe lume a celui mai iubit copil. Vă așteptăm cu drag să fiți parte din această zi de poveste.',
-  },
-
-  // ── Countdown ──────────────────────────────────────────────────────────────
-  {
-  id: 'def-countdown',
-  type: 'countdown' as const,
-  show: true,
-  countdownTitle: 'Timp rămas până la Marele Eveniment',  // adaugă aici
-},
-
-  // ── Calendar ───────────────────────────────────────────────────────────────
-  {
-    id: 'def-calendar',
-    type: 'calendar' as const,
-    show: true,
-  },
-
-  // ── Foto 2 — peisaj ────────────────────────────────────────────────────────
-  {
+  { id: 'def-text-1', type: 'text', show: true, content: 'O poveste magică începe odată cu venirea pe lume a celui mai iubit copil. Vă așteptăm cu drag să fiți parte din această zi de poveste.' },
+  { id: 'def-countdown', type: 'countdown', show: true, countdownTitle: 'Timp rămas până la Marele Eveniment' },
+  { id: 'def-calendar', type: 'calendar', show: true },
+  { id: 'def-divider-1', type: 'divider', show: true },
+  { id: 'def-text-2', type: 'text', show: true, content: 'Sub ocrotirea și dragostea celor care ne îndrumă pașii și ne sunt alături la fiecare început' },
+  { id: 'def-family-1', type: 'family', show: true, label: 'Părinții', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) },
+  { id: 'def-family-1', type: 'family', show: true, label: 'Nasii', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Nasa', name2: 'Nasul' }]) },
+{ id: 'def-text-1', type: 'text', show: true, content: 'Momentele speciale ale acestei zile vor avea loc în următoarele locații:' },
+  { id: 'def-location-1', type: 'location', show: true, label: 'Slujba Sfintei Taine a Botezului', time: '15:00', locationName: 'Manastirea Pasarea', locationAddress: 'Strada Basmului nr. 1', wazeLink: 'https://www.waze.com/ro/live-map/' },
+  { id: 'def-divider-1', type: 'divider', show: true },
+ { id: 'def-location-1', type: 'location', show: true, label: 'Petrecerea', time: '20:00', locationName: 'Restaurant Monato', locationAddress: ' Strada Plaiului 1, 085100', wazeLink: 'https://www.waze.com/ro/live-map/' },
+{ id: 'def-divider-1', type: 'divider', show: true },
+{
     id: 'def-photo-2',
     type: 'photo' as const,
     show: true,
     imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
-    altText: 'Decorațiuni',
-    aspectRatio: '16:9' as const,
-    photoClip: 'rounded' as const,
+    altText: 'Fotografia prințesei',
+    aspectRatio: '1:1' as const,
+    photoClip: 'blob' as const,
     photoMasks: [] as any,
   },
 
-  // ── Locație Biserică ───────────────────────────────────────────────────────
-  {
-    id: 'def-loc-church',
-    type: 'location' as const,
-    show: true,
-    label: 'Slujba de Botez',
-    time: '11:00',
-    locationName: 'Biserica Sfânta Maria',
-    locationAddress: 'Str. Bisericii nr. 5, București',
-    wazeLink: '',
-  },
+{ id: 'def-text-1', type: 'text', show: true, content: 'O piesă de suflet, aleasă cu drag pentru această zi de neuitat, care ne va însoți emoțiile și bucuria fiecărui moment.' },
+  { id: 'def-music-1', type: 'music', show: true, musicTitle: '', musicArtist: '', musicUrl: '', musicType: 'none' },
+{ id: 'def-divider-1', type: 'divider', show: true },
+{ id: 'def-text-1', type: 'text', show: true, content: 'Ne-ar bucura să ne confirmați prezența dumneavoastră, pentru o bună organizare a evenimentului.' },
+  { id: 'def-rsvp-1', type: 'rsvp', show: true, label: 'Confirmă Prezența' },
+{ id: 'def-divider-1', type: 'divider', show: true },
 
-  // ── Locație Petrecere ──────────────────────────────────────────────────────
-  {
-    id: 'def-loc-party',
-    type: 'location' as const,
-    show: true,
-    label: 'Petrecere',
-    time: '14:00',
-    locationName: 'Salon Castelul Magic',
-    locationAddress: 'Str. Basmului nr. 1, București',
-    wazeLink: '',
-  },
 
-  // ── Foto 3 — cerc cu vignetă ───────────────────────────────────────────────
-  {
-    id: 'def-photo-3',
-    type: 'photo' as const,
-    show: true,
-    imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
-    altText: 'Fotografie',
-    aspectRatio: '1:1' as const,
-    photoClip: 'circle' as const,
-    photoMasks: ['vignette'] as any,
-  },
 
-  // ── Cadouri ────────────────────────────────────────────────────────────────
-  {
-    id: 'def-gift',
-    type: 'gift' as const,
-    show: true,
-    sectionTitle: 'Sugestie de cadou',
-    content: 'Cel mai frumos cadou este prezența voastră alături de noi. Dacă doriți să contribuiți la viitorul prințesei noastre, vă lăsăm datele de mai jos.',
-    iban: 'RO00 BANK 0000 0000 0000 0000',
-    ibanName: 'Familia Ionescu',
-  },
 
-  // ── Foto finală — blob ─────────────────────────────────────────────────────
-  {
-    id: 'def-photo-4',
-    type: 'photo' as const,
-    show: true,
-    imageData: 'https://clubulbebelusilor.ro/wp-content/uploads/2021/02/bebelusi-sfaturi-pentru-mamici.jpg',
-    altText: 'Fotografie finală',
-    aspectRatio: '3:4' as const,
-    photoClip: 'blob' as const,
-    photoMasks: ['fade-b'] as any,
-  },
 
-  // ── WhatsApp contact ───────────────────────────────────────────────────────
-  {
-    id: 'def-whatsapp',
-    type: 'whatsapp' as const,
-    show: true,
-    label: 'Contactează-ne pe WhatsApp',
-    content: '0700000000',
-  },
-
-  // ── RSVP ───────────────────────────────────────────────────────────────────
-  {
-    id: 'def-rsvp',
-    type: 'rsvp' as const,
-    show: true,
-    label: 'Confirmă Prezența',
-  },
 ];
 
 // ── Preview data — folosit de InvitationMarketplace pentru demo ──────────────
 export const CASTLE_PREVIEW_DATA = {
-  guest:   { name: "Invitat Drag", status: "pending", type: "adult" },
+  guest:   { name: "", status: "pending", type: "adult" },
   project: { selectedTemplate: 'castle-magic' },
   profile: {
     ...CASTLE_DEFAULTS,
@@ -1426,6 +1341,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
   const [showIntro, setShowIntro] = useState(!editMode);
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentEl, setContentEl] = useState<HTMLElement | null>(null);
+  const timeInputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
   const hasMusicBlock = useCallback(() => {
     return blocks.some(b => b.type === 'music' && b.musicType !== 'none' && b.musicUrl);
@@ -1501,7 +1417,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
     { type: 'whatsapp',  label: 'WhatsApp',      def: { label: 'Contact WhatsApp', content: '0700000000' } },
     { type: 'rsvp',      label: 'RSVP',          def: { label: 'Confirmă Prezența' } },
     { type: 'divider',     label: 'Linie',         def: {} },
-    { type: 'family',      label: '👨‍👩‍👧 Familie',  def: { label: 'Părinții copilului', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) } },
+    { type: 'family',      label: '👨‍👩‍👧 Familie',  def: { label: 'Părinții', content: 'Cu drag și recunoștință', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) } },
     { type: 'date',        label: '📆 Dată',       def: {} },
     { type: 'description', label: 'Descriere',      def: { content: 'O scurtă descriere...' } },
   ];
@@ -2253,8 +2169,16 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                                     marginBottom: 18,
                                   }}
                                 >
-                                  {block.time && (
+                                  {(block.time || editMode) && (
                                     <div
+                                      onClick={() => {
+                                        if (!editMode) return;
+                                        const el = timeInputRefs.current[idx];
+                                        if (el) {
+                                          el.focus();
+                                          if ((el as any).showPicker) (el as any).showPicker();
+                                        }
+                                      }}
                                       style={{
                                         display: "inline-flex",
                                         alignItems: "center",
@@ -2263,6 +2187,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                                         border: `1px solid ${PINK_L}`,
                                         borderRadius: 10,
                                         padding: "5px 11px",
+                                        cursor: editMode ? "pointer" : "default",
                                       }}
                                     >
                                       <svg
@@ -2278,17 +2203,24 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                                         <circle cx="12" cy="12" r="10" />
                                         <polyline points="12 6 12 12 16 14" />
                                       </svg>
-                                      <span
+                                      <InlineTime
+                                        value={block.time || ""}
+                                        onChange={(v) => updBlock(idx, { time: v })}
+                                        editMode={editMode}
                                         style={{
                                           fontFamily: SANS,
                                           fontSize: "0.65rem",
                                           fontWeight: 700,
                                           color: PINK_DARK,
                                           letterSpacing: "0.04em",
+                                          width: "4.4rem",
+                                          textAlign: "center",
+                                          cursor: editMode ? "pointer" : "default",
                                         }}
-                                      >
-                                        {block.time}
-                                      </span>
+                                        inputRef={(el) => {
+                                          if (el) timeInputRefs.current[idx] = el;
+                                        }}
+                                      />
                                     </div>
                                   )}
                                   {block.label && (
@@ -2353,12 +2285,13 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                                     }
                                     placeholder="Numele locației..."
                                     style={{
-                                      fontFamily: SCRIPT,
+                                      fontFamily: FamilyText,
                                       fontSize: "1.45rem",
-                                      color: PINK_L,
+                                      color: PINK_DARK,
                                       margin: "0 0 3px",
                                       lineHeight: 1.15,
                                       fontWeight: 600,
+                                      letterSpacing: "0.1em",
                                     }}
                                   />
                                   <InlineEdit
@@ -2664,193 +2597,260 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                       {block.type === "family" && (
                         <Reveal>
                           {(() => {
-                            const members: { name1: string; name2: string }[] =
-                              (() => {
-                                try {
-                                  return JSON.parse(block.members || "[]");
-                                } catch {
-                                  return [];
-                                }
-                              })();
-                            const updateMembers = (
-                              newMembers: { name1: string; name2: string }[],
-                            ) => {
-                              updBlock(idx, {
-                                members: JSON.stringify(newMembers),
-                              } as any);
+                            const members: { name1: string; name2: string }[] = (() => {
+                              try {
+                                return JSON.parse(block.members || "[]");
+                              } catch {
+                                return [];
+                              }
+                            })();
+                            const updateMembers = (newMembers: { name1: string; name2: string }[]) => {
+                              updBlock(idx, { members: JSON.stringify(newMembers) } as any);
                             };
                             return (
                               <div
                                 style={{
                                   background: "white",
-                                  border: `1px solid ${PINK_L}`,
                                   borderRadius: 20,
-                                  padding: "28px 24px",
-                                  textAlign: "center",
+                                  overflow: "hidden",
+                                  boxShadow:
+                                    "0 1px 3px rgba(0,0,0,0.06), 0 4px 20px rgba(190,24,93,0.08)",
+                                  border: `1px solid ${PINK_L}`,
                                 }}
                               >
-                                <div style={{ marginBottom: 20 }}>
-                                  <InlineEdit
-                                    tag="p"
-                                    editMode={editMode}
-                                    value={block.label || "Părinții copilului"}
-                                    onChange={(v) =>
-                                      updBlock(idx, { label: v })
-                                    }
-                                    style={{
-                                      fontFamily: SANS,
-                                      fontSize: "0.55rem",
-                                      fontWeight: 700,
-                                      letterSpacing: "0.35em",
-                                      textTransform: "uppercase",
-                                      color: MUTED,
-                                      margin: "0 0 8px",
-                                    }}
-                                  />
-                                  <InlineEdit
-                                    tag="p"
-                                    editMode={editMode}
-                                    value={
-                                      block.content || "Cu drag și recunoștință"
-                                    }
-                                    onChange={(v) =>
-                                      updBlock(idx, { content: v })
-                                    }
-                                    style={{
-                                      fontFamily: SERIF,
-                                      fontStyle: "italic",
-                                      fontSize: "0.9rem",
-                                      color: MUTED,
-                                      margin: 0,
-                                      lineHeight: 1.6,
-                                    }}
-                                  />
-                                </div>
+                                {/* Top accent bar */}
                                 <div
                                   style={{
-                                    display: "flex",
-                                    flexDirection: "column",
-                                    gap: 14,
+                                    height: 3,
+                                    background: `linear-gradient(to right, ${PINK_L}, ${PINK_DARK}, ${PINK_L})`,
                                   }}
-                                >
-                                  {members.map((m, mi) => (
-                                    <div
-                                      key={mi}
-                                      style={{ position: "relative" }}
-                                    >
-                                      <div
-                                        style={{
-                                          display: "flex",
-                                          alignItems: "center",
-                                          justifyContent: "center",
-                                          gap: 10,
-                                          flexWrap: "wrap",
-                                        }}
-                                      >
-                                        <InlineEdit
-                                          tag="span"
-                                          editMode={editMode}
-                                          value={m.name1}
-                                          onChange={(v) => {
-                                            const nm = [...members];
-                                            nm[mi] = { ...nm[mi], name1: v };
-                                            updateMembers(nm);
-                                          }}
-                                          style={{
-                                            fontFamily: SCRIPT,
-                                            fontSize: "1.5rem",
-                                            color: PINK_DARK,
-                                          }}
-                                        />
-                                        <span
-                                          style={{
-                                            fontFamily: SERIF,
-                                            fontStyle: "italic",
-                                            color: PINK_L,
-                                            fontSize: "1.3rem",
-                                          }}
-                                        >
-                                          &amp;
-                                        </span>
-                                        <InlineEdit
-                                          tag="span"
-                                          editMode={editMode}
-                                          value={m.name2}
-                                          onChange={(v) => {
-                                            const nm = [...members];
-                                            nm[mi] = { ...nm[mi], name2: v };
-                                            updateMembers(nm);
-                                          }}
-                                          style={{
-                                            fontFamily: SCRIPT,
-                                            fontSize: "1.5rem",
-                                            color: PINK_DARK,
-                                          }}
-                                        />
-                                        {editMode && members.length > 1 && (
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              updateMembers(
-                                                members.filter(
-                                                  (_, i) => i !== mi,
-                                                ),
-                                              )
-                                            }
-                                            style={{
-                                              background: "none",
-                                              border: "none",
-                                              cursor: "pointer",
-                                              color: MUTED,
-                                              fontSize: 14,
-                                              padding: "0 4px",
-                                              opacity: 0.5,
-                                              lineHeight: 1,
-                                            }}
-                                          >
-                                            ✕
-                                          </button>
-                                        )}
-                                      </div>
-                                      {mi < members.length - 1 && (
-                                        <div
-                                          style={{
-                                            height: 1,
-                                            background: `linear-gradient(to right, transparent, ${PINK_L}88, transparent)`,
-                                            margin: "8px 32px 0",
-                                          }}
-                                        />
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                                {editMode && (
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      updateMembers([
-                                        ...members,
-                                        { name1: "Nume 1", name2: "Nume 2" },
-                                      ])
-                                    }
+                                />
+
+                                <div style={{ padding: "22px 22px 20px" }}>
+                                  {/* Header row: badge + label */}
+                                  <div
                                     style={{
-                                      marginTop: 16,
-                                      background: PINK_XL,
-                                      border: `1px dashed ${PINK_L}`,
-                                      borderRadius: 99,
-                                      padding: "5px 16px",
-                                      cursor: "pointer",
-                                      fontFamily: SANS,
-                                      fontSize: "0.6rem",
-                                      fontWeight: 700,
-                                      letterSpacing: "0.2em",
-                                      textTransform: "uppercase",
-                                      color: PINK_DARK,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      gap: 8,
+                                      marginBottom: 18,
                                     }}
                                   >
-                                    + Adaugă
-                                  </button>
-                                )}
+                                    <div
+                                      style={{
+                                        display: "inline-flex",
+                                        alignItems: "center",
+                                        gap: 5,
+                                        background: PINK_XL,
+                                        border: `1px solid ${PINK_L}`,
+                                        borderRadius: 10,
+                                        padding: "5px 11px",
+                                      }}
+                                    >
+                                      <svg
+                                        width="11"
+                                        height="11"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke={PINK_DARK}
+                                        strokeWidth="2.5"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                                      </svg>
+                                      <InlineEdit
+                                        tag="span"
+                                        editMode={editMode}
+                                        value={block.label || "Părinții copilului"}
+                                        onChange={(v) => updBlock(idx, { label: v })}
+                                        style={{
+                                          fontFamily: SANS,
+                                          fontSize: "0.65rem",
+                                          fontWeight: 700,
+                                          color: PINK_DARK,
+                                          letterSpacing: "0.04em",
+                                        }}
+                                      />
+                                    </div>
+                                    <InlineEdit
+                                      tag="span"
+                                      editMode={editMode}
+                                      value={block.content || "Cu drag și recunoștință"}
+                                      onChange={(v) => updBlock(idx, { content: v })}
+                                      style={{
+                                        fontFamily: SANS,
+                                        fontSize: "0.58rem",
+                                        fontWeight: 700,
+                                        letterSpacing: "0.28em",
+                                        textTransform: "uppercase",
+                                        color: MUTED,
+                                      }}
+                                    />
+                                  </div>
+
+                                  {/* Members list */}
+                                  <div style={{ display: "flex", flexDirection: "column" }}>
+                                    {members.map((m, mi) => (
+                                      <div key={mi}>
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 14,
+                                            padding: "10px 0",
+                                          }}
+                                        >
+                                          {/* Icon square */}
+                                          <div
+                                            style={{
+                                              width: 46,
+                                              height: 46,
+                                              borderRadius: 14,
+                                              flexShrink: 0,
+                                              background: `linear-gradient(145deg, ${PINK_XL} 0%, ${PINK_L}44 100%)`,
+                                              border: `1.5px solid ${PINK_L}`,
+                                              display: "flex",
+                                              alignItems: "center",
+                                              justifyContent: "center",
+                                            }}
+                                          >
+                                            <svg
+                                              width="20"
+                                              height="20"
+                                              viewBox="0 0 24 24"
+                                              fill="none"
+                                              stroke={PINK_DARK}
+                                              strokeWidth="1.8"
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                            >
+                                              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                                              <circle cx="9" cy="7" r="4" />
+                                              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                                              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                                            </svg>
+                                          </div>
+
+                                          {/* Names */}
+                                          <div
+                                            style={{
+                                              flex: 1,
+                                              minWidth: 0,
+                                              display: "flex",
+                                              alignItems: "baseline",
+                                              gap: 8,
+                                              flexWrap: "wrap",
+                                            }}
+                                          >
+                                            <InlineEdit
+                                              tag="span"
+                                              editMode={editMode}
+                                              value={m.name1}
+                                              onChange={(v) => {
+                                                const nm = [...members];
+                                                nm[mi] = { ...nm[mi], name1: v };
+                                                updateMembers(nm);
+                                              }}
+                                              style={{
+                                                fontFamily: FamilyText,
+                                                fontSize: "1.45rem",
+                                                color: PINK_DARK,
+                                                lineHeight: 1.15,
+                                              }}
+                                            />
+                                            <span
+                                              style={{
+                                                fontFamily: FamilyText,
+                                                fontStyle: "italic",
+                                                fontSize: "1.2rem",
+                                                color: PINK_L,
+                                              }}
+                                            >
+                                              &amp;
+                                            </span>
+                                            <InlineEdit
+                                              tag="span"
+                                              editMode={editMode}
+                                              value={m.name2}
+                                              onChange={(v) => {
+                                                const nm = [...members];
+                                                nm[mi] = { ...nm[mi], name2: v };
+                                                updateMembers(nm);
+                                              }}
+                                              style={{
+                                                fontFamily: FamilyText,
+                                                fontSize: "1.80rem",
+                                                color: PINK_DARK,
+                                                lineHeight: 1.15,
+                                              }}
+                                            />
+                                            {editMode && members.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  updateMembers(members.filter((_, i) => i !== mi))
+                                                }
+                                                style={{
+                                                  background: "none",
+                                                  border: "none",
+                                                  cursor: "pointer",
+                                                  color: MUTED,
+                                                  fontSize: 13,
+                                                  padding: "0 4px",
+                                                  opacity: 0.5,
+                                                  lineHeight: 1,
+                                                }}
+                                              >
+                                                ✕
+                                              </button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {/* Separator */}
+                                        {mi < members.length - 1 && (
+                                          <div
+                                            style={{
+                                              height: 1,
+                                              background: `linear-gradient(to right, transparent, ${PINK_L}88, transparent)`,
+                                              margin: "0 4px",
+                                            }}
+                                          />
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Add button — edit mode only */}
+                                  {editMode && (
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateMembers([
+                                          ...members,
+                                          { name1: "Nume 1", name2: "Nume 2" },
+                                        ])
+                                      }
+                                      style={{
+                                        marginTop: 16,
+                                        background: PINK_XL,
+                                        border: `1px dashed ${PINK_L}`,
+                                        borderRadius: 99,
+                                        padding: "5px 16px",
+                                        cursor: "pointer",
+                                        fontFamily: SANS,
+                                        fontSize: "0.6rem",
+                                        fontWeight: 700,
+                                        letterSpacing: "0.2em",
+                                        textTransform: "uppercase",
+                                        color: PINK_DARK,
+                                      }}
+                                    >
+                                      + Adaugă
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                           })()}
