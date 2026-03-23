@@ -1,10 +1,12 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Image,
-  ChevronDown, ChevronUp, Palette, Layout, Sliders,
+  ChevronDown, ChevronUp, Palette, Layout, Sliders, Type,
   Square, Layers, X, Minus, Plus as PlusIcon,
 } from "lucide-react";
-import { InvitationBlock } from "../types";
+import { InvitationBlock, TextStyle } from "../types";
+import { FONT_OPTIONS } from "../config/fonts";
 
 
 // ─── Block type classification ─────────────────────────────────────────────────
@@ -60,20 +62,23 @@ function Sec({ title, icon: Icon, children, open: initOpen = true, dark }: {
   open?: boolean; dark: boolean;
 }) {
   const [open, setOpen] = useState(initOpen);
-  const border = dark ? 'border-white/10' : 'border-zinc-100';
-  const txt    = dark ? 'text-white/40'   : 'text-zinc-400';
-  const hover  = dark ? 'hover:bg-white/5' : 'hover:bg-zinc-50';
+  const border = dark ? 'border-white/10' : 'border-zinc-200';
+  const txt    = dark ? 'text-white/40'   : 'text-zinc-500';
+  const hover  = dark ? 'hover:bg-white/5' : 'hover:bg-zinc-100';
+  const headBg = dark ? 'bg-white/5' : 'bg-zinc-50';
   return (
-    <div className={`border-b ${border} last:border-0`}>
+    <div className={`border ${border} rounded-xl overflow-hidden mb-3 last:mb-0`}>
       <button type="button" onClick={() => setOpen(o=>!o)}
-        className={`w-full flex items-center justify-between px-4 py-2.5 ${hover} transition-colors`}>
+        className={`w-full flex items-center justify-between px-4 py-2.5 ${headBg} ${hover} transition-colors border-b ${border}`}>
         <div className="flex items-center gap-2">
-          <Icon className={`w-3.5 h-3.5 ${txt}`}/>
-          <span className={`text-[10px] font-bold uppercase tracking-widest ${dark ? 'text-white/50' : 'text-zinc-500'}`}>{title}</span>
+          <div className={`w-6 h-6 rounded-md flex items-center justify-center ${dark ? 'bg-white/10' : 'bg-white'}`}>
+            <Icon className={`w-3.5 h-3.5 ${txt}`}/>
+          </div>
+          <span className={`text-[11px] font-black uppercase tracking-widest ${dark ? 'text-white/70' : 'text-zinc-600'}`}>{title}</span>
         </div>
         {open ? <ChevronUp className={`w-3 h-3 ${txt}`}/> : <ChevronDown className={`w-3 h-3 ${txt}`}/>}
       </button>
-      {open && <div className="px-4 pb-4 pt-1">{children}</div>}
+      {open && <div className="px-4 pb-4 pt-3">{children}</div>}
     </div>
   );
 }
@@ -126,13 +131,30 @@ const PALETTE = [
 
 function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v:string)=>void; label:string; dark:boolean }) {
   const [open, setOpen] = useState(false);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; width: number }>({ top: 0, left: 0, width: 0 });
   const isTrans = !value || value==='transparent';
   const uid = `cp-${label.replace(/\s/g,'_')}`;
   const bg  = dark ? 'bg-zinc-800 border-white/20 hover:border-white/40' : 'bg-white border-zinc-200 hover:border-zinc-300';
   const lb  = dark ? 'bg-zinc-800 border-white/10 shadow-2xl' : 'bg-white border-zinc-200 shadow-xl';
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (!btnRef.current) return;
+      const r = btnRef.current.getBoundingClientRect();
+      setPos({ top: r.bottom + 6, left: r.left, width: r.width });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [open]);
   return (
     <div className="relative">
-      <button type="button" onClick={() => setOpen(o=>!o)}
+      <button ref={btnRef} type="button" onClick={() => setOpen(o=>!o)}
         className={`w-full flex items-center gap-2 h-8 px-2.5 rounded-lg border transition-colors ${bg}`}>
         <div className="w-4 h-4 rounded border border-zinc-200 shrink-0"
           style={{ background: isTrans ? 'repeating-conic-gradient(#ccc 0% 25%, white 0% 50%) 0 0 / 8px 8px' : value }}/>
@@ -141,10 +163,10 @@ function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v
         </span>
         <ChevronDown className={`w-3 h-3 shrink-0 ${dark ? 'text-white/30' : 'text-zinc-300'}`}/>
       </button>
-      {open && (
+      {open && createPortal(
         <>
-          <div className="fixed inset-0 z-[99]" onClick={() => setOpen(false)}/>
-          <div className={`absolute top-full left-0 right-0 mt-1 border rounded-xl z-[100] p-3 ${lb}`}>
+          <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
+          <div className={`fixed z-[9999] border rounded-xl p-3 ${lb}`} style={{ top: pos.top, left: pos.left, width: pos.width }}>
             <div className="grid grid-cols-8 gap-1 mb-2.5">
               {PALETTE.map(col => (
                 <button key={col} type="button" onClick={() => { onChange(col); setOpen(false); }}
@@ -163,7 +185,8 @@ function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v
               </label>
             </div>
           </div>
-        </>
+        </>,
+        document.body
       )}
     </div>
   );
@@ -174,7 +197,7 @@ const BLOCK_LABELS: Record<string,string> = {
   music:'🎵 Muzică', countdown:'⏱ Countdown', calendar:'📅 Calendar',
   parents:'👨‍👩‍👧 Părinți', godparents:'💍 Nași', dresscode:'👔 Vestimentar',
   gift:'🎁 Cadou', nokids:'🚫 Fără copii', thankyou:'🙏 Mulțumire',
-  divider:'─ Separator', text:'¶ Text', title:'T Titlu', __hero__:'🪧 Hero',
+  divider:'─ Separator', text:'¶ Text', title:'T Titlu', __hero__:'🪧 Hero', intro:'🎬 Intro',
 };
 
 // ─── MAIN ──────────────────────────────────────────────────────────────────────
@@ -183,15 +206,46 @@ export interface BlockPropertiesPanelProps {
   onUpdate: (patch: Partial<InvitationBlock>) => void;
   onClose: () => void;
   forceDark?: boolean;
+  selectedTextKey?: string;
+  selectedTextLabel?: string;
+  inline?: boolean;
 }
 
-const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUpdate, onClose, forceDark }) => {
+const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUpdate, onClose, forceDark, selectedTextKey, selectedTextLabel, inline }) => {
   const dark = forceDark ?? false;
-  if (!block) return null;
+  const panelBg   = dark ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900';
+  const headerBg  = dark ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100';
+  const divider   = dark ? 'border-white/10' : 'border-zinc-100';
+  const mutedTxt  = dark ? 'text-white/40' : 'text-zinc-400';
+  const subTxt    = dark ? 'text-white/25' : 'text-zinc-300';
+
+  if (!block) {
+    if (!inline) return null;
+    return (
+      <div
+        className={`flex flex-col overflow-hidden rounded-xl border ${panelBg}`}
+        style={{ borderColor: dark ? 'rgba(255,255,255,0.08)' : '#f1f1f1' }}
+      >
+      <div className={`shrink-0 px-4 py-3 border-b ${headerBg}`}>
+          <p className={`text-[9px] uppercase tracking-widest font-bold ${mutedTxt}`}>Proprietăți</p>
+          <p className={`text-xs font-bold mt-0.5 ${dark ? 'text-white' : 'text-zinc-800'}`}>Text</p>
+        </div>
+        <div className="px-4 py-3">
+          <div className={`text-[10px] rounded-lg border px-3 py-2 ${dark ? 'border-white/10 text-white/50 bg-white/5' : 'border-zinc-200 text-zinc-500 bg-zinc-50'}`}>
+            Selectează un text din invitație pentru a-i edita stilul.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const cat = getCategory(block.type as string);
   const isPhoto      = cat === 'photo';
   const isStructural = cat === 'structural';
+  const hasTextSelection = !!selectedTextKey;
+  const textStyle: TextStyle | undefined = hasTextSelection
+    ? (block.textStyles?.[selectedTextKey as string] || {})
+    : undefined;
 
   const clip  = (block.photoClip as ClipShape) || 'rect';
   const masks = (block.photoMasks as MaskEffect[]) || [];
@@ -207,38 +261,97 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
   const mb  = block.blockMarginBottom  ?? 0;
   const br  = block.blockRadius        ?? 0;
   const op  = block.opacity            ?? 100;
+  const effectiveFontFamily = hasTextSelection ? (textStyle?.fontFamily ?? block.blockFontFamily) : block.blockFontFamily;
+  const fs  = hasTextSelection ? (textStyle?.fontSize      ?? block.blockFontSize ?? 0)      : (block.blockFontSize ?? 0);
+  const fw  = hasTextSelection ? (textStyle?.fontWeight    ?? block.blockFontWeight ?? 0)    : (block.blockFontWeight ?? 0);
+  const ls  = hasTextSelection ? (textStyle?.letterSpacing ?? block.blockLetterSpacing ?? 0) : (block.blockLetterSpacing ?? 0);
+  const lh  = hasTextSelection ? (textStyle?.lineHeight    ?? block.blockLineHeight ?? 0)    : (block.blockLineHeight ?? 0);
+  const effectiveFontStyle = hasTextSelection ? (textStyle?.fontStyle ?? block.blockFontStyle) : block.blockFontStyle;
+  const isItalic = effectiveFontStyle === 'italic';
+  const currentFontId = FONT_OPTIONS.find(f => f.family === effectiveFontFamily)?.id || 'default';
+  const currentAlign = hasTextSelection ? (textStyle?.textAlign ?? block.blockAlign) : block.blockAlign;
+  const currentTextColor = hasTextSelection ? (textStyle?.color ?? block.textColor) : block.textColor;
 
-  const panelBg   = dark ? 'bg-zinc-900 text-white' : 'bg-white text-zinc-900';
-  const headerBg  = dark ? 'bg-zinc-900 border-white/10' : 'bg-white border-zinc-100';
-  const divider   = dark ? 'border-white/10' : 'border-zinc-100';
-  const mutedTxt  = dark ? 'text-white/40' : 'text-zinc-400';
-  const subTxt    = dark ? 'text-white/25' : 'text-zinc-300';
+  const updateTextStyle = (patch: Partial<TextStyle>) => {
+    if (!hasTextSelection || !selectedTextKey) return;
+    const existing = block.textStyles?.[selectedTextKey] || {};
+    const merged = { ...existing, ...patch };
+    const cleaned = Object.fromEntries(
+      Object.entries(merged).filter(([, v]) => v !== undefined && v !== null && v !== "")
+    ) as TextStyle;
+    const nextMap = { ...(block.textStyles || {}) } as Record<string, TextStyle>;
+    if (Object.keys(cleaned).length === 0) delete nextMap[selectedTextKey];
+    else nextMap[selectedTextKey] = cleaned;
+    onUpdate({ textStyles: nextMap });
+  };
+  const resetTextStyle = () => {
+    if (!hasTextSelection || !selectedTextKey) return;
+    const nextMap = { ...(block.textStyles || {}) } as Record<string, TextStyle>;
+    delete nextMap[selectedTextKey];
+    onUpdate({ textStyles: nextMap });
+  };
+
+
+  const wrapperClass = inline
+    ? `flex flex-col overflow-hidden rounded-xl border ${panelBg}`
+    : `shrink-0 flex flex-col h-full overflow-hidden ${panelBg}`;
+  const wrapperStyle = inline
+    ? { borderColor: dark ? 'rgba(255,255,255,0.08)' : '#f1f1f1' }
+    : { borderLeft: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #f1f1f1' };
 
   return (
-    <div className={`shrink-0 flex flex-col h-full overflow-hidden ${panelBg}`}
-      style={{ borderLeft: dark ? '1px solid rgba(255,255,255,0.08)' : '1px solid #f1f1f1' }}>
+    <div className={wrapperClass} style={wrapperStyle}>
 
       {/* Header */}
-      <div className={`shrink-0 px-4 py-3 border-b flex items-center justify-between ${headerBg}`}>
-        <div className="min-w-0">
-          <p className={`text-[9px] uppercase tracking-widest font-bold ${mutedTxt}`}>Proprietăți</p>
-          <p className={`text-xs font-bold mt-0.5 truncate ${dark ? 'text-white' : 'text-zinc-800'}`}>
-            {BLOCK_LABELS[block.type as string] || block.type}
-          </p>
+      <div className={`shrink-0 px-4 py-3 border-b ${headerBg}`}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <p className={`text-[9px] uppercase tracking-widest font-bold ${mutedTxt}`}>Proprietăți</p>
+            <p className={`text-xs font-bold mt-0.5 truncate ${dark ? 'text-white' : 'text-zinc-800'}`}>
+              {BLOCK_LABELS[block.type as string] || block.type}
+            </p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {hasTextSelection && (
+              <button
+                type="button"
+                onClick={resetTextStyle}
+                className={`h-7 px-2 rounded-lg text-[10px] font-bold border transition-colors ${
+                  dark ? 'border-white/10 text-white/50 hover:text-white hover:border-white/20' : 'border-zinc-200 text-zinc-500 hover:text-zinc-700 hover:border-zinc-300'
+                }`}
+              >
+                Reset text
+              </button>
+            )}
+            <button type="button" onClick={onClose}
+              className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
+                dark ? 'hover:bg-white/10 text-white/50' : 'hover:bg-zinc-100 text-zinc-400'
+              }`}>
+              <X className="w-3.5 h-3.5"/>
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
-
-          <button type="button" onClick={onClose}
-            className={`w-7 h-7 rounded-lg flex items-center justify-center transition-colors ${
-              dark ? 'hover:bg-white/10 text-white/50' : 'hover:bg-zinc-100 text-zinc-400'
-            }`}>
-            <X className="w-3.5 h-3.5"/>
-          </button>
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
+          <span className={`text-[9px] uppercase tracking-widest ${mutedTxt}`}>Text</span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${dark ? 'border-white/10 text-white/60 bg-white/5' : 'border-zinc-200 text-zinc-600 bg-zinc-50'}`}>
+            {hasTextSelection ? (selectedTextLabel || 'Selectat') : 'Neselectat'}
+          </span>
+          <span className={`text-[9px] uppercase tracking-widest ${mutedTxt}`}>Element</span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${dark ? 'border-white/10 text-white/60 bg-white/5' : 'border-zinc-200 text-zinc-600 bg-zinc-50'}`}>
+            {BLOCK_LABELS[block.type as string] || block.type}
+          </span>
         </div>
       </div>
 
       {/* Sections */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
+        {!isStructural && !isPhoto && !hasTextSelection && (
+          <div className="px-4 py-3">
+            <div className={`text-[10px] rounded-lg border px-3 py-2 ${dark ? 'border-white/10 text-white/50 bg-white/5' : 'border-zinc-200 text-zinc-500 bg-zinc-50'}`}>
+              Selectează un text din invitație pentru a-i edita stilul.
+            </div>
+          </div>
+        )}
 
         {/* ── PHOTO ONLY ── */}
         {isPhoto && (
@@ -303,17 +416,121 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
           </>
         )}
 
-        {/* ── COLORS — all types except structural ── */}
-        {!isStructural && (
-          <Sec title="Culori" icon={Palette} dark={dark} open={false}>
-            <div className="space-y-2">
+        {/* ── TEXT STYLE ── */}
+        {!isStructural && hasTextSelection && (
+          <>
+            <Sec title="Tipografie" icon={Type} dark={dark} open>
+              <div className="space-y-2">
+                <Row label="Font" dark={dark}>
+                <select
+                  value={currentFontId}
+                  onChange={(e) => {
+                    const opt = FONT_OPTIONS.find(f => f.id === e.target.value);
+                    updateTextStyle({ fontFamily: opt?.family });
+                  }}
+                  style={{ colorScheme: dark ? 'dark' : 'light' }}
+                  className={`w-full h-8 rounded-lg border px-2 text-[11px] ${dark ? 'bg-zinc-900 border-white/20 text-white' : 'bg-white border-zinc-200 text-zinc-700'}`}
+                >
+                  {FONT_OPTIONS.map(f => (
+                    <option key={f.id} value={f.id} style={f.family ? { fontFamily: f.family } : undefined}>
+                      {f.label}
+                    </option>
+                  ))}
+                  </select>
+                </Row>
 
-              <Row label="Fundal" dark={dark}>
-                <ColorPick value={block.bgColor||'transparent'} label="bg" dark={dark}
-                  onChange={v => onUpdate({ bgColor: v==='transparent'?undefined:v })}/>
-              </Row>
-            </div>
-          </Sec>
+                <Row label="Mărime" dark={dark}>
+                  <Stepper
+                    value={fs}
+                    onChange={(v) => updateTextStyle({ fontSize: v <= 0 ? undefined : v })}
+                    min={0}
+                    max={80}
+                    step={1}
+                    dark={dark}
+                  />
+                </Row>
+
+                <Row label="Greutate" dark={dark}>
+                <select
+                  value={fw || ''}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    updateTextStyle({ fontWeight: isNaN(val) ? undefined : val });
+                  }}
+                  style={{ colorScheme: dark ? 'dark' : 'light' }}
+                  className={`w-full h-8 rounded-lg border px-2 text-[11px] ${dark ? 'bg-zinc-900 border-white/20 text-white' : 'bg-white border-zinc-200 text-zinc-700'}`}
+                >
+                    <option value="">Auto</option>
+                    {[300,400,500,600,700,800].map(w => (
+                      <option key={w} value={w}>{w}</option>
+                    ))}
+                  </select>
+                </Row>
+
+                <Row label="Stil" dark={dark}>
+                  <button
+                    type="button"
+                    onClick={() => updateTextStyle({ fontStyle: isItalic ? undefined : 'italic' })}
+                    className={`w-full h-8 rounded-lg border text-[11px] font-semibold ${dark ? 'border-white/10 text-white/70 hover:bg-white/10' : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'} ${isItalic ? (dark ? 'bg-white/10' : 'bg-zinc-100') : ''}`}
+                  >
+                    {isItalic ? 'Italic activ' : 'Italic'}
+                  </button>
+                </Row>
+
+                <Row label="Spațiu" dark={dark}>
+                  <Stepper
+                    value={ls}
+                    onChange={(v) => updateTextStyle({ letterSpacing: v <= 0 ? undefined : v })}
+                    min={0}
+                    max={60}
+                    step={1}
+                    unit="em"
+                    dark={dark}
+                  />
+                </Row>
+
+                <Row label="Linie" dark={dark}>
+                  <Stepper
+                    value={lh}
+                    onChange={(v) => updateTextStyle({ lineHeight: v <= 0 ? undefined : v })}
+                    min={0}
+                    max={240}
+                    step={5}
+                    unit="%"
+                    dark={dark}
+                  />
+                </Row>
+
+                <Row label="Aliniere" dark={dark}>
+                  <div className="flex gap-1">
+                    {(['left','center','right'] as const).map(al => (
+                      <button
+                        key={al}
+                        type="button"
+                        onClick={() => updateTextStyle({ textAlign: al })}
+                        className={`flex-1 h-8 rounded-lg border text-[11px] font-semibold ${
+                          currentAlign === al
+                            ? (dark ? 'border-amber-500 bg-amber-500/20 text-amber-400' : 'border-amber-600 bg-amber-50 text-amber-700')
+                            : (dark ? 'border-white/10 text-white/50 hover:border-white/20' : 'border-zinc-200 text-zinc-500 hover:border-zinc-300')
+                        }`}
+                      >
+                        {al === 'left' ? 'Stânga' : al === 'center' ? 'Centru' : 'Dreapta'}
+                      </button>
+                    ))}
+                  </div>
+                </Row>
+              </div>
+            </Sec>
+
+            <Sec title="Culori" icon={Palette} dark={dark} open>
+              <div className="space-y-2">
+                <Row label="Text" dark={dark}>
+                  <ColorPick value={currentTextColor||'transparent'} label="text" dark={dark}
+                    onChange={v => updateTextStyle({ color: v==='transparent'?undefined:v })}/>
+                </Row>
+              </div>
+            </Sec>
+          </>
         )}
 
         {/* ── SPACING — all types ── */}
@@ -348,16 +565,22 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
         {/* Reset */}
         <div className="px-4 py-3">
           <button type="button"
-            onClick={() => onUpdate({
-              photoClip: undefined, photoMasks: [], aspectRatio: undefined,
-              blockPaddingTop: undefined, blockPaddingBottom: undefined, blockPaddingH: undefined,
-              blockMarginTop: undefined, blockMarginBottom: undefined,
-              bgColor: undefined, blockRadius: undefined, opacity: undefined,
-            })}
+            onClick={() => {
+              if (hasTextSelection) { resetTextStyle(); return; }
+              onUpdate({
+                photoClip: undefined, photoMasks: [], aspectRatio: undefined,
+                blockPaddingTop: undefined, blockPaddingBottom: undefined, blockPaddingH: undefined,
+                blockMarginTop: undefined, blockMarginBottom: undefined,
+                blockFontFamily: undefined, blockFontSize: undefined, blockFontWeight: undefined,
+                blockFontStyle: undefined, blockLetterSpacing: undefined, blockLineHeight: undefined,
+                blockAlign: undefined, textColor: undefined,
+                bgColor: undefined, blockRadius: undefined, opacity: undefined,
+              });
+            }}
             className={`w-full py-2 rounded-xl border text-[10px] font-bold ${
               dark ? 'border-white/10 text-white/30 hover:border-white/20 hover:text-white/50' : 'border-zinc-200 text-zinc-400 hover:border-zinc-300 hover:text-zinc-600'
             }`}>
-            Resetează stilizarea
+            {hasTextSelection ? 'Resetează stilul textului' : 'Resetează stilizarea'}
           </button>
         </div>
       </div>

@@ -3,9 +3,8 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { WeddingIcon } from "../TimelineIcons";
 gsap.registerPlugin(ScrollTrigger);
-import { BlockStyleCtx, BlockStyle } from '../BlockStyleContext';
+import { BlockStyleProvider, BlockStyle } from '../BlockStyleContext';
 
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Great+Vibes&family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500;600;700&display=swap";
 import {
   ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus,
   Upload, Camera, Play, Pause, SkipForward, SkipBack,
@@ -787,7 +786,7 @@ const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcome
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0,0,0,0.48) 0%, transparent 100%)' }} />
     <div style={{ position: 'absolute', top: '15%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
       {editMode ? (
-        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#e9bbd2',  }} />
+        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} textKey="intro:welcome" textLabel="Intro Welcome" style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#e9bbd2',  }} />
       ) : (
         <svg width="290" height="74" viewBox="0 0 290 74" style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
           <defs>
@@ -801,8 +800,8 @@ const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcome
       )}
     </div>
     <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)', textAlign: 'center', zIndex: 1, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} style={{ fontFamily: 'Great Vibes, cursive', fontSize: '3.2rem', lineHeight: 1.15, color: '#e9bbd2', textShadow: '0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(255,180,0,0.35)', margin: '2px 0' }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '0.82rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#e9bbd2', textShadow: '0 2px 10px rgba(0,0,0,0.75)', marginTop: 2 }} />
+      <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} textKey="intro:name" textLabel="Intro Name" style={{ fontFamily: 'Great Vibes, cursive', fontSize: '3.2rem', lineHeight: 1.15, color: '#e9bbd2', textShadow: '0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(255,180,0,0.35)', margin: '2px auto 0', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word', textWrap: 'balance' }} />
+      <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle" style={{ fontFamily: 'Cinzel, serif', fontSize: '0.82rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#e9bbd2', textShadow: '0 2px 10px rgba(0,0,0,0.75)', marginTop: 2 }} />
     </div>
   </div>
 );
@@ -811,10 +810,12 @@ const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcome
 const CastleIntro: React.FC<{
   onDone: () => void; castleUrl?: string; castleUrlMobile?: string;
   editMode?: boolean; contentEl?: HTMLElement | null;
+  scrollContainer?: HTMLElement | null;
+  previewMode?: 'doors' | 'static';
   childName?: string; subtitle?: string; welcomeText?: string;
   onChildNameChange?: (v: string) => void; onSubtitleChange?: (v: string) => void; onWelcomeChange?: (v: string) => void;
   onDoorsOpen?: () => void;
-}> = ({ onDone, castleUrl, castleUrlMobile, editMode, contentEl, childName = '', subtitle = 'in my castle', welcomeText = 'WELCOME', onChildNameChange, onSubtitleChange, onWelcomeChange, onDoorsOpen }) => {
+}> = ({ onDone, castleUrl, castleUrlMobile, editMode, contentEl, scrollContainer, previewMode = 'doors', childName = '', subtitle = 'in my castle', welcomeText = 'WELCOME', onChildNameChange, onSubtitleChange, onWelcomeChange, onDoorsOpen }) => {
   const leftDoorRef  = useRef<HTMLDivElement>(null);
   const rightDoorRef = useRef<HTMLDivElement>(null);
   const hintRef      = useRef<HTMLDivElement>(null);
@@ -852,6 +853,7 @@ const CastleIntro: React.FC<{
     let _musicFired = false;
     const st = ScrollTrigger.create({
       trigger: contentEl,
+      scroller: scrollContainer || undefined,
       start: 'top top',
       end: '+=100%',      // 1 full viewport scroll = doors open completely
       pin: true,
@@ -874,10 +876,28 @@ const CastleIntro: React.FC<{
     });
     requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => { st.kill(); tl.kill(); gsap.set(contentEl, { clearProps: 'all' }); };
-  }, [editMode, contentEl]);
+  }, [editMode, contentEl, scrollContainer]);
 
   const defaultCastle = "https://img.freepik.com/free-photo/view-castle-with-nature-landscape_23-2150743774.jpg?t=st=1773091383~exp=1773094983~hmac=439b5a8dcda86708005bb2443a8e6985cb302ae3eff9dac2d235698f4c24d914&w=2000";
   const finalImg = isMobile ? (castleUrlMobile || castleUrl || defaultCastle) : (castleUrl || castleUrlMobile || defaultCastle);
+
+  if (editMode && previewMode === 'static') {
+    return (
+      <div style={{ position: 'relative', height: 580, borderRadius: 12, marginBottom: 0, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${finalImg})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.08)' }} />
+        <CastleOverlayText
+          childName={childName}
+          subtitle={subtitle}
+          welcomeText={welcomeText}
+          editMode={true}
+          onChildNameChange={onChildNameChange}
+          onSubtitleChange={onSubtitleChange}
+          onWelcomeChange={onWelcomeChange}
+        />
+      </div>
+    );
+  }
 
   if (editMode) {
     return (
@@ -967,11 +987,12 @@ const AudioPermissionModal: React.FC<{
 // ── Main Template ─────────────────────────────────────────────────────────────
 const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
   editMode?: boolean;
+  introPreview?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
-  onBlockSelect?: (block: InvitationBlock | null, idx: number) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
   selectedBlockId?: string;
-}> = ({ data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
+}> = ({ data, onOpenRSVP, editMode = false, introPreview = false, scrollContainer, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
   const { profile, guest } = data;
   const [showIntro, setShowIntro] = useState(!editMode);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -992,7 +1013,9 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
     if (!editMode) setShowAudioModal(hasMusicBlock());
   }, []); // once on mount
 
-  useEffect(() => { if (editMode) setShowIntro(false); }, [editMode]);
+  useEffect(() => {
+    setShowIntro(!editMode);
+  }, [editMode]);
 
   const safeJSON = (s: string | undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
   const [blocks, setBlocks] = useState<InvitationBlock[]>(() => safeJSON(profile.customSections, []));
@@ -1041,7 +1064,6 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
 
   return (
     <>
-      <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
 
       {showAudioModal && !editMode && (
         <AudioPermissionModal
@@ -1059,8 +1081,11 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
       )}
 
       {showIntro && (
-        <CastleIntro onDone={() => {}} castleUrl={heroBgImage} castleUrlMobile={heroBgImageMobile}
-          contentEl={contentEl} childName={profile.partner1Name || 'Numele Copilului'}
+        <BlockStyleProvider
+          value={{ blockId: "__intro__", textStyles: (profile as any).introTextStyles }}
+        >
+          <CastleIntro onDone={() => {}} castleUrl={heroBgImage} castleUrlMobile={heroBgImageMobile}
+          contentEl={contentEl} scrollContainer={scrollContainer} childName={profile.partner1Name || 'Numele Copilului'}
           subtitle={castleSubtitle} welcomeText={castleWelcome}
           onDoorsOpen={() => {
             // Fire immediately at onLeave (doors fully apart) — zero delay
@@ -1069,6 +1094,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
             }
           }}
         />
+        </BlockStyleProvider>
       )}
 
       <div ref={el => { contentRef.current = el; setContentEl(el); }} className="min-h-screen"
@@ -1081,16 +1107,32 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
               <h3 className="text-xs font-bold text-pink-600 uppercase tracking-widest mb-4 flex items-center gap-2">
                 <ImageIcon className="w-4 h-4" /> Imagini Intro (Uși)
               </h3>
-              <div className="mb-6">
+              {introPreview && (
+                <div className="mb-6">
                 <p className="text-[10px] text-muted uppercase font-bold mb-2">Previzualizare Uși — click pe text pentru editare:</p>
                 <div className="border border-pink-100 rounded-xl shadow-inner bg-pink-50/20" style={{ position: 'relative' }}>
-                  <CastleIntro editMode castleUrl={heroBgImage} castleUrlMobile={heroBgImageMobile} onDone={() => {}}
-                    childName={profile.partner1Name || 'Numele Copilului'} subtitle={castleSubtitle} welcomeText={castleWelcome}
-                    onChildNameChange={v => upProfile('partner1Name', v)}
-                    onSubtitleChange={v => upProfile('castleIntroSubtitle', v)}
-                    onWelcomeChange={v => upProfile('castleIntroWelcome', v)} />
+                  <BlockStyleProvider
+                    value={{
+                      blockId: "__intro__",
+                      textStyles: (profile as any).introTextStyles,
+                      onTextSelect: (textKey, textLabel) =>
+                        onBlockSelect?.(
+                          { id: "__intro__", type: "intro", textStyles: (profile as any).introTextStyles } as any,
+                          -1,
+                          textKey,
+                          textLabel
+                        ),
+                    }}
+                  >
+                    <CastleIntro editMode previewMode="static" castleUrl={heroBgImage} castleUrlMobile={heroBgImageMobile} onDone={() => {}}
+                      childName={profile.partner1Name || 'Numele Copilului'} subtitle={castleSubtitle} welcomeText={castleWelcome}
+                      onChildNameChange={v => upProfile('partner1Name', v)}
+                      onSubtitleChange={v => upProfile('castleIntroSubtitle', v)}
+                      onWelcomeChange={v => upProfile('castleIntroWelcome', v)} />
+                  </BlockStyleProvider>
                 </div>
-              </div>
+                </div>
+              )}
               <div className="flex gap-[10px] flex-col">
                 <p className="text-[10px] uppercase font-bold mb-2">Landscape Preview:</p>
 
@@ -1126,7 +1168,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
             {blocks.filter(b => editMode || b.show !== false).map((block, idx) => (
               <div key={block.id} className="relative group/block"
                 style={{ marginTop: block.blockMarginTop != null ? `${block.blockMarginTop}px` : undefined, marginBottom: block.blockMarginBottom != null ? `${block.blockMarginBottom}px` : undefined }}>
-                <BlockStyleCtx.Provider value={{ fontFamily: block.blockFontFamily, fontSize: block.blockFontSize, textColor: block.textColor, textAlign: block.blockAlign } as BlockStyle}>
+                <BlockStyleProvider value={{ blockId: block.id, textStyles: block.textStyles, onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel), fontFamily: block.blockFontFamily, fontSize: block.blockFontSize, fontWeight: block.blockFontWeight, fontStyle: block.blockFontStyle, letterSpacing: block.blockLetterSpacing, lineHeight: block.blockLineHeight, textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined, textAlign: block.blockAlign } as BlockStyle}>
                   {editMode && (
                     <BlockToolbar onUp={() => movBlock(idx, -1)} onDown={() => movBlock(idx, 1)} onToggle={() => updBlock(idx, { show: block.show === false })} onDelete={() => delBlock(idx)} visible={block.show !== false} isFirst={idx === 0} isLast={idx === blocks.length - 1} />
                   )}
@@ -1208,7 +1250,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                     </Reveal>
                   )}
                   {block.type === 'divider' && <Reveal><WildDivider /></Reveal>}
-                </BlockStyleCtx.Provider>
+                </BlockStyleProvider>
               </div>
             ))}
           </div>

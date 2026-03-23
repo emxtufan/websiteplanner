@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BlockStyleCtx, BlockStyle } from '../BlockStyleContext';
+import { BlockStyleCtx, BlockStyleProvider, BlockStyle } from '../BlockStyleContext';
 
 // ─── Asset images ─────────────────────────────────────────────────────────────
 const archWhiteImg   = '/ArchRoseTemplate/arch-white.png';
@@ -7,7 +7,6 @@ const archPinkImg    = '/ArchRoseTemplate/arch-pink.png';
 const rosesCornerImg = '/ArchRoseTemplate/roses-corner.jpg';
 const rosesSideImg   = '/ArchRoseTemplate/roses-side.jpg';
 
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Great+Vibes&family=Parisienne&family=Allura&family=Sacramento&family=Montserrat:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600&family=Josefin+Sans:wght@300;400;600&family=Cinzel:wght@400;600&family=Dancing+Script:wght@400;600&family=Lora:ital,wght@0,400;0,600;1,400&display=swap";
 
 import {
   ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus,
@@ -613,18 +612,23 @@ export type ArchRoseProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string,any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
-  onBlockSelect?: (block: InvitationBlock|null, idx: number) => void;
+  onBlockSelect?: (block: InvitationBlock|null, idx: number, textKey?: string, textLabel?: string) => void;
   selectedBlockId?: string;
 };
 
 const ArchRoseTemplate: React.FC<ArchRoseProps> = ({
-  data, onOpenRSVP, editMode=false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
+  data, onOpenRSVP, editMode=false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
 }) => {
   const {profile, guest} = data;
-  const [showIntro, setShowIntro]   = useState(!editMode);
-  const [contentVis, setContentVis] = useState(editMode);
+  const [showIntro, setShowIntro]   = useState(!editMode || introPreview);
+  const [contentVis, setContentVis] = useState(editMode && !introPreview);
 
-  useEffect(()=>{ if(editMode){setShowIntro(false);setContentVis(true);}else{setShowIntro(true);setContentVis(false);} },[editMode]);
+  useEffect(()=>{ 
+    if(editMode){
+      if (introPreview) { setShowIntro(true); setContentVis(false); }
+      else { setShowIntro(false); setContentVis(true); }
+    } else { setShowIntro(true); setContentVis(false); }
+  },[editMode, introPreview]);
 
   const safeJSON = (s: string|undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
@@ -687,7 +691,6 @@ const ArchRoseTemplate: React.FC<ArchRoseProps> = ({
 
   return (
     <>
-      <link rel="stylesheet" href={GOOGLE_FONTS_URL}/>
       <style>{`
         @keyframes ar-spin { to { transform: rotate(360deg); } }
         @keyframes ar-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
@@ -821,7 +824,7 @@ const ArchRoseTemplate: React.FC<ArchRoseProps> = ({
               return (
                 <div key={block.id}
                   className={cn("relative group/block", !isVisible&&editMode&&"opacity-30")}
-                  onClick={editMode?(e)=>{e.stopPropagation();if(block.type==='photo')onBlockSelect?.(block,realIdx);}:undefined}
+                  onClick={editMode?(e)=>{e.stopPropagation();onBlockSelect?.(block,realIdx);}:undefined}
                   style={{
                     cursor: editMode?'pointer':'default',
                     outline: isSelected?`2px solid ${ROSE}`:(editMode?'1px dashed transparent':'none'),
@@ -838,7 +841,7 @@ const ArchRoseTemplate: React.FC<ArchRoseProps> = ({
                     textAlign:    block.blockAlign as any||undefined,
                     transition:   'outline-color 0.1s',
                   }}>
-                  <BlockStyleCtx.Provider value={{fontFamily:block.blockFontFamily,fontSize:block.blockFontSize,letterSpacing:block.blockLetterSpacing,lineHeight:block.blockLineHeight,textColor:block.textColor&&block.textColor!=='transparent'?block.textColor:undefined,textAlign:block.blockAlign} as BlockStyle}>
+                  <BlockStyleProvider value={{blockId:block.id,textStyles:block.textStyles,onTextSelect:(textKey,textLabel)=>onBlockSelect?.(block,realIdx,textKey,textLabel),fontFamily:block.blockFontFamily,fontSize:block.blockFontSize,fontWeight:block.blockFontWeight,fontStyle:block.blockFontStyle,letterSpacing:block.blockLetterSpacing,lineHeight:block.blockLineHeight,textColor:block.textColor&&block.textColor!=='transparent'?block.textColor:undefined,textAlign:block.blockAlign} as BlockStyle}>
                     {editMode && <BlockToolbar onUp={()=>movBlock(realIdx,-1)} onDown={()=>movBlock(realIdx,1)} onToggle={()=>updBlock(realIdx,{show:!isVisible})} onDelete={()=>delBlock(realIdx)} visible={isVisible} isFirst={realIdx===0} isLast={realIdx===blocks.length-1}/>}
                     {editMode&&block.type==='photo'&&(
                       <div className="absolute bottom-1 right-1 opacity-0 group-hover/block:opacity-100 transition-opacity duration-100 pointer-events-none z-10">
@@ -898,7 +901,7 @@ const ArchRoseTemplate: React.FC<ArchRoseProps> = ({
                     {block.type==='title' && <Reveal><div style={{textAlign:'center',padding:'4px 0'}}><InlineEdit tag="p" editMode={editMode} value={block.content||''} onChange={v=>updBlock(realIdx,{content:v})} placeholder="Titlu secțiune..." style={{fontFamily:SANS,fontSize:9,fontWeight:700,letterSpacing:'0.42em',textTransform:'uppercase',color:ROSE}}/></div></Reveal>}
                     {block.type==='divider' && <Reveal><RoseDivider/></Reveal>}
                     {block.type==='spacer'  && <div style={{height:16}}/>}
-                  </BlockStyleCtx.Provider>
+                  </BlockStyleProvider>
                 </div>
               );
             })}

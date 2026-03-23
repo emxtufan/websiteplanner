@@ -4,6 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
 export const meta: TemplateMeta = {
   id: 'classic', name: 'Classic Elegant', category: 'wedding',
@@ -84,6 +85,8 @@ export type ClassicTemplateProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
@@ -91,6 +94,8 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
   editMode = false,
   onProfileUpdate,
   onBlocksUpdate,
+  onBlockSelect,
+  selectedBlockId,
 }) => {
   const { profile, guest } = data;
 
@@ -297,7 +302,8 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
                 "relative group/block",
                 editMode && "rounded-xl transition-all",
                 editMode && !isVisible && "opacity-35"
-              )}>
+              )}
+              onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
 
               {/* Toolbar */}
               {editMode && (
@@ -317,29 +323,43 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
                 <div className="absolute inset-0 rounded-xl ring-1 ring-transparent group-hover/block:ring-stone-200 transition-all pointer-events-none" />
               )}
 
-              {/* ── LOCAȚIE ── */}
-              {block.type === 'location' && (
-                <div className={cn("space-y-3 py-6 border-b border-stone-100 last:border-0 text-sm font-sans", editMode && "px-3")}>
-                  <InlineEdit tag="p" editMode={editMode} value={block.label || ''}
-                    onChange={v => updBlock(realIdx, { label: v })}
-                    placeholder="Titlu locație (ex: Cununie Civilă)"
-                    className="font-bold uppercase text-[10px] text-stone-400 tracking-widest" />
-                  <div className="flex items-center justify-center gap-2 font-bold text-base text-stone-800">
-                    <Clock className="w-4 h-4 text-stone-300 shrink-0" />
-                    <InlineTime value={block.time || ''} onChange={v => updBlock(realIdx, { time: v })} editMode={editMode}
-                      className="font-bold text-base text-stone-800" />
+              <BlockStyleProvider value={{
+                blockId: block.id,
+                textStyles: block.textStyles,
+                onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel),
+                fontFamily: block.blockFontFamily,
+                fontSize: block.blockFontSize,
+                fontWeight: block.blockFontWeight,
+                fontStyle: block.blockFontStyle,
+                letterSpacing: block.blockLetterSpacing,
+                lineHeight: block.blockLineHeight,
+                textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                textAlign: block.blockAlign,
+              } as BlockStyle}>
+
+                {/* ── LOCAȚIE ── */}
+                {block.type === 'location' && (
+                  <div className={cn("space-y-3 py-6 border-b border-stone-100 last:border-0 text-sm font-sans", editMode && "px-3")}>
+                    <InlineEdit tag="p" editMode={editMode} value={block.label || ''}
+                      onChange={v => updBlock(realIdx, { label: v })}
+                      placeholder="Titlu locație (ex: Cununie Civilă)"
+                      className="font-bold uppercase text-[10px] text-stone-400 tracking-widest" />
+                    <div className="flex items-center justify-center gap-2 font-bold text-base text-stone-800">
+                      <Clock className="w-4 h-4 text-stone-300 shrink-0" />
+                      <InlineTime value={block.time || ''} onChange={v => updBlock(realIdx, { time: v })} editMode={editMode}
+                        className="font-bold text-base text-stone-800" />
+                    </div>
+                    <InlineEdit tag="p" editMode={editMode} value={block.locationName || ''}
+                      onChange={v => updBlock(realIdx, { locationName: v })}
+                      placeholder="Numele locației / sălii..."
+                      className="font-semibold text-stone-700" />
+                    <InlineEdit tag="p" editMode={editMode} value={block.locationAddress || ''}
+                      onChange={v => updBlock(realIdx, { locationAddress: v })}
+                      placeholder="Adresă completă..."
+                      className="text-xs text-stone-500 italic leading-snug" />
+                    <InlineWaze value={block.wazeLink || ''} onChange={v => updBlock(realIdx, { wazeLink: v })} editMode={editMode} />
                   </div>
-                  <InlineEdit tag="p" editMode={editMode} value={block.locationName || ''}
-                    onChange={v => updBlock(realIdx, { locationName: v })}
-                    placeholder="Numele locației / sălii..."
-                    className="font-semibold text-stone-700" />
-                  <InlineEdit tag="p" editMode={editMode} value={block.locationAddress || ''}
-                    onChange={v => updBlock(realIdx, { locationAddress: v })}
-                    placeholder="Adresă completă..."
-                    className="text-xs text-stone-500 italic leading-snug" />
-                  <InlineWaze value={block.wazeLink || ''} onChange={v => updBlock(realIdx, { wazeLink: v })} editMode={editMode} />
-                </div>
-              )}
+                )}
 
               {/* ── NAȘI ── */}
               {block.type === 'godparents' && (
@@ -429,6 +449,7 @@ const ClassicTemplate: React.FC<ClassicTemplateProps> = ({
 
               {block.type === 'divider' && <div className="w-16 h-px bg-stone-200 mx-auto" />}
               {block.type === 'spacer'  && <div className="h-4" />}
+              </BlockStyleProvider>
             </div>
           );
         })}

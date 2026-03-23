@@ -4,7 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
-import { BlockStyleCtx, BlockStyle } from "../BlockStyleContext";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 import { WeddingIcon } from "../TimelineIcons";
 
 export const meta: TemplateMeta = {
@@ -636,23 +636,33 @@ export type BlushBloomProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
-  data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate,
+  data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
 }) => {
   const { profile, guest } = data;
 
-  const [showIntro, setShowIntro]           = useState(!editMode);
-  const [contentVisible, setContentVisible] = useState(editMode);
+  const [showIntro, setShowIntro]           = useState(!editMode || introPreview);
+  const [contentVisible, setContentVisible] = useState(editMode && !introPreview);
 
   useEffect(() => {
-    if (editMode) { setShowIntro(false); setContentVisible(true); return; }
+    if (editMode) {
+      if (introPreview) { setShowIntro(true); setContentVisible(false); }
+      else { setShowIntro(false); setContentVisible(true); }
+      return;
+    }
     setShowIntro(true); setContentVisible(false);
-  }, [editMode]);
+  }, [editMode, introPreview]);
 
   // Lock scroll during intro
   useEffect(() => {
+    if (editMode) {
+      ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
+      return;
+    }
     if (showIntro) {
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
@@ -661,7 +671,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
       ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
     }
     return () => { ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = ''); };
-  }, [showIntro]);
+  }, [showIntro, editMode]);
 
   const safeJSON = (s: string | undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
@@ -792,7 +802,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: "rgba(139,94,107,0.65)", margin: "0 0 20px", lineHeight: 1.7, display: "block" }}/>
               )}
 
-              <BlockStyleCtx.Provider value={{
+              <BlockStyleProvider value={{
                 fontFamily:    (profile as any).heroFontFamily,
                 fontSize:      (profile as any).heroNameSize,
                 letterSpacing: (profile as any).heroLetterSpacing,
@@ -819,7 +829,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                     style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 400, lineHeight: 1.05, color: "#5a3a44", margin: 0, letterSpacing: 2, display: "block" }}/>
                 </div>
               )}
-              </BlockStyleCtx.Provider>
+              </BlockStyleProvider>
 
               {profile.showCelebrationText && (
                 <InlineEdit tag="p" editMode={editMode} value={celebrationText} onChange={v => upProfile('celebrationText', v)}
@@ -894,7 +904,8 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
               const realIdx   = blocks.indexOf(block);
 
               return (
-                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-35")}>
+                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-35")}
+                  onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                   {editMode && (
                     <BlockToolbar
                       onUp={() => movBlock(realIdx, -1)} onDown={() => movBlock(realIdx, 1)}
@@ -902,6 +913,20 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                       visible={isVisible} isFirst={realIdx === 0} isLast={realIdx === blocks.length - 1}
                     />
                   )}
+
+                  <BlockStyleProvider value={{
+                    blockId: block.id,
+                    textStyles: block.textStyles,
+                    onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
+                    fontFamily: block.blockFontFamily,
+                    fontSize: block.blockFontSize,
+                    fontWeight: block.blockFontWeight,
+                    fontStyle: block.blockFontStyle,
+                    letterSpacing: block.blockLetterSpacing,
+                    lineHeight: block.blockLineHeight,
+                    textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                    textAlign: block.blockAlign,
+                  } as BlockStyle}>
 
                   {/* LOCAȚIE */}
                   {block.type === 'location' && (
@@ -992,6 +1017,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                       placeholderVariant={realIdx % 4}
                     />
                   )}
+                  </BlockStyleProvider>
                 </div>
               );
             })}

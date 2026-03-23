@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, useContext } from "react";
 import { cn } from "../../lib/utils";
-import { useBlockStyle } from "../BlockStyleContext";
+import { useBlockStyle, BlockStyleCtx, TextSelectionCtx } from "../BlockStyleContext";
 
 // ─── Editable text (contentEditable) ─────────────────────────────────────────
 interface InlineEditProps {
@@ -12,16 +12,22 @@ interface InlineEditProps {
   placeholder?: string;
   tag?: keyof JSX.IntrinsicElements;
   multiline?: boolean;
+  textKey?: string;
+  textLabel?: string;
 }
 
 export const InlineEdit: React.FC<InlineEditProps> = ({
   value, onChange, editMode, className, style, placeholder = "Click pentru a edita",
-  tag: Tag = "span", multiline = false,
+  tag: Tag = "span", multiline = false, textKey, textLabel,
 }) => {
   const ref = useRef<HTMLElement>(null);
   const [active, setActive] = useState(false);
+  const ctx = useContext(BlockStyleCtx);
+  const selection = useContext(TextSelectionCtx);
+  const resolvedKey = textKey ?? ctx.getAutoKey?.();
   // Merge block-level style overrides — context wins over hardcoded component styles
-  const mergedStyle = useBlockStyle(style);
+  const mergedStyle = useBlockStyle(style, resolvedKey);
+  const isSelected = !!resolvedKey && selection?.selectedTextKey === resolvedKey;
 
   useEffect(() => {
     if (ref.current && document.activeElement !== ref.current) {
@@ -42,7 +48,18 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
       suppressContentEditableWarning
       data-placeholder={placeholder}
       style={mergedStyle}
-      onFocus={() => { setActive(true); if (ref.current && !ref.current.textContent) ref.current.textContent = ""; }}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onFocus={() => {
+        setActive(true);
+        if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
+        if (ref.current && !ref.current.textContent) ref.current.textContent = "";
+      }}
       onBlur={e => { setActive(false); onChange(e.currentTarget.textContent?.trim() || ""); }}
       onKeyDown={e => { if (!multiline && e.key === "Enter") { e.preventDefault(); (e.target as HTMLElement).blur(); } }}
       className={cn(
@@ -51,7 +68,8 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
         "empty:before:content-[attr(data-placeholder)] empty:before:text-stone-300 empty:before:italic empty:before:pointer-events-none",
         active
           ? "ring-2 ring-stone-400/30 ring-offset-2 rounded bg-white/80"
-          : "hover:ring-1 hover:ring-stone-300/50 hover:ring-offset-1 hover:rounded hover:bg-stone-50/60"
+          : "hover:ring-1 hover:ring-stone-300/50 hover:ring-offset-1 hover:rounded hover:bg-stone-50/60",
+        isSelected && !active ? "ring-2 ring-amber-400/60 ring-offset-2 rounded bg-amber-50/70" : ""
       )}
     />
   );

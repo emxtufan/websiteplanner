@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { BlockStyleCtx, BlockStyle } from "../BlockStyleContext";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
-const GOOGLE_FONTS_URL =
-  "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=EB+Garamond:ital,wght@0,400;0,500;1,400&family=Lora:ital,wght@0,400;0,600;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Crimson+Pro:ital,wght@0,300;0,400;0,600;1,400&family=Great+Vibes&family=Pinyon+Script&family=Parisienne&family=Allura&family=Sacramento&family=Montserrat:wght@300;400;500;600;700&family=Raleway:wght@300;400;500;600;700&family=Josefin+Sans:wght@300;400;600&family=Nunito:wght@300;400;600;700&family=Poppins:wght@300;400;500;600&family=Cinzel:wght@400;600&family=Tenor+Sans&family=Bodoni+Moda:ital,wght@0,400;0,600;1,400&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Dancing+Script:wght@400;600&display=swap";
 import {
   ChevronUp,
   ChevronDown,
@@ -3902,7 +3900,7 @@ export type TerraBohoProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
-  onBlockSelect?: (block: InvitationBlock | null, idx: number) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
   selectedBlockId?: string;
 };
 
@@ -3910,24 +3908,25 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
   data,
   onOpenRSVP,
   editMode = false,
+  introPreview = false,
   onProfileUpdate,
   onBlocksUpdate,
   onBlockSelect,
   selectedBlockId,
 }) => {
   const { profile, guest } = data;
-  const [showIntro, setShowIntro] = useState(!editMode);
-  const [contentVis, setContentVis] = useState(editMode);
+  const [showIntro, setShowIntro] = useState(!editMode || introPreview);
+  const [contentVis, setContentVis] = useState(editMode && !introPreview);
 
   useEffect(() => {
     if (editMode) {
-      setShowIntro(false);
-      setContentVis(true);
+      if (introPreview) { setShowIntro(true); setContentVis(false); }
+      else { setShowIntro(false); setContentVis(true); }
     } else {
       setShowIntro(true);
       setContentVis(false);
     }
-  }, [editMode]);
+  }, [editMode, introPreview]);
 
   const safeJSON = (s: string | undefined, fb: any) => {
     try {
@@ -4182,7 +4181,6 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
 
   return (
     <>
-      <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
       <style>{`
         @keyframes tb-name-reveal { from{opacity:0;filter:blur(10px);transform:translateY(8px)} to{opacity:1;filter:blur(0);transform:translateY(0)} }
         @keyframes tb-sparkle { 0%,100%{opacity:.35;transform:scale(1)} 50%{opacity:.7;transform:scale(1.5)} }
@@ -4367,7 +4365,7 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
                   <Wildflowers scale={0.55} />
                 </div>
 
-                <BlockStyleCtx.Provider
+                <BlockStyleProvider
                   value={{
                     fontFamily: profile.heroFontFamily,
                     fontSize: profile.heroNameSize,
@@ -4442,7 +4440,7 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
                       />
                     </>
                   )}
-                </BlockStyleCtx.Provider>
+                </BlockStyleProvider>
 
                 <div
                   style={{
@@ -4688,6 +4686,8 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
                           : undefined,
                       textAlign: (block.blockAlign as any) || undefined,
                       fontFamily: block.blockFontFamily || undefined,
+                      fontWeight: block.blockFontWeight || undefined,
+                      fontStyle: block.blockFontStyle || undefined,
                       fontSize: block.blockFontSize
                         ? `${block.blockFontSize}px`
                         : undefined,
@@ -4714,9 +4714,12 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
                     } as React.CSSProperties
                   }
                 >
-                  <BlockStyleCtx.Provider
+                  <BlockStyleProvider
                     value={
                       {
+                        blockId: block.id,
+                        textStyles: block.textStyles,
+                        onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
                         fontFamily: block.blockFontFamily,
                         fontSize: block.blockFontSize,
                         letterSpacing: block.blockLetterSpacing,
@@ -5202,7 +5205,7 @@ const TerraBohoTemplate: React.FC<TerraBohoProps> = ({
                       </Reveal>
                     )}
                     {block.type === "spacer" && <div style={{ height: 16 }} />}
-                  </BlockStyleCtx.Provider>
+                  </BlockStyleProvider>
                 </div>
               );
             })}

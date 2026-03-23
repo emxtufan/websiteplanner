@@ -3,10 +3,9 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { WeddingIcon } from "../TimelineIcons";
 gsap.registerPlugin(ScrollTrigger);
-import { BlockStyleCtx, BlockStyle } from '../BlockStyleContext';
+import { BlockStyleProvider, BlockStyle } from '../BlockStyleContext';
 import { CastleColorTheme, getLordTheme } from './castleDefaults';
 
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Great+Vibes&family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500;600;700&display=swap";
 import {
   ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus,
   Upload, Camera, Play, Pause, SkipForward, SkipBack,
@@ -768,7 +767,7 @@ const CastleOverlayText: React.FC<{
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0,0,0,0.15) 0%, transparent 100%)' }} />
     <div style={{ position: 'absolute', top: '15%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
       {editMode ? (
-        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S }} />
+        <InlineEdit tag="p" editMode value={welcomeText} onChange={v => onWelcomeChange?.(v)} textKey="intro:welcome" textLabel="Intro Welcome" style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S }} />
       ) : (
         <svg width="290" height="74" viewBox="0 0 290 74" style={{ display: 'block', margin: '0 auto', overflow: 'visible' }}>
           <defs>
@@ -885,14 +884,14 @@ const CastleOverlayText: React.FC<{
           </div>
 
           {/* Subtitlu nuntă */}
-          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)}
+          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle"
             style={{ fontFamily: 'Cinzel, serif', fontSize: '0.85rem', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 4, opacity: 0.9 }} />
         </>
       ) : (
         /* ── Botez — afișare originală ── */
         <>
-          <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} style={{ fontFamily: INTO_TEXT, fontSize: '5.2rem', lineHeight: 1.15, color: '#ffffff', textShadow: S, margin: '2px 0' }} />
-          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 2 }} />
+          <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} textKey="intro:name" textLabel="Intro Name" style={{ fontFamily: INTO_TEXT, fontSize: '5.2rem', lineHeight: 1.15, color: '#ffffff', textShadow: S, margin: '2px auto 0', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word', textWrap: 'balance' }} />
+          <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle" style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 2 }} />
         </>
       )}
     </div>
@@ -902,13 +901,13 @@ const CastleOverlayText: React.FC<{
 
     {/* Phase 2: invitation text */}
     <div ref={inviteRef} style={{ position: 'absolute', top: editMode ? '52%' : '50%', left: 0, right: 0, transform: editMode ? 'translateY(-50%) scale(1)' : 'translateY(-50%) scale(0.88)', textAlign: 'center', zIndex: 1, padding: '0 36px', display: 'flex', flexDirection: 'column', gap: '12px', opacity: editMode ? 1 : 0, pointerEvents: editMode ? 'auto' : 'none' }}>
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteTop || 'Cu bucurie vă anunțăm'} onChange={v => onInviteTopChange?.(v)}
+      <InlineEdit tag="p" editMode={!!editMode} value={inviteTop || 'Cu bucurie vă anunțăm'} onChange={v => onInviteTopChange?.(v)} textKey="intro:inviteTop" textLabel="Intro Top"
         style={{ fontFamily: 'Cinzel, serif', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteMiddle || dateStr || 'Data Evenimentului'} onChange={v => onInviteMiddleChange?.(v)}
+      <InlineEdit tag="p" editMode={!!editMode} value={inviteMiddle || dateStr || 'Data Evenimentului'} onChange={v => onInviteMiddleChange?.(v)} textKey="intro:inviteMiddle" textLabel="Intro Middle"
         style={{ fontFamily: 'Great Vibes, cursive', fontSize: '2.6rem', lineHeight: 1.2, color: '#ffffff', textShadow: S, margin: 0 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteBottom || 'a fost botezat'} onChange={v => onInviteBottomChange?.(v)}
+      <InlineEdit tag="p" editMode={!!editMode} value={inviteBottom || 'a fost botezat'} onChange={v => onInviteBottomChange?.(v)} textKey="intro:inviteBottom" textLabel="Intro Bottom"
         style={{ fontFamily: 'Cinzel, serif', fontSize: '0.68rem', fontWeight: 400, letterSpacing: '0.35em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0, lineHeight: 2 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteTag || '✦ deschide porțile ✦'} onChange={v => onInviteTagChange?.(v)}
+      <InlineEdit tag="p" editMode={!!editMode} value={inviteTag || '✦ deschide porțile ✦'} onChange={v => onInviteTagChange?.(v)} textKey="intro:inviteTag" textLabel="Intro Tag"
         style={{ fontFamily: 'Cinzel, serif', fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.6em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', textShadow: S, margin: '2px 0 0' }} />
     </div>
   </div>
@@ -920,6 +919,8 @@ const CastleOverlayText: React.FC<{
 const CastleIntro: React.FC<{
   onDone: () => void; castleUrl?: string; castleUrlMobile?: string;
   editMode?: boolean; contentEl?: HTMLElement | null;
+  scrollContainer?: HTMLElement | null;
+  previewMode?: 'doors' | 'static';
   childName?: string; partner2Name?: string; isWedding?: boolean;
   subtitle?: string; welcomeText?: string;
   inviteTop?: string; inviteMiddle?: string; inviteBottom?: string; inviteTag?: string; dateStr?: string;
@@ -927,8 +928,8 @@ const CastleIntro: React.FC<{
   onInviteTopChange?: (v: string) => void; onInviteMiddleChange?: (v: string) => void; onInviteBottomChange?: (v: string) => void; onInviteTagChange?: (v: string) => void;
   onDoorsOpen?: () => void;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
-}> = ({ onDone, castleUrl, castleUrlMobile, editMode, contentEl,
-        childName = '', partner2Name = '', isWedding = false, subtitle = 'in my castle', welcomeText = 'WELCOME',
+}> = ({ onDone, castleUrl, castleUrlMobile, editMode, contentEl, scrollContainer,
+        previewMode = 'doors', childName = '', partner2Name = '', isWedding = false, subtitle = 'in my castle', welcomeText = 'WELCOME',
         inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr,
         onChildNameChange, onSubtitleChange, onWelcomeChange,
         onInviteTopChange, onInviteMiddleChange, onInviteBottomChange, onInviteTagChange,
@@ -982,6 +983,7 @@ const CastleIntro: React.FC<{
     let _musicFired = false;
     const st = ScrollTrigger.create({
       trigger: contentEl,
+      scroller: scrollContainer || undefined,
       start: 'top top',
       end: '+=500%',
       pin: true,
@@ -1009,10 +1011,27 @@ const CastleIntro: React.FC<{
     });
     requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => { st.kill(); tl.kill(); gsap.set(contentEl, { clearProps: 'all' }); };
-  }, [editMode, contentEl]);
+  }, [editMode, contentEl, scrollContainer]);
 
   const defaultCastle = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800' viewBox='0 0 1200 800'%3E%3Cdefs%3E%3ClinearGradient id='sky' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%231a0a1e'/%3E%3Cstop offset='0.4' stop-color='%23380d3f'/%3E%3Cstop offset='1' stop-color='%23be185d'/%3E%3C/linearGradient%3E%3ClinearGradient id='glow' x1='0' y1='0' x2='0' y2='1'%3E%3Cstop offset='0' stop-color='%23fdf2f8' stop-opacity='0.12'/%3E%3Cstop offset='1' stop-color='%23be185d' stop-opacity='0.35'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='1200' height='800' fill='url(%23sky)'/%3E%3Cellipse cx='600' cy='820' rx='700' ry='200' fill='%239d174d' opacity='0.5'/%3E%3Cellipse cx='600' cy='850' rx='500' ry='140' fill='%23be185d' opacity='0.3'/%3E%3Crect x='440' y='320' width='320' height='340' rx='4' fill='%231e0a22'/%3E%3Crect x='440' y='320' width='320' height='340' rx='4' fill='url(%23glow)'/%3E%3Crect x='460' y='250' width='60' height='90' rx='3' fill='%231e0a22'/%3E%3Crect x='570' y='220' width='60' height='120' rx='3' fill='%231e0a22'/%3E%3Crect x='680' y='250' width='60' height='90' rx='3' fill='%231e0a22'/%3E%3Crect x='460' y='230' width='60' height='18' rx='2' fill='%23be185d' opacity='0.8'/%3E%3Crect x='570' y='200' width='60' height='18' rx='2' fill='%23be185d' opacity='0.8'/%3E%3Crect x='680' y='230' width='60' height='18' rx='2' fill='%23be185d' opacity='0.8'/%3E%3Crect x='540' y='460' width='120' height='200' rx='60' fill='%230d0514'/%3E%3Cellipse cx='360' cy='800' rx='180' ry='30' fill='%23380d3f' opacity='0.6'/%3E%3Cellipse cx='840' cy='800' rx='180' ry='30' fill='%23380d3f' opacity='0.6'/%3E%3Ccircle cx='200' cy='180' r='2' fill='white' opacity='0.8'%3E%3Canimate attributeName='opacity' values='0.3;1;0.3' dur='2.1s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle cx='950' cy='120' r='1.5' fill='white' opacity='0.7'%3E%3Canimate attributeName='opacity' values='0.2;0.9;0.2' dur='1.7s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle cx='100' cy='300' r='1' fill='white' opacity='0.6'%3E%3Canimate attributeName='opacity' values='0.1;0.8;0.1' dur='3s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle cx='1100' cy='250' r='2' fill='%23f472b6' opacity='0.5'%3E%3Canimate attributeName='opacity' values='0.2;0.7;0.2' dur='2.5s' repeatCount='indefinite'/%3E%3C/circle%3E%3Ccircle cx='600' cy='60' r='1.5' fill='white' opacity='0.9'%3E%3Canimate attributeName='opacity' values='0.4;1;0.4' dur='1.9s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/svg%3E";
   const finalImg = isMobile ? (castleUrlMobile || castleUrl || defaultCastle) : (castleUrl || castleUrlMobile || defaultCastle);
+
+  if (editMode && previewMode === 'static') {
+    return (
+      <div style={{ position: 'relative', height: 800, borderRadius: 12, marginBottom: 32, overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${finalImg})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.08)' }} />
+        <CastleOverlayText
+          childName={childName} partner2Name={partner2Name} isWedding={isWedding}
+          subtitle={subtitle} welcomeText={welcomeText} editMode={true}
+          onChildNameChange={onChildNameChange} onSubtitleChange={onSubtitleChange} onWelcomeChange={onWelcomeChange}
+          inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
+          onInviteTopChange={onInviteTopChange} onInviteMiddleChange={onInviteMiddleChange}
+          onInviteBottomChange={onInviteBottomChange} onInviteTagChange={onInviteTagChange}
+          themeColors={themeColors} />
+      </div>
+    );
+  }
 
   if (editMode) {
     return (
@@ -1361,11 +1380,12 @@ const InsertBlockButton: React.FC<{
 // ── Main Template ─────────────────────────────────────────────────────────────
 const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
   editMode?: boolean;
+  introPreview?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
-  onBlockSelect?: (block: InvitationBlock | null, idx: number) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
   selectedBlockId?: string;
-}> = ({ data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
+}> = ({ data, onOpenRSVP, editMode = false, introPreview = false, scrollContainer, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
   const { profile, guest } = data;
   
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1509,7 +1529,9 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
   const musicPlayRef = useRef<{ unlock: () => void; play: () => void; pause: () => void } | null>(null);
 
   useEffect(() => { if (!editMode) setShowAudioModal(hasMusicBlock()); }, []);
-  useEffect(() => { if (editMode) setShowIntro(false); }, [editMode]);
+  useEffect(() => {
+    setShowIntro(!editMode);
+  }, [editMode]);
 
   const _pq = useRef<Record<string, any>>({});
   const _pt = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1581,7 +1603,6 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
 
   return (
     <>
-      <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
       <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
 
       {showAudioModal && !editMode && (
@@ -1601,33 +1622,38 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
       )}
 
       {showIntro && (
-        <CastleIntro
-          onDone={() => {}}
-          castleUrl={heroBgImage}
-          castleUrlMobile={heroBgImageMobile}
-          contentEl={contentEl}
-          childName={p.partner1Name || "Numele Copilului"}
-          partner2Name={p.partner2Name || ''}
-          isWedding={isWeddingTemplate}
-          subtitle={castleSubtitle}
-          welcomeText={castleWelcome}
-          inviteTop={castleInviteTop}
-          inviteMiddle={castleInviteMid}
-          inviteBottom={castleInviteBot}
-          inviteTag={castleInviteTag}
-          dateStr={dateStr}
-          themeColors={{
-            pinkDark: PINK_DARK,
-            pinkL: PINK_L,
-            pinkXL: PINK_XL,
-            gold: GOLD,
-          }}
-          onDoorsOpen={() => {
-            if (audioAllowedRef.current && musicPlayRef.current) {
-              musicPlayRef.current.play();
-            }
-          }}
-        />
+        <BlockStyleProvider
+          value={{ blockId: "__intro__", textStyles: (profile as any).introTextStyles }}
+        >
+          <CastleIntro
+            onDone={() => {}}
+            castleUrl={heroBgImage}
+            castleUrlMobile={heroBgImageMobile}
+            contentEl={contentEl}
+            scrollContainer={scrollContainer}
+            childName={p.partner1Name || "Numele Copilului"}
+            partner2Name={p.partner2Name || ''}
+            isWedding={isWeddingTemplate}
+            subtitle={castleSubtitle}
+            welcomeText={castleWelcome}
+            inviteTop={castleInviteTop}
+            inviteMiddle={castleInviteMid}
+            inviteBottom={castleInviteBot}
+            inviteTag={castleInviteTag}
+            dateStr={dateStr}
+            themeColors={{
+              pinkDark: PINK_DARK,
+              pinkL: PINK_L,
+              pinkXL: PINK_XL,
+              gold: GOLD,
+            }}
+            onDoorsOpen={() => {
+              if (audioAllowedRef.current && musicPlayRef.current) {
+                musicPlayRef.current.play();
+              }
+            }}
+          />
+        </BlockStyleProvider>
       )}
 
       <div
@@ -1644,6 +1670,52 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
           paddingTop: showIntro ? "0vh" : "0px",
         }}
       >
+        {editMode && introPreview && (
+          <div className="max-w-2xl mx-auto px-6 relative z-10">
+            <div className="mb-10 p-5 bg-white rounded-2xl border border-zinc-200 shadow-sm">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 mb-3">Preview intro (editabil)</p>
+              <div className="border border-zinc-200 rounded-xl bg-zinc-50/60 overflow-hidden">
+                <BlockStyleProvider value={{
+                  blockId: "__intro__",
+                  textStyles: (profile as any).introTextStyles,
+                  onTextSelect: (textKey, textLabel) => onBlockSelect?.(
+                    { id: "__intro__", type: "intro", textStyles: (profile as any).introTextStyles } as any,
+                    -1,
+                    textKey,
+                    textLabel
+                  ),
+                }}>
+                  <CastleIntro
+                    editMode
+                    previewMode="static"
+                    castleUrl={heroBgImage}
+                    castleUrlMobile={heroBgImageMobile}
+                    onDone={() => {}}
+                    childName={p.partner1Name || "Numele Copilului"}
+                    partner2Name={p.partner2Name || ""}
+                    isWedding={isWeddingTemplate}
+                    subtitle={castleSubtitle}
+                    welcomeText={castleWelcome}
+                    inviteTop={castleInviteTop}
+                    inviteMiddle={castleInviteMid}
+                    inviteBottom={castleInviteBot}
+                    inviteTag={castleInviteTag}
+                    dateStr={dateStr}
+                    themeColors={{ pinkDark: PINK_DARK, pinkL: PINK_L, pinkXL: PINK_XL, gold: GOLD }}
+                    onChildNameChange={v => upProfile('partner1Name', v)}
+                    onSubtitleChange={v => upProfile('castleIntroSubtitle', v)}
+                    onWelcomeChange={v => upProfile('castleIntroWelcome', v)}
+                    onInviteTopChange={v => upProfile('castleInviteTop', v)}
+                    onInviteMiddleChange={v => upProfile('castleInviteMiddle', v)}
+                    onInviteBottomChange={v => upProfile('castleInviteBottom', v)}
+                    onInviteTagChange={v => upProfile('castleInviteTag', v)}
+                  />
+                </BlockStyleProvider>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Hero content image — full width ──────────────────────────────── */}
         {(() => {
           const isMob =
@@ -1770,6 +1842,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
         })()}
 
         <div className="max-w-2xl mx-auto px-6 relative z-10">
+
           {/* {editMode && (
             <div className="mb-12 p-6 bg-white rounded-2xl border border-pink-100 shadow-sm">
               <h3 className="text-xs font-bold text-pink-600 uppercase tracking-widest mb-4 flex items-center gap-2">
@@ -2165,6 +2238,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                 <div key={block.id} className="group/insert">
                   <div
                     className={`relative group/block ${block.type === "divider" ? "" : "py-5"}`}
+                    onClick={editMode ? () => onBlockSelect?.(block, idx) : undefined}
                     style={{
                         marginTop: block.blockMarginTop != null ? `${block.blockMarginTop}px` : undefined,
                         marginBottom: block.blockMarginBottom != null ? `${block.blockMarginBottom}px` : undefined,
@@ -2177,12 +2251,19 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                         borderRadius: block.blockRadius != null ? `${block.blockRadius}px` : undefined,
                       }}
                   >
-                    <BlockStyleCtx.Provider
+                    <BlockStyleProvider
                       value={
                         {
+                          blockId: block.id,
+                          textStyles: block.textStyles,
+                          onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel),
                           fontFamily: block.blockFontFamily,
                           fontSize: block.blockFontSize,
-                          textColor: block.textColor,
+                          fontWeight: block.blockFontWeight,
+                          fontStyle: block.blockFontStyle,
+                          letterSpacing: block.blockLetterSpacing,
+                          lineHeight: block.blockLineHeight,
+                          textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
                           textAlign: block.blockAlign,
                         } as BlockStyle
                       }
@@ -2931,7 +3012,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                           })()}
                         </Reveal>
                       )}
-                    </BlockStyleCtx.Provider>
+                    </BlockStyleProvider>
                   </div>
                   {/* Buton insert DUPĂ fiecare bloc */}
                   {editMode && (

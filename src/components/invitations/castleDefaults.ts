@@ -37,7 +37,7 @@ export const CASTLE_THEMES: CastleColorTheme[] = [
 
 // ── Teme FETE — roz, lavandă, lila, piersică ────────────────────────────────
 export const GIRL_THEMES: CastleColorTheme[] = [
-  { id: 'default',       emoji: '🌸', name: 'Pink Powder',    PINK_DARK: '#be185d', PINK_D: '#9d174d', PINK_L: '#fbcfe8', PINK_XL: '#fdf2f8', CREAM: '#fff5f7', TEXT: '#4a1d1f', MUTED: '#9d7074', GOLD: '#d4af37' },
+  { id: 'default',       emoji: '🌸', name: 'Pink Powder',    PINK_DARK: '#fbcfe8', PINK_D: '#9d174d', PINK_L: '#fbcfe8', PINK_XL: '#fdf2f8', CREAM: '#fff5f7', TEXT: '#4a1d1f', MUTED: '#9d7074', GOLD: '#d4af37' },
   { id: 'rose',          emoji: '🌷', name: 'Rose Blush',     PINK_DARK: '#881337', PINK_D: '#be123c', PINK_L: '#fecdd3', PINK_XL: '#fff1f2', CREAM: '#fff5f5', TEXT: '#3b0d13', MUTED: '#a1626a', GOLD: '#c9a227' },
   { id: 'raspberry',     emoji: '🌺', name: 'Raspberry',      PINK_DARK: '#9d174d', PINK_D: '#db2777', PINK_L: '#f9a8d4', PINK_XL: '#fdf2f8', CREAM: '#fff5f7', TEXT: '#4a1d1f', MUTED: '#9d7074', GOLD: '#d4af37' },
   { id: 'ballet',        emoji: '🩰', name: 'Ballet Pink',    PINK_DARK: '#a21caf', PINK_D: '#e879f9', PINK_L: '#f5d0fe', PINK_XL: '#fdf4ff', CREAM: '#fff7fb', TEXT: '#3b1d2e', MUTED: '#a78b95', GOLD: '#e0b84f' },

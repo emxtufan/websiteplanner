@@ -17,6 +17,8 @@ export interface InvitationData {
 export interface InvitationTemplateProps {
   data: InvitationData;
   onOpenRSVP: () => void;
+  introPreview?: boolean;
+  scrollContainer?: HTMLElement | null;
 }
 
 export type TemplateTag =

@@ -4,6 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
 export const meta: TemplateMeta = {
   id: 'etern-botanica',
@@ -597,20 +598,26 @@ export type EternBotanicaProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
-  data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate,
+  data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
 }) => {
   const { profile, guest } = data;
-  const [showIntro, setShowIntro]     = useState(!editMode);
-  const [contentVis, setContentVis]   = useState(editMode);
+  const [showIntro, setShowIntro]     = useState(!editMode || introPreview);
+  const [contentVis, setContentVis]   = useState(editMode && !introPreview);
   const [framePhase, setFramePhase]   = useState(0);
 
   useEffect(() => {
-    if (editMode) { setShowIntro(false); setContentVis(true); }
-    else          { setShowIntro(true);  setContentVis(false); }
-  }, [editMode]);
+    if (editMode) {
+      if (introPreview) { setShowIntro(true); setContentVis(false); }
+      else { setShowIntro(false); setContentVis(true); }
+    } else {
+      setShowIntro(true); setContentVis(false);
+    }
+  }, [editMode, introPreview]);
 
   useEffect(() => {
     if (!contentVis) return;
@@ -951,7 +958,8 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
               const locIdx    = displayBlocks.filter((b, i) => i < displayIdx && b.type === 'location').length;
 
               return (
-                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}>
+                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}
+                  onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                   {editMode && (
                     <BlockToolbar
                       onUp={() => movBlock(realIdx, -1)} onDown={() => movBlock(realIdx, 1)}
@@ -959,6 +967,20 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
                       visible={isVisible} isFirst={realIdx === 0} isLast={realIdx === blocks.length - 1}
                     />
                   )}
+
+                  <BlockStyleProvider value={{
+                    blockId: block.id,
+                    textStyles: block.textStyles,
+                    onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
+                    fontFamily: block.blockFontFamily,
+                    fontSize: block.blockFontSize,
+                    fontWeight: block.blockFontWeight,
+                    fontStyle: block.blockFontStyle,
+                    letterSpacing: block.blockLetterSpacing,
+                    lineHeight: block.blockLineHeight,
+                    textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                    textAlign: block.blockAlign,
+                  } as BlockStyle}>
 
                   {block.type === 'location' && (
                     <LocCard block={block} editMode={editMode} onUpdate={p => updBlock(realIdx, p)} idx={locIdx}/>
@@ -1045,6 +1067,7 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
 
                   {block.type === 'divider' && <Reveal><RoseDivider/></Reveal>}
                   {block.type === 'spacer'  && <div style={{ height: 16 }}/>}
+                  </BlockStyleProvider>
                 </div>
               );
             })}

@@ -4,6 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
 export const meta: TemplateMeta = {
   id: 'dark-royal',
@@ -257,22 +258,28 @@ export type DarkRoyalProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const DarkRoyalTemplate: React.FC<DarkRoyalProps> = ({
-  data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate,
+  data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
 }) => {
   const { profile, guest } = data;
 
-  const [showIntro, setShowIntro] = useState(!editMode);
-  const [contentVisible, setContentVisible] = useState(editMode);
+  const [showIntro, setShowIntro] = useState(!editMode || introPreview);
+  const [contentVisible, setContentVisible] = useState(editMode && !introPreview);
   const timelineRef = useRef<HTMLDivElement>(null);
   const timelineProgress = useTimelineProgress(timelineRef);
 
   useEffect(() => {
-    if (editMode) { setShowIntro(false); setContentVisible(true); return; }
+    if (editMode) {
+      if (introPreview) { setShowIntro(true); setContentVisible(false); }
+      else { setShowIntro(false); setContentVisible(true); }
+      return;
+    }
     setShowIntro(true); setContentVisible(false);
-  }, [editMode]);
+  }, [editMode, introPreview]);
 
   const safeJSON = (s: string | undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
@@ -475,15 +482,31 @@ const DarkRoyalTemplate: React.FC<DarkRoyalProps> = ({
               {locationBlocks.map((block, i) => {
                 const realIdx = blocks.indexOf(block);
                 return (
-                  <LocationCard key={block.id}
-                    block={block} idx={i} total={locationBlocks.length}
-                    editMode={editMode}
-                    onUpdate={patch => updBlock(realIdx, patch)}
-                    onUp={() => movBlock(realIdx, -1)}
-                    onDown={() => movBlock(realIdx, 1)}
-                    onToggle={() => updBlock(realIdx, { show: block.show === false ? true : false })}
-                    onDelete={() => delBlock(realIdx)}
-                  />
+                  <div key={block.id} onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
+                    <BlockStyleProvider value={{
+                      blockId: block.id,
+                      textStyles: block.textStyles,
+                      onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
+                      fontFamily: block.blockFontFamily,
+                      fontSize: block.blockFontSize,
+                      fontWeight: block.blockFontWeight,
+                      fontStyle: block.blockFontStyle,
+                      letterSpacing: block.blockLetterSpacing,
+                      lineHeight: block.blockLineHeight,
+                      textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                      textAlign: block.blockAlign,
+                    } as BlockStyle}>
+                      <LocationCard
+                        block={block} idx={i} total={locationBlocks.length}
+                        editMode={editMode}
+                        onUpdate={patch => updBlock(realIdx, patch)}
+                        onUp={() => movBlock(realIdx, -1)}
+                        onDown={() => movBlock(realIdx, 1)}
+                        onToggle={() => updBlock(realIdx, { show: block.show === false ? true : false })}
+                        onDelete={() => delBlock(realIdx)}
+                      />
+                    </BlockStyleProvider>
+                  </div>
                 );
               })}
             </div>
@@ -507,7 +530,8 @@ const DarkRoyalTemplate: React.FC<DarkRoyalProps> = ({
             const realIdx = blocks.indexOf(block);
             const isVisible = block.show !== false;
             return (
-              <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}>
+              <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}
+                onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                 {editMode && (
                   <BlockToolbar
                     onUp={() => movBlock(realIdx, -1)} onDown={() => movBlock(realIdx, 1)}
@@ -516,6 +540,19 @@ const DarkRoyalTemplate: React.FC<DarkRoyalProps> = ({
                   />
                 )}
 
+                <BlockStyleProvider value={{
+                  blockId: block.id,
+                  textStyles: block.textStyles,
+                  onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
+                  fontFamily: block.blockFontFamily,
+                  fontSize: block.blockFontSize,
+                  fontWeight: block.blockFontWeight,
+                  fontStyle: block.blockFontStyle,
+                  letterSpacing: block.blockLetterSpacing,
+                  lineHeight: block.blockLineHeight,
+                  textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                  textAlign: block.blockAlign,
+                } as BlockStyle}>
                 {block.type === 'godparents' && (
                   <div className="text-center space-y-4 py-6">
                     <GoldDivider />
@@ -577,6 +614,7 @@ const DarkRoyalTemplate: React.FC<DarkRoyalProps> = ({
 
                 {block.type === 'divider' && <GoldDivider />}
                 {block.type === 'spacer'  && <div className="h-6" />}
+                </BlockStyleProvider>
               </div>
             );
           })}

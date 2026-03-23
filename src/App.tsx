@@ -8,6 +8,7 @@ import AuthForm from "./components/AuthForm";
 import LandingPage from "./LandingPage"; // Import the new LandingPage
 import { ToastProvider } from "./components/ui/use-toast";
 import { Toaster } from "./components/ui/toaster";
+import { GOOGLE_FONTS_URL } from "./config/fonts";
 
 const App = () => {
     const [currentPath, setCurrentPath] = useState(window.location.pathname);
@@ -86,6 +87,7 @@ const App = () => {
 
     return (
         <ToastProvider>
+            <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
             {renderView()}
             <Toaster />
         </ToastProvider>

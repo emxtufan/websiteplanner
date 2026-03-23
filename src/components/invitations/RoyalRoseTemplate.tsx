@@ -4,6 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
 export const meta: TemplateMeta = {
   id: 'royal-rose',
@@ -180,23 +181,32 @@ export type RoyalRoseProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const RoyalRoseTemplate: React.FC<RoyalRoseProps> = ({
   data, onOpenRSVP,
   editMode = false,
+  introPreview = false,
   onProfileUpdate,
   onBlocksUpdate,
+  onBlockSelect,
+  selectedBlockId,
 }) => {
   const { profile, guest } = data;
 
-  const [showIntro, setShowIntro] = useState(!editMode);
-  const [contentVisible, setContentVisible] = useState(editMode);
+  const [showIntro, setShowIntro] = useState(!editMode || introPreview);
+  const [contentVisible, setContentVisible] = useState(editMode && !introPreview);
 
   useEffect(() => {
-    if (editMode) { setShowIntro(false); setContentVisible(true); return; }
+    if (editMode) {
+      if (introPreview) { setShowIntro(true); setContentVisible(false); }
+      else { setShowIntro(false); setContentVisible(true); }
+      return;
+    }
     setShowIntro(true); setContentVisible(false);
-  }, [editMode]);
+  }, [editMode, introPreview]);
 
   const handleIntroDone = () => {
     setShowIntro(false);
@@ -377,7 +387,7 @@ const RoyalRoseTemplate: React.FC<RoyalRoseProps> = ({
                 <p className="font-bold text-lg text-rose-800">{guest?.name || 'Nume Invitat'}</p>
                 <p className="text-[10px] text-pink-400 uppercase tracking-widest mt-1 font-sans">invitat de onoare</p>
               </div>
-
+              
               {/* ── DATE ── */}
               <div className="flex flex-col items-center gap-2 font-sans">
                 <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center">
@@ -416,7 +426,8 @@ const RoyalRoseTemplate: React.FC<RoyalRoseProps> = ({
                 const realIdx   = blocks.indexOf(block);
 
                 return (
-                  <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-35")}>
+                  <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-35")}
+                    onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                     {editMode && (
                       <BlockToolbar
                         onUp={() => movBlock(realIdx, -1)} onDown={() => movBlock(realIdx, 1)}
@@ -426,72 +437,95 @@ const RoyalRoseTemplate: React.FC<RoyalRoseProps> = ({
                     )}
                     {editMode && <div className="absolute inset-0 rounded-2xl ring-1 ring-transparent group-hover/block:ring-pink-200 transition-all pointer-events-none" />}
 
+                    <BlockStyleProvider value={{
+                      blockId: block.id,
+                      textStyles: block.textStyles,
+                      onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel),
+                      fontFamily: block.blockFontFamily,
+                      fontSize: block.blockFontSize,
+                      fontWeight: block.blockFontWeight,
+                      fontStyle: block.blockFontStyle,
+                      letterSpacing: block.blockLetterSpacing,
+                      lineHeight: block.blockLineHeight,
+                      textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                      textAlign: block.blockAlign,
+                    } as BlockStyle}>
+
                     {/* LOCAȚIE */}
                     {block.type === 'location' && (
-                      <div className={cn("rounded-2xl border border-pink-100 bg-white/60 p-5 space-y-3 text-sm font-sans", editMode && "hover:bg-pink-50/40 transition-colors")}>
-                        <InlineEdit tag="p" editMode={editMode} value={block.label || ''}
-                          onChange={v => updBlock(realIdx, { label: v })} placeholder="Titlu locație..."
-                          className="font-bold uppercase text-[10px] text-pink-400 tracking-widest" />
-                        <div className="flex items-center justify-center gap-2 font-bold text-lg text-rose-800">
-                          <div className="w-6 h-6 rounded-full bg-pink-100 flex items-center justify-center">
-                            <Clock className="w-3 h-3 text-pink-400" />
+                      <div className={cn("rounded-2xl border border-pink-100 bg-white/80 shadow-sm overflow-hidden", editMode && "hover:shadow-md transition-all")}>
+                        <div className="h-1 bg-gradient-to-r from-pink-200 via-rose-300 to-pink-200" />
+                        <div className="p-5 space-y-4 text-sm font-sans">
+                          <div className="flex items-center justify-between gap-3">
+                            <InlineEdit tag="p" editMode={editMode} value={block.label || ''}
+                              onChange={v => updBlock(realIdx, { label: v })} placeholder="Titlu locație..."
+                              className="font-bold uppercase text-[10px] text-pink-400 tracking-widest" />
+                            <div className="inline-flex items-center gap-1.5 bg-pink-50 border border-pink-100 rounded-full px-2.5 py-1">
+                              <Clock className="w-3 h-3 text-pink-400" />
+                              <InlineTime value={block.time || ''} onChange={v => updBlock(realIdx, { time: v })} editMode={editMode}
+                                className="font-bold text-[11px] text-rose-800" />
+                            </div>
                           </div>
-                          <InlineTime value={block.time || ''} onChange={v => updBlock(realIdx, { time: v })} editMode={editMode}
-                            className="font-bold text-lg text-rose-800" />
+                          <InlineEdit tag="p" editMode={editMode} value={block.locationName || ''}
+                            onChange={v => updBlock(realIdx, { locationName: v })} placeholder="Numele locației..."
+                            className="text-lg font-semibold text-rose-700" />
+                          <InlineEdit tag="p" editMode={editMode} value={block.locationAddress || ''}
+                            onChange={v => updBlock(realIdx, { locationAddress: v })} placeholder="Adresă..."
+                            className="text-xs text-rose-400 italic leading-snug" />
+                          <InlineWaze value={block.wazeLink || ''} onChange={v => updBlock(realIdx, { wazeLink: v })} editMode={editMode} />
                         </div>
-                        <InlineEdit tag="p" editMode={editMode} value={block.locationName || ''}
-                          onChange={v => updBlock(realIdx, { locationName: v })} placeholder="Numele locației..."
-                          className="font-semibold text-rose-700" />
-                        <InlineEdit tag="p" editMode={editMode} value={block.locationAddress || ''}
-                          onChange={v => updBlock(realIdx, { locationAddress: v })} placeholder="Adresă..."
-                          className="text-xs text-pink-400 italic leading-snug" />
-                        <InlineWaze value={block.wazeLink || ''} onChange={v => updBlock(realIdx, { wazeLink: v })} editMode={editMode} />
                       </div>
                     )}
 
                     {/* NAȘI */}
                     {block.type === 'godparents' && (
-                      <div className={cn("space-y-3 font-sans text-sm", editMode && "rounded-2xl px-3 py-3 hover:bg-pink-50/40 transition-colors")}>
-                        <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Nașii Noștri'}
-                          onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
-                          className="text-[10px] font-bold uppercase text-pink-400 tracking-widest" />
-                        <InlineEdit tag="p" editMode={editMode} value={block.content || ''}
-                          onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..."
-                          className="text-sm italic text-rose-500 font-serif" multiline />
-                        <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
-                          {godparents.map((g: any, i: number) => (
-                            <div key={i} className={cn("text-sm italic text-rose-700 flex items-center gap-1.5", editMode && "group/gp relative")}>
-                              <InlineEdit tag="span" editMode={editMode} value={g.godfather || ''} onChange={v => updGodparent(i, 'godfather', v)} placeholder="Naș" />
-                              <span className="text-pink-300">&</span>
-                              <InlineEdit tag="span" editMode={editMode} value={g.godmother || ''} onChange={v => updGodparent(i, 'godmother', v)} placeholder="Nașă" />
-                              {editMode && <button type="button" onClick={() => delGodparent(i)} className="opacity-0 group-hover/gp:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-50"><Trash2 className="w-3 h-3 text-red-400" /></button>}
-                            </div>
-                          ))}
-                          {editMode && <button type="button" onClick={addGodparent} className="text-[10px] text-pink-300 hover:text-pink-500 border border-dashed border-pink-200 hover:border-pink-300 rounded-full px-2 py-0.5 flex items-center gap-1 transition-colors"><Plus className="w-2.5 h-2.5" /> adaugă</button>}
+                      <div className={cn("rounded-2xl border border-pink-100 bg-white/80 shadow-sm overflow-hidden", editMode && "hover:shadow-md transition-all")}>
+                        <div className="h-1 bg-gradient-to-r from-pink-200 via-rose-300 to-pink-200" />
+                        <div className="p-5 space-y-3 font-sans text-sm">
+                          <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Nașii Noștri'}
+                            onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
+                            className="text-[10px] font-bold uppercase text-pink-400 tracking-widest" />
+                          <InlineEdit tag="p" editMode={editMode} value={block.content || ''}
+                            onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..."
+                            className="text-sm italic text-rose-500 font-serif" multiline />
+                          <div className="flex flex-wrap justify-center gap-x-6 gap-y-2">
+                            {godparents.map((g: any, i: number) => (
+                              <div key={i} className={cn("text-sm italic text-rose-700 flex items-center gap-1.5", editMode && "group/gp relative")}>
+                                <InlineEdit tag="span" editMode={editMode} value={g.godfather || ''} onChange={v => updGodparent(i, 'godfather', v)} placeholder="Naș" />
+                                <span className="text-pink-300">&</span>
+                                <InlineEdit tag="span" editMode={editMode} value={g.godmother || ''} onChange={v => updGodparent(i, 'godmother', v)} placeholder="Nașă" />
+                                {editMode && <button type="button" onClick={() => delGodparent(i)} className="opacity-0 group-hover/gp:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-50"><Trash2 className="w-3 h-3 text-red-400" /></button>}
+                              </div>
+                            ))}
+                            {editMode && <button type="button" onClick={addGodparent} className="text-[10px] text-pink-300 hover:text-pink-500 border border-dashed border-pink-200 hover:border-pink-300 rounded-full px-2 py-0.5 flex items-center gap-1 transition-colors"><Plus className="w-2.5 h-2.5" /> adaugă</button>}
+                          </div>
                         </div>
                       </div>
                     )}
 
                     {/* PĂRINȚI */}
                     {block.type === 'parents' && (
-                      <div className={cn("space-y-3 font-sans text-sm", editMode && "rounded-2xl px-3 py-3 hover:bg-pink-50/40 transition-colors")}>
-                        <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Părinții Noștri'}
-                          onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
-                          className="text-[10px] font-bold uppercase text-pink-400 tracking-widest" />
-                        <InlineEdit tag="p" editMode={editMode} value={block.content || ''}
-                          onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..."
-                          className="text-sm italic text-rose-500 font-serif" multiline />
-                        <div className="flex flex-col items-center gap-1">
-                          {([
-                            { key: 'p1_father', ph: 'Tatăl Miresei' }, { key: 'p1_mother', ph: 'Mama Miresei' },
-                            { key: 'p2_father', ph: 'Tatăl Mirelui' }, { key: 'p2_mother', ph: 'Mama Mirelui' },
-                          ] as const).map(({ key, ph }) => {
-                            const val = parentsData?.[key];
-                            if (!val && !editMode) return null;
-                            return <InlineEdit key={key} tag="p" editMode={editMode} value={val || ''}
-                              onChange={v => updParent(key, v)} placeholder={ph}
-                              className="text-sm italic text-rose-700" />;
-                          })}
+                      <div className={cn("rounded-2xl border border-pink-100 bg-white/80 shadow-sm overflow-hidden", editMode && "hover:shadow-md transition-all")}>
+                        <div className="h-1 bg-gradient-to-r from-pink-200 via-rose-300 to-pink-200" />
+                        <div className="p-5 space-y-3 font-sans text-sm">
+                          <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Părinții Noștri'}
+                            onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
+                            className="text-[10px] font-bold uppercase text-pink-400 tracking-widest" />
+                          <InlineEdit tag="p" editMode={editMode} value={block.content || ''}
+                            onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..."
+                            className="text-sm italic text-rose-500 font-serif" multiline />
+                          <div className="flex flex-col items-center gap-1">
+                            {([
+                              { key: 'p1_father', ph: 'Tatăl Miresei' }, { key: 'p1_mother', ph: 'Mama Miresei' },
+                              { key: 'p2_father', ph: 'Tatăl Mirelui' }, { key: 'p2_mother', ph: 'Mama Mirelui' },
+                            ] as const).map(({ key, ph }) => {
+                              const val = parentsData?.[key];
+                              if (!val && !editMode) return null;
+                              return <InlineEdit key={key} tag="p" editMode={editMode} value={val || ''}
+                                onChange={v => updParent(key, v)} placeholder={ph}
+                                className="text-sm italic text-rose-700" />;
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
@@ -512,6 +546,7 @@ const RoyalRoseTemplate: React.FC<RoyalRoseProps> = ({
 
                     {block.type === 'divider' && <RoseDivider />}
                     {block.type === 'spacer'  && <div className="h-4" />}
+                    </BlockStyleProvider>
                   </div>
                 );
               })}

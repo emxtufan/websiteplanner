@@ -99,6 +99,17 @@ export type InvitationBlockType =
   | 'whatsapp'    // Buton WhatsApp contact
   | 'rsvp';       // Formular confirmare prezență
 
+export interface TextStyle {
+  fontFamily?:    string;
+  fontSize?:      number;   // px
+  fontWeight?:    number;
+  fontStyle?:     'normal' | 'italic';
+  letterSpacing?: number;   // value * 0.01em (e.g. 10 → 0.10em)
+  lineHeight?:    number;   // value * 0.01  (e.g. 160 → 1.60)
+  textAlign?:     'left' | 'center' | 'right';
+  color?:         string;
+}
+
 export interface InvitationBlock {
   id: string;
   type: InvitationBlockType;
@@ -129,10 +140,12 @@ export interface InvitationBlock {
   ibanName?: string;
   // family block (Castle Magic) — JSON string de { name1, name2 }[]
   members?: string;
+  textStyles?: Record<string, TextStyle>;
   // ── Per-block styling (editable from properties panel) ───────────────────
   blockFontFamily?:    string;   // font override, e.g. 'Playfair Display'
   blockFontSize?:      number;   // px override for main text
   blockFontWeight?:    number;   // 300|400|500|600|700
+  blockFontStyle?:     'normal' | 'italic';
   blockLetterSpacing?: number;   // em * 100 (e.g. 5 = 0.05em)
   blockLineHeight?:    number;   // e.g. 150 = 1.5
   blockPaddingTop?:    number;   // px, default 0
@@ -212,6 +225,10 @@ export interface UserProfile {
   heroBgColor?:       string;
   heroLetterSpacing?: number;  // * 0.01em
   heroLineHeight?:    number;  // * 0.01
+  // Per-text hero styles (used by style panel for hero area)
+  heroTextStyles?:    Record<string, TextStyle>;
+  // Per-text intro styles (used by style panel for intro preview)
+  introTextStyles?:   Record<string, TextStyle>;
   // ── CastleMagic intro ────────────────────────────────────────────────────
   heroBgImage?:          string;
   heroBgImageMobile?:    string;

@@ -4,6 +4,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 
 export const meta: TemplateMeta = {
   id: 'garden-romantic',
@@ -482,22 +483,33 @@ export type GardenRomanticProps = InvitationTemplateProps & {
   editMode?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
+  selectedBlockId?: string;
 };
 
 const GardenRomanticTemplate: React.FC<GardenRomanticProps> = ({
-  data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate,
+  data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate,
+  onBlockSelect, selectedBlockId,
 }) => {
   const { profile, guest } = data;
 
-  const [showIntro, setShowIntro]           = useState(!editMode);
-  const [contentVisible, setContentVisible] = useState(editMode);
+  const [showIntro, setShowIntro]           = useState(!editMode || introPreview);
+  const [contentVisible, setContentVisible] = useState(editMode && !introPreview);
 
   useEffect(() => {
-    if (editMode) { setShowIntro(false); setContentVisible(true); return; }
+    if (editMode) {
+      if (introPreview) { setShowIntro(true); setContentVisible(false); }
+      else { setShowIntro(false); setContentVisible(true); }
+      return;
+    }
     setShowIntro(true); setContentVisible(false);
-  }, [editMode]);
+  }, [editMode, introPreview]);
 
   useEffect(() => {
+    if (editMode) {
+      ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
+      return;
+    }
     if (showIntro) {
       document.body.style.overflow = 'hidden';
       document.body.style.position = 'fixed';
@@ -506,7 +518,7 @@ const GardenRomanticTemplate: React.FC<GardenRomanticProps> = ({
       ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
     }
     return () => { ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = ''); };
-  }, [showIntro]);
+  }, [showIntro, editMode]);
 
   const safeJSON = (s:string|undefined, fb:any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
@@ -744,7 +756,8 @@ const GardenRomanticTemplate: React.FC<GardenRomanticProps> = ({
               const realIdx   = blocks.indexOf(block);
 
               return (
-                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}>
+                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}
+                  onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                   {editMode && (
                     <BlockToolbar
                       onUp={()=>movBlock(realIdx,-1)} onDown={()=>movBlock(realIdx,1)}
@@ -753,6 +766,19 @@ const GardenRomanticTemplate: React.FC<GardenRomanticProps> = ({
                     />
                   )}
 
+                  <BlockStyleProvider value={{
+                    blockId: block.id,
+                    textStyles: block.textStyles,
+                    onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, realIdx, textKey, textLabel),
+                    fontFamily: block.blockFontFamily,
+                    fontSize: block.blockFontSize,
+                    fontWeight: block.blockFontWeight,
+                    fontStyle: block.blockFontStyle,
+                    letterSpacing: block.blockLetterSpacing,
+                    lineHeight: block.blockLineHeight,
+                    textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
+                    textAlign: block.blockAlign,
+                  } as BlockStyle}>
                   {block.type === 'location' && (
                     <LocCard block={block} editMode={editMode} onUpdate={p=>updBlock(realIdx,p)}/>
                   )}
@@ -828,6 +854,7 @@ const GardenRomanticTemplate: React.FC<GardenRomanticProps> = ({
                   {block.type === 'location' && realIdx < blocks.length-1 && blocks[realIdx+1]?.type === 'location' && (
                     <div style={{ marginTop:0 }}><LightString/></div>
                   )}
+                  </BlockStyleProvider>
                 </div>
               );
             })}

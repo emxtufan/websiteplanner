@@ -3,11 +3,10 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { WeddingIcon } from "../TimelineIcons";
 gsap.registerPlugin(ScrollTrigger);
-import { BlockStyleCtx, BlockStyle } from '../BlockStyleContext';
+import { BlockStyleProvider, BlockStyle } from '../BlockStyleContext';
 import { CASTLE_THEMES, getCastleTheme } from './castleDefaults';
 import * as THREE from 'three';
 
-const GOOGLE_FONTS_URL = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Great+Vibes&family=Cinzel:wght@400;600&family=Montserrat:wght@300;400;500;600;700&display=swap";
 import {
   ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus,
   Upload, Camera, Play, Pause, SkipForward, SkipBack,
@@ -1473,11 +1472,12 @@ const InsertBlockButton: React.FC<{
 // ── Main Template ─────────────────────────────────────────────────────────────
 const JO: React.FC<InvitationTemplateProps & {
   editMode?: boolean;
+  introPreview?: boolean;
   onProfileUpdate?: (patch: Record<string, any>) => void;
   onBlocksUpdate?: (blocks: InvitationBlock[]) => void;
-  onBlockSelect?: (block: InvitationBlock | null, idx: number) => void;
+  onBlockSelect?: (block: InvitationBlock | null, idx: number, textKey?: string, textLabel?: string) => void;
   selectedBlockId?: string;
-}> = ({ data, onOpenRSVP, editMode = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
+}> = ({ data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId }) => {
   const { profile, guest } = data;
   
   // ─────────────────────────────────────────────────────────────────────────────
@@ -1619,6 +1619,7 @@ const JO: React.FC<InvitationTemplateProps & {
   const defaultImgs = globalConfig.themeImages?.['default'] || {};
   const heroBgImage       = activeIntroVariant.desktop || themeImgs.desktop || defaultImgs.desktop || globalConfig.heroBgImage;
   const heroBgImageMobile = activeIntroVariant.mobile  || themeImgs.mobile  || defaultImgs.mobile  || globalConfig.heroBgImageMobile;
+  const introPreviewImg = heroBgImage || heroBgImageMobile || "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1200' height='800'%3E%3Crect width='1200' height='800' fill='%231a0a2e'/%3E%3C/svg%3E";
   const [heroContentImage, setHeroContentImage] = useState<string | undefined>(p.heroContentImage);
   const [heroContentImageMobile, setHeroContentImageMobile] = useState<string | undefined>(p.heroContentImageMobile);
   useEffect(() => { setHeroContentImage((profile as any).heroContentImage ?? CASTLE_DEFAULTS.heroContentImage); }, [(profile as any).heroContentImage]);
@@ -1646,7 +1647,9 @@ const JO: React.FC<InvitationTemplateProps & {
   const musicPlayRef = useRef<{ unlock: () => void; play: () => void; pause: () => void } | null>(null);
 
   useEffect(() => { if (!editMode) setShowAudioModal(hasMusicBlock()); }, []);
-  useEffect(() => { if (editMode) setShowIntro(false); }, [editMode]);
+  useEffect(() => {
+    setShowIntro(!editMode && !(data.project as any)?.previewMode);
+  }, [editMode, data.project]);
 
   useEffect(() => {
     const media = heroMediaInnerRef.current;
@@ -1722,7 +1725,6 @@ const JO: React.FC<InvitationTemplateProps & {
 
   return (
     <>
-      <link rel="stylesheet" href={GOOGLE_FONTS_URL} />
       <style dangerouslySetInnerHTML={{ __html: themeCSS }} />
 
       {showAudioModal && !editMode && (
@@ -1783,6 +1785,92 @@ const JO: React.FC<InvitationTemplateProps & {
         {/* ── Hero content image — full width ──────────────────────────────── */}
 
         <div className="max-w-2xl mx-auto px-6 relative z-10">
+          {editMode && introPreview && (
+            <div className="mb-10 p-5 bg-white rounded-2xl border border-zinc-200 shadow-sm">
+              <p className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 mb-3">Preview intro (editabil)</p>
+              <div className="border border-zinc-200 rounded-xl bg-zinc-50/60 overflow-hidden">
+                <BlockStyleProvider
+                  value={{
+                    blockId: "__intro__",
+                    textStyles: (profile as any).introTextStyles,
+                    onTextSelect: (textKey, textLabel) =>
+                      onBlockSelect?.(
+                        { id: "__intro__", type: "intro", textStyles: (profile as any).introTextStyles } as any,
+                        -1,
+                        textKey,
+                        textLabel
+                      ),
+                  }}
+                >
+                  <div style={{ position: 'relative', height: 520, borderRadius: 12, overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, backgroundImage: `url(${introPreviewImg})`, backgroundSize: 'cover', backgroundPosition: 'center' }} />
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.25) 0%, rgba(0,0,0,0.35) 45%, rgba(255,255,255,0.9) 100%)' }} />
+                    <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', alignItems: 'center', padding: '28px 20px', textAlign: 'center' }}>
+                      <InlineEdit
+                        tag="p"
+                        editMode={editMode}
+                        value={jungleHeaderText || 'Save The Date'}
+                        onChange={(v) => upProfile('jungleHeaderText', v)}
+                        textKey="intro:header"
+                        textLabel="Intro Header"
+                        style={{
+                          fontFamily: '"Tangerine", cursive',
+                          fontSize: '2.8rem',
+                          fontWeight: 700,
+                          color: '#ffffff',
+                          textShadow: '0 6px 18px rgba(0,0,0,0.35)',
+                          margin: 0,
+                        }}
+                      />
+                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <InlineEdit
+                          tag="p"
+                          editMode={editMode}
+                          value={jungleOverlayText || 'Cu bucurie vÄƒ invitÄƒm sÄƒ fiÈ›i parte din povestea noastrÄƒ.'}
+                          onChange={(v) => upProfile('jungleOverlayText', v)}
+                          textKey="intro:text"
+                          textLabel="Intro Text"
+                          style={{
+                            fontFamily: SERIF,
+                            fontSize: '2rem',
+                            fontWeight: 600,
+                            textTransform: 'uppercase',
+                            lineHeight: 1,
+                            letterSpacing: '0.06em',
+                            color: '#111111',
+                            margin: 0,
+                            background: 'rgba(255,255,255,0.85)',
+                            padding: '12px 16px',
+                            borderRadius: 12,
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
+                            width: '100%',
+                          }}
+                        />
+                      </div>
+                      <InlineEdit
+                        tag="p"
+                        editMode={editMode}
+                        value={jungleFooterText || dateStr}
+                        onChange={(v) => upProfile('jungleFooterText', v)}
+                        textKey="intro:footer"
+                        textLabel="Intro Footer"
+                        style={{
+                          fontFamily: SANS,
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          letterSpacing: '0.22em',
+                          textTransform: 'uppercase',
+                          color: '#ffffff',
+                          textShadow: '0 6px 18px rgba(0,0,0,0.35)',
+                          margin: 0,
+                        }}
+                      />
+                    </div>
+                  </div>
+                </BlockStyleProvider>
+              </div>
+            </div>
+          )}
         {/* Imagini uși se configurează din admin panel */}
 
           <div className="text-center">
@@ -2142,6 +2230,7 @@ const JO: React.FC<InvitationTemplateProps & {
                 <div key={block.id} className="group/insert">
                   <div
                     className={`relative group/block ${block.type === "divider" ? "" : "py-5"}`}
+                    onClick={editMode ? () => onBlockSelect?.(block, idx) : undefined}
                     style={{
                         marginTop: block.blockMarginTop != null ? `${block.blockMarginTop}px` : undefined,
                         marginBottom: block.blockMarginBottom != null ? `${block.blockMarginBottom}px` : undefined,
@@ -2154,12 +2243,19 @@ const JO: React.FC<InvitationTemplateProps & {
                         borderRadius: block.blockRadius != null ? `${block.blockRadius}px` : undefined,
                       }}
                   >
-                    <BlockStyleCtx.Provider
+                    <BlockStyleProvider
                       value={
                         {
+                          blockId: block.id,
+                          textStyles: block.textStyles,
+                          onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel),
                           fontFamily: block.blockFontFamily,
                           fontSize: block.blockFontSize,
-                          textColor: block.textColor,
+                          fontWeight: block.blockFontWeight,
+                          fontStyle: block.blockFontStyle,
+                          letterSpacing: block.blockLetterSpacing,
+                          lineHeight: block.blockLineHeight,
+                          textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
                           textAlign: block.blockAlign,
                         } as BlockStyle
                       }
@@ -2908,7 +3004,7 @@ const JO: React.FC<InvitationTemplateProps & {
                           })()}
                         </Reveal>
                       )}
-                    </BlockStyleCtx.Provider>
+                    </BlockStyleProvider>
                   </div>
                   {/* Buton insert DUPĂ fiecare bloc */}
                   {editMode && (
