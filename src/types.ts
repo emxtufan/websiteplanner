@@ -90,6 +90,7 @@ export type InvitationBlockType =
   | 'photo'       // Fotografie upload (base64)
   | 'calendar'    // Calendar luna evenimentului
   | 'countdown'   // Countdown numeric
+  | 'timeline'    // Cronologia zilei
   | 'music'       // Player muzică cosmetic
   | 'dresscode'   // Cod vestimentar
   | 'gift'        // Registry cadouri / IBAN
@@ -120,6 +121,7 @@ export interface InvitationBlock {
   locationName?: string;
   locationAddress?: string;
   wazeLink?: string;
+  icon?: string;
   // text / title / quote / thankyou / nokids / dresscode
   content?: string;
   // section title override (godparents / parents / dresscode / gift / nokids)
@@ -229,6 +231,8 @@ export interface UserProfile {
   heroTextStyles?:    Record<string, TextStyle>;
   // Per-text intro styles (used by style panel for intro preview)
   introTextStyles?:   Record<string, TextStyle>;
+  // Per-text timeline styles (used by style panel for timeline section)
+  timelineTextStyles?: Record<string, TextStyle>;
   // ── CastleMagic intro ────────────────────────────────────────────────────
   heroBgImage?:          string;
   heroBgImageMobile?:    string;

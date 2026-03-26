@@ -159,7 +159,7 @@ function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v
         <div className="w-4 h-4 rounded border border-zinc-200 shrink-0"
           style={{ background: isTrans ? 'repeating-conic-gradient(#ccc 0% 25%, white 0% 50%) 0 0 / 8px 8px' : value }}/>
         <span className={`text-[10px] font-mono flex-1 text-left truncate ${dark ? 'text-white/50' : 'text-zinc-500'}`}>
-          {isTrans ? 'transparent' : value}
+          {isTrans ? 'culoarea implicita' : value}
         </span>
         <ChevronDown className={`w-3 h-3 shrink-0 ${dark ? 'text-white/30' : 'text-zinc-300'}`}/>
       </button>
@@ -167,6 +167,15 @@ function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v
         <>
           <div className="fixed inset-0 z-[9998]" onClick={() => setOpen(false)} />
           <div className={`fixed z-[9999] border rounded-xl p-3 ${lb}`} style={{ top: pos.top, left: pos.left, width: pos.width }}>
+            <button type="button" onClick={() => { onChange('transparent'); setOpen(false); }}
+              className={`w-full mb-2 flex items-center gap-2 rounded-lg border px-2 py-1.5 text-[10px] ${
+                dark ? 'border-white/10 text-white/50 hover:border-white/20' : 'border-zinc-200 text-zinc-500 hover:border-zinc-300'
+              }`}>
+              <div className="w-4 h-4 rounded border border-zinc-200 shrink-0"
+                style={{ background: 'repeating-conic-gradient(#ccc 0% 25%, white 0% 50%) 0 0 / 8px 8px' }}/>
+              <span className="flex-1 text-left">culoarea implicita</span>
+              {isTrans && <span className={dark ? 'text-white/60' : 'text-zinc-600'}>✓</span>}
+            </button>
             <div className="grid grid-cols-8 gap-1 mb-2.5">
               {PALETTE.map(col => (
                 <button key={col} type="button" onClick={() => { onChange(col); setOpen(false); }}
@@ -174,7 +183,7 @@ function ColorPick({ value, onChange, label, dark }: { value:string; onChange:(v
                   style={{
                     background: col==='transparent' ? 'repeating-conic-gradient(#ccc 0% 25%, white 0% 50%) 0 0 / 8px 8px' : col,
                     borderColor: value===col ? '#f59e0b' : 'transparent',
-                  }} title={col}/>
+                  }} title={col === 'transparent' ? 'culoarea implicita' : col}/>
               ))}
             </div>
             <div className={`flex items-center gap-2 border-t pt-2 ${dark ? 'border-white/10' : 'border-zinc-100'}`}>
@@ -575,6 +584,7 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
                 blockFontStyle: undefined, blockLetterSpacing: undefined, blockLineHeight: undefined,
                 blockAlign: undefined, textColor: undefined,
                 bgColor: undefined, blockRadius: undefined, opacity: undefined,
+                textStyles: {},
               });
             }}
             className={`w-full py-2 rounded-xl border text-[10px] font-bold ${

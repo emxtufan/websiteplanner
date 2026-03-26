@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const d=require\\(''C:/Users/Asus/.claude/projects/c--Users-Asus-Desktop-invite/4969d42a-4c79-435a-ac18-a77858120a17/tool-results/toolu_01CWeGWvdQfRiV9iHDSf44Mi.json''\\); console.log\\(d[0].text.substring\\(0,15000\\)\\)\")",
+      "Bash(node -e \"const fs=require\\(''fs''\\);const content=fs.readFileSync\\(''c:/Users/Asus/Desktop/invite/src/components/invitations/UnicornAcademyTemplate.tsx'',''utf8''\\);const lines=content.split\\(''\\\\n''\\);console.log\\(''Total lines by newline:'',lines.length\\);console.log\\(''File size:'',content.length\\);// Print lines around where the base64 comment ends:*)"
+    ]
+  }
+}

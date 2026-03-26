@@ -22,11 +22,27 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
 }) => {
   const ref = useRef<HTMLElement>(null);
   const [active, setActive] = useState(false);
+  const [computedSuppressBg, setComputedSuppressBg] = useState(false);
   const ctx = useContext(BlockStyleCtx);
   const selection = useContext(TextSelectionCtx);
   const resolvedKey = textKey ?? ctx.getAutoKey?.();
   // Merge block-level style overrides — context wins over hardcoded component styles
   const mergedStyle = useBlockStyle(style, resolvedKey);
+  const hasGradientText = (mergedStyle as any)?.WebkitTextFillColor === "transparent";
+  const hasBg = !!(mergedStyle as any)?.background || !!(mergedStyle as any)?.backgroundImage;
+  const hasTextClip =
+    ((mergedStyle as any)?.backgroundClip || (mergedStyle as any)?.WebkitBackgroundClip || "").toString().includes("text");
+  const wantsTextGradient = hasGradientText || hasTextClip;
+  const suppressBg = wantsTextGradient || hasBg || computedSuppressBg;
+  const patchedStyle = wantsTextGradient
+    ? {
+        ...mergedStyle,
+        WebkitBackgroundClip: "text",
+        backgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        color: "transparent",
+      }
+    : mergedStyle;
   const isSelected = !!resolvedKey && selection?.selectedTextKey === resolvedKey;
 
   useEffect(() => {
@@ -34,6 +50,25 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
       ref.current.textContent = value || "";
     }
   }, [value]);
+
+  useEffect(() => {
+    if (!ref.current || typeof window === "undefined") return;
+    const el = ref.current;
+    const cs = window.getComputedStyle(el);
+    const bgImg = cs.backgroundImage;
+    const clip = (cs as any).webkitBackgroundClip || (cs as any).WebkitBackgroundClip || cs.backgroundClip;
+    const fill = (cs as any).webkitTextFillColor || (cs as any).WebkitTextFillColor;
+    const hasComputedBg = !!bgImg && bgImg !== "none";
+    const hasComputedClip = typeof clip === "string" && clip.includes("text");
+    const fillTransparent = fill === "transparent" || fill === "rgba(0, 0, 0, 0)";
+    setComputedSuppressBg(hasComputedBg || hasComputedClip || fillTransparent);
+    if (hasComputedBg && (hasComputedClip || fillTransparent)) {
+      el.style.webkitBackgroundClip = "text";
+      (el.style as any).backgroundClip = "text";
+      (el.style as any).webkitTextFillColor = "transparent";
+      el.style.color = "transparent";
+    }
+  }, [mergedStyle, value, editMode]);
 
   const T = Tag as any;
 
@@ -47,7 +82,7 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
       contentEditable
       suppressContentEditableWarning
       data-placeholder={placeholder}
-      style={mergedStyle}
+      style={patchedStyle}
       onMouseDown={(e) => {
         e.stopPropagation();
         if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
@@ -67,9 +102,17 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
         "outline-none transition-all duration-100 cursor-text",
         "empty:before:content-[attr(data-placeholder)] empty:before:text-stone-300 empty:before:italic empty:before:pointer-events-none",
         active
-          ? "ring-2 ring-stone-400/30 ring-offset-2 rounded bg-white/80"
-          : "hover:ring-1 hover:ring-stone-300/50 hover:ring-offset-1 hover:rounded hover:bg-stone-50/60",
-        isSelected && !active ? "ring-2 ring-amber-400/60 ring-offset-2 rounded bg-amber-50/70" : ""
+          ? suppressBg
+            ? "ring-2 ring-stone-400/30 ring-offset-2 rounded"
+            : "ring-2 ring-stone-400/30 ring-offset-2 rounded bg-white/80"
+          : suppressBg
+            ? "hover:ring-1 hover:ring-stone-300/50 hover:ring-offset-1 hover:rounded"
+            : "hover:ring-1 hover:ring-stone-300/50 hover:ring-offset-1 hover:rounded hover:bg-stone-50/60",
+        isSelected && !active
+          ? suppressBg
+            ? "ring-2 ring-amber-400/60 ring-offset-2 rounded"
+            : "ring-2 ring-amber-400/60 ring-offset-2 rounded bg-amber-50/70"
+          : ""
       )}
     />
   );
@@ -80,16 +123,33 @@ export const InlineTime: React.FC<{
   value: string; onChange: (v: string) => void; editMode: boolean;
   className?: string; style?: React.CSSProperties;
   inputRef?: React.Ref<HTMLInputElement>;
-}> = ({ value, onChange, editMode, className, style, inputRef }) => {
-  if (!editMode) return <span className={className} style={style}>{value}</span>;
+  textKey?: string;
+  textLabel?: string;
+}> = ({ value, onChange, editMode, className, style, inputRef, textKey, textLabel }) => {
+  const ctx = useContext(BlockStyleCtx);
+  const selection = useContext(TextSelectionCtx);
+  const resolvedKey = textKey ?? ctx.getAutoKey?.();
+  const mergedStyle = useBlockStyle(style, resolvedKey);
+  const isSelected = !!resolvedKey && selection?.selectedTextKey === resolvedKey;
+
+  if (!editMode) return <span className={className} style={mergedStyle}>{value}</span>;
   return (
     <input
       ref={inputRef}
       type="time" value={value} onChange={e => onChange(e.target.value)}
-      style={style}
-      className={cn(className,
+      style={mergedStyle}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+        if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
+      }}
+      onFocus={() => {
+        if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
+      }}
+      className={cn(
+        className,
         "bg-transparent border-none outline-none cursor-pointer w-[6.5rem] text-center",
-        "hover:bg-white/70 hover:ring-1 hover:ring-stone-300/60 rounded px-1 transition-all"
+        "hover:bg-white/70 hover:ring-1 hover:ring-stone-300/60 rounded px-1 transition-all",
+        isSelected ? "ring-2 ring-amber-400/60 ring-offset-2 rounded bg-amber-50/60" : ""
       )}
     />
   );

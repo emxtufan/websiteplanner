@@ -5,6 +5,10 @@ import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
 import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
+import { getRoyalRoseTheme } from "./castleDefaults";
+
+// Module-level theme — updated on each render by the main component
+let T = getRoyalRoseTheme();
 
 export const meta: TemplateMeta = {
   id: 'royal-rose',

@@ -27,9 +27,15 @@ import CastleMagicTemplateGirl from "./invitations/GirlCastelMagicTemplates";
 import CastleMagicTemplateRomantic from "./invitations/RomanticCastelMagicTemplates";
 import JO from "./invitations/JungleMagicEffect";
 import LordEffects from "./invitations/LordEffects";
+import GabbysDollhouseTemplate from "./invitations/GabbysDollhouseTemplate";
+import FrozenTemplate from "./invitations/FrozenTemplate";
+import UnicornAcademyTemplate from "./invitations/UnicornAcademyTemplate";
+import AdventureRoadTemplate from "./invitations/AdventureRoadTemplate";
+import JurassicTemplate from "./invitations/JurassicTemplate";
 import { TextSelectionCtx } from "./BlockStyleContext";
 
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES } from "./invitations/castleDefaults";
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES, GABBY_THEMES, FROZEN_THEMES, UNICORN_THEMES, ADVENTURE_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES } from "./invitations/castleDefaults";
+import { getTemplateDefaultBlocks, getTemplateDefaultProfile } from "./invitations/registry";
 import { TemplateMeta } from "./invitations/types";
 
 type EditableTemplateProps = ClassicTemplateProps | RoyalRoseProps | DarkRoyalProps | BlushBloomProps | GardenRomanticProps | VelumProps | EternBotanicaProps | TerraBohoProps | ArchRoseProps;
@@ -53,6 +59,11 @@ const EDITABLE_TEMPLATES: Record<string, React.FC<EditableTemplateProps>> = {
   'romantic':   CastleMagicTemplateRomantic as React.FC<EditableTemplateProps>,
   'regal':   JO as React.FC<EditableTemplateProps>,
   'lord-effects':   LordEffects as React.FC<EditableTemplateProps>,
+  'gabbys-dollhouse': GabbysDollhouseTemplate as React.FC<EditableTemplateProps>,
+  'frozen': FrozenTemplate as React.FC<EditableTemplateProps>,
+  'unicorn-academy': UnicornAcademyTemplate as React.FC<EditableTemplateProps>,
+  'adventure-road': AdventureRoadTemplate as React.FC<EditableTemplateProps>,
+  'jurassic-park':  JurassicTemplate as React.FC<EditableTemplateProps>,
 };
 const getEditableTemplate = (id: string): React.FC<EditableTemplateProps> =>
   EDITABLE_TEMPLATES[id] || ClassicTemplate as React.FC<EditableTemplateProps>;
@@ -65,6 +76,7 @@ const INTRO_TEMPLATES = new Set([
   'lord-effects',
   'christening-dark',
   'regal',
+  'jurassic-park',
 ]);
 
 interface SettingsViewProps {
@@ -214,8 +226,8 @@ const ResetModal: React.FC<{ resetting: boolean; onCancel: () => void; onConfirm
       <div className="text-center">
         <p className="font-bold text-sm text-zinc-900 dark:text-white mb-1">Resetezi setarile?</p>
         <p className="text-xs text-zinc-500 leading-relaxed">
-          Se reseteaza doar setarile din panou (ex: toggle-uri, tema).<br />
-          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Blocurile, pozele si textele raman neschimbate.</span>
+          Resetarea revine la valorile implicite ale template-ului.<br />
+          <span className="font-semibold text-zinc-700 dark:text-zinc-300">Vor fi resetate si textele, pozele, stilurile, fonturile si culorile. Data evenimentului ramane.</span>
         </p>
       </div>
       <div className="flex gap-2">
@@ -295,6 +307,18 @@ const DEFAULT_TIMELINE_BY_TEMPLATE: Record<string, TimelineItem[]> = {
   'regal': buildDefaultTimeline('regal'),
 };
 
+const INLINE_TIMELINE_TEMPLATES = new Set([
+  "castle-magic",
+  "castle-magic-boys",
+  "castle-magic-girl",
+  "romantic",
+  "regal",
+  "lord-effects",
+  "gabbys-dollhouse",
+  "frozen",
+  "unicorn-academy",
+]);
+
 const SettingsContent: React.FC<{
   profile: UserProfile;
   timeline: TimelineItem[];
@@ -316,6 +340,7 @@ const SettingsContent: React.FC<{
   selectedBlockType?: string;
 }> = ({ profile, timeline, isActive, hc, guard, pushTimeline, selectedTemplate, templateMeta, doorImages = {}, introVariants = {}, defaultIntroVariant, inlineBlockPanel, introPreview = false, onIntroPreviewChange, hasIntro = false, selectedTextKey, selectedBlockId, selectedBlockType }) => {
   const [expandedTheme, setExpandedTheme] = React.useState<string | null>(null);
+  const useInlineTimeline = INLINE_TIMELINE_TEMPLATES.has(selectedTemplate || "");
   return (
   <div className="w-full">
     <div className="p-5 space-y-6">
@@ -407,16 +432,26 @@ const SettingsContent: React.FC<{
         </div>
       </Collapsible>
 
-      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose') && (() => {
+      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose' || selectedTemplate === 'gabbys-dollhouse' || selectedTemplate === 'frozen' || selectedTemplate === 'unicorn-academy' || selectedTemplate === 'adventure-road' || selectedTemplate === 'jurassic-park') && (() => {
         const themes = selectedTemplate === 'lord-effects'
           ? LORD_MONO_THEMES
           : selectedTemplate === 'castle-magic-boys'
             ? BOY_THEMES
           : selectedTemplate === 'castle-magic-girl'
             ? GIRL_THEMES
-            : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
-              ? ROMANTIC_THEMES
-              : CASTLE_THEMES;
+            : selectedTemplate === 'gabbys-dollhouse'
+              ? GABBY_THEMES
+              : selectedTemplate === 'frozen'
+                ? FROZEN_THEMES
+                : selectedTemplate === 'unicorn-academy'
+                  ? UNICORN_THEMES
+                  : selectedTemplate === 'adventure-road'
+                    ? ADVENTURE_THEMES
+                  : selectedTemplate === 'jurassic-park'
+                    ? [...JURASSIC_BOY_THEMES, ...JURASSIC_GIRL_THEMES]
+                  : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
+                    ? ROMANTIC_THEMES
+                    : CASTLE_THEMES;
 
         const activeTheme = themes.find(t => ((profile as any).colorTheme ?? 'default') === t.id);
 
@@ -972,68 +1007,70 @@ const SettingsContent: React.FC<{
       <Hr /> */}
 
       {/* ④ CRONOLOGIE */}
-      <Collapsible
-        title="Cronologie"
-        defaultOpen={false}
-        desc="Programul zilei și momentele cheie."
-        icon={Clock}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <Toggle on={!!profile.showTimeline} onChange={v => hc("showTimeline", v)} />
-          <button type="button" disabled={!isActive}
-            onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: "", time: "", location: "", icon: "party", notice: "" }]))}
-            className="flex items-center gap-0.5 text-[10px] font-bold text-zinc-400 hover:text-black dark:hover:text-white transition-colors disabled:opacity-30">
-            <Plus className="w-3 h-3" /> Adaugă moment
-          </button>
-        </div>
-
-        {/* Quick-add preset buttons */}
-        <div className={cn("flex flex-wrap gap-1 mb-3", !profile.showTimeline && "opacity-40 pointer-events-none")}>
-          {TIMELINE_PRESETS.map(p => (
-            <button key={p.icon} type="button" disabled={!isActive}
-              onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: p.title, time: "", location: "", icon: p.icon, notice: "" }]))}
-              className="flex items-center gap-1 px-2 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 text-[9px] font-bold text-zinc-500 hover:border-amber-400 hover:text-amber-700 disabled:opacity-30 transition-colors">
-              <span>{p.emoji}</span>{p.title}
+      {!useInlineTimeline && (
+        <Collapsible
+          title="Cronologie"
+          defaultOpen={false}
+          desc="Programul zilei și momentele cheie."
+          icon={Clock}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <Toggle on={!!profile.showTimeline} onChange={v => hc("showTimeline", v)} />
+            <button type="button" disabled={!isActive}
+              onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: "", time: "", location: "", icon: "party", notice: "" }]))}
+              className="flex items-center gap-0.5 text-[10px] font-bold text-zinc-400 hover:text-black dark:hover:text-white transition-colors disabled:opacity-30">
+              <Plus className="w-3 h-3" /> Adaugă moment
             </button>
-          ))}
-        </div>
+          </div>
 
-        <div className={cn("space-y-2", !profile.showTimeline && "opacity-40 pointer-events-none")}>
-          {timeline.length === 0 && (
-            <p className="text-[10px] text-zinc-400 italic">Niciun moment adăugat. Folosește butoanele de mai sus sau adaugă manual.</p>
-          )}
-          {timeline.map(item => (
-            <div key={item.id} className="rounded-lg border border-zinc-100 dark:border-zinc-800 p-2 space-y-1.5 group">
-              {/* Row 1: icon selector + time + title + delete */}
-              <div className="flex gap-1 items-center">
-                {/* Icon picker */}
-                <select value={item.icon || 'party'} disabled={!isActive}
-                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, icon: e.target.value } : t))}
-                  className="h-7 w-8 text-base border border-zinc-200 dark:border-zinc-700 rounded bg-white dark:bg-zinc-800 shrink-0 text-center cursor-pointer disabled:opacity-30"
-                  style={{ paddingLeft: 2 }}>
-                  {TIMELINE_PRESETS.map(p => (
-                    <option key={p.icon} value={p.icon}>{p.emoji}</option>
-                  ))}
-                </select>
-                <Input type="time" value={item.time} className="w-20 h-7 text-xs shrink-0"
-                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, time: e.target.value } : t))}
+          {/* Quick-add preset buttons */}
+          <div className={cn("flex flex-wrap gap-1 mb-3", !profile.showTimeline && "opacity-40 pointer-events-none")}>
+            {TIMELINE_PRESETS.map(p => (
+              <button key={p.icon} type="button" disabled={!isActive}
+                onClick={() => guard(() => pushTimeline([...timeline, { id: Date.now().toString(), title: p.title, time: "", location: "", icon: p.icon, notice: "" }]))}
+                className="flex items-center gap-1 px-2 py-1 rounded-full border border-zinc-200 dark:border-zinc-700 text-[9px] font-bold text-zinc-500 hover:border-amber-400 hover:text-amber-700 disabled:opacity-30 transition-colors">
+                <span>{p.emoji}</span>{p.title}
+              </button>
+            ))}
+          </div>
+
+          <div className={cn("space-y-2", !profile.showTimeline && "opacity-40 pointer-events-none")}>
+            {timeline.length === 0 && (
+              <p className="text-[10px] text-zinc-400 italic">Niciun moment adăugat. Folosește butoanele de mai sus sau adaugă manual.</p>
+            )}
+            {timeline.map(item => (
+              <div key={item.id} className="rounded-lg border border-zinc-100 dark:border-zinc-800 p-2 space-y-1.5 group">
+                {/* Row 1: icon selector + time + title + delete */}
+                <div className="flex gap-1 items-center">
+                  {/* Icon picker */}
+                  <select value={item.icon || 'party'} disabled={!isActive}
+                    onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, icon: e.target.value } : t))}
+                    className="h-7 w-8 text-base border border-zinc-200 dark:border-zinc-700 rounded bg-white dark:bg-zinc-800 shrink-0 text-center cursor-pointer disabled:opacity-30"
+                    style={{ paddingLeft: 2 }}>
+                    {TIMELINE_PRESETS.map(p => (
+                      <option key={p.icon} value={p.icon}>{p.emoji}</option>
+                    ))}
+                  </select>
+                  <Input type="time" value={item.time} className="w-20 h-7 text-xs shrink-0"
+                    onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, time: e.target.value } : t))}
+                    disabled={!isActive} />
+                  <Input placeholder="Moment..." value={item.title} className="flex-1 h-7 text-xs"
+                    onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, title: e.target.value } : t))}
+                    disabled={!isActive} />
+                  <button type="button" onClick={() => pushTimeline(timeline.filter(t => t.id !== item.id))}
+                    className="opacity-0 group-hover:opacity-100 shrink-0 p-1 hover:text-red-500 text-zinc-300 transition-all" disabled={!isActive}>
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+                {/* Row 2: notice (optional extra info) */}
+                <Input placeholder="Notă (ex: Florin Salam, pauză 30 min...)" value={item.notice || ''} className="h-6 text-[10px] w-full"
+                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, notice: e.target.value } : t))}
                   disabled={!isActive} />
-                <Input placeholder="Moment..." value={item.title} className="flex-1 h-7 text-xs"
-                  onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, title: e.target.value } : t))}
-                  disabled={!isActive} />
-                <button type="button" onClick={() => pushTimeline(timeline.filter(t => t.id !== item.id))}
-                  className="opacity-0 group-hover:opacity-100 shrink-0 p-1 hover:text-red-500 text-zinc-300 transition-all" disabled={!isActive}>
-                  <Trash2 className="w-3 h-3" />
-                </button>
               </div>
-              {/* Row 2: notice (optional extra info) */}
-              <Input placeholder="Notă (ex: Florin Salam, pauză 30 min...)" value={item.notice || ''} className="h-6 text-[10px] w-full"
-                onChange={(e: any) => pushTimeline(timeline.map(t => t.id === item.id ? { ...t, notice: e.target.value } : t))}
-                disabled={!isActive} />
-            </div>
-          ))}
-        </div>
-      </Collapsible>
+            ))}
+          </div>
+        </Collapsible>
+      )}
 
       {false && (selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects') && (
         <>
@@ -1584,8 +1621,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     weddingDate:         session.profile?.weddingDate ? new Date(session.profile.weddingDate).toISOString().split("T")[0] : "",
     partner1Name:        session.profile?.partner1Name || "",
     partner2Name:        session.profile?.partner2Name || "",
-    welcomeText:         session.profile?.welcomeText || "Împreună cu familiile noastre",
-    celebrationText:     session.profile?.celebrationText || "nunții noastre",
+    welcomeText:         session.profile?.welcomeText ?? "",
+    celebrationText:     session.profile?.celebrationText ?? "",
     inviteSlug:          session.profile?.inviteSlug || "",
     showWelcomeText:     session.profile?.showWelcomeText ?? true,
     showCelebrationText: session.profile?.showCelebrationText ?? true,
@@ -1653,6 +1690,13 @@ const SettingsView: React.FC<SettingsViewProps> = ({
 
   const patchProfile = useCallback((patch: Partial<UserProfile>) => {
     if (onCheckActive && !onCheckActive()) return;
+    if (patch.timeline !== undefined) {
+      const nextTimeline = safeJSON(
+        typeof patch.timeline === "string" ? patch.timeline : JSON.stringify(patch.timeline),
+        [],
+      );
+      setTimeline(nextTimeline);
+    }
     setProfile(prev => { const next = { ...prev, ...patch }; scheduleSave(next); return next; });
   }, [scheduleSave, onCheckActive]);
 
@@ -1668,28 +1712,61 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   const resetToDefault = () => {
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     setResetting(true);
-    const isCastle = (selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects') ?? false;
-    const settingsDefaults: Record<string, any> = isCastle
-      ? {
-          showWelcomeText: CASTLE_DEFAULTS.showWelcomeText,
-          showCelebrationText: CASTLE_DEFAULTS.showCelebrationText,
-          showTimeline: CASTLE_DEFAULTS.showTimeline,
-          showCountdown: CASTLE_DEFAULTS.showCountdown,
-          showRsvpButton: CASTLE_DEFAULTS.showRsvpButton,
-          colorTheme: CASTLE_DEFAULTS.colorTheme,
-        }
+    const tpl = selectedTemplate || "";
+    const tplDefaults = getTemplateDefaultBlocks(tpl);
+    const hasDefaults = Array.isArray(tplDefaults) && tplDefaults.length > 0;
+    const ts = Date.now();
+    const freshBlocks = hasDefaults
+      ? tplDefaults!.map((b, i) => ({ ...b, id: `def-${ts}-${i}` }))
+      : [];
+
+    const tplProfileDefaults = getTemplateDefaultProfile(tpl);
+    const baseReset: Record<string, any> = tplProfileDefaults
+      ? { ...tplProfileDefaults }
       : {
           showWelcomeText: true,
           showCelebrationText: true,
           showTimeline: true,
           showCountdown: true,
           showRsvpButton: true,
+          welcomeText: "",
+          celebrationText: "",
+          partner1Name: "",
+          partner2Name: "",
+          weddingDate: "",
+          rsvpButtonText: "",
+          churchLabel: "",
+          venueLabel: "",
+          civilLabel: "",
+          colorTheme: "default",
         };
-    if (selectedTemplate === 'regal') {
-      (settingsDefaults as any).introVariant = defaultIntroVariant;
+
+    baseReset.colorTheme = "default";
+    baseReset.weddingDate = profile.weddingDate ?? baseReset.weddingDate;
+    baseReset.heroTextStyles = undefined;
+    baseReset.introTextStyles = undefined;
+    baseReset.timelineTextStyles = undefined;
+
+    if (tpl === 'regal') {
+      baseReset.introVariant = defaultIntroVariant;
     }
-    patchProfile(settingsDefaults);
-    toast({ title: "Reset efectuat!", description: "Setarile au fost resetate. Textele si blocurile nu au fost modificate." });
+
+    if (hasDefaults) {
+      setLocalBlocks(freshBlocks);
+      baseReset.customSections = JSON.stringify(freshBlocks);
+    } else {
+      setLocalBlocks([]);
+      baseReset.customSections = JSON.stringify([]);
+    }
+
+    const nextTimeline: TimelineItem[] = [];
+    setTimeline(nextTimeline);
+    baseReset.timeline = JSON.stringify(nextTimeline);
+
+    setSelectedBlock(null);
+    setResetKey(k => k + 1);
+    patchProfile(baseReset);
+    toast({ title: "Reset efectuat!", description: "Template-ul a fost resetat complet la valorile implicite." });
     setResetting(false);
     setShowResetConfirm(false);
   };
@@ -1703,6 +1780,10 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     if (!isActive) return;
     const tpl = selectedTemplate || '';
     if (!tpl) return;
+    if (INLINE_TIMELINE_TEMPLATES.has(tpl)) {
+      seededTimelineRef.current = tpl;
+      return;
+    }
     if (seededTimelineRef.current === tpl) return;
     const defaults = DEFAULT_TIMELINE_BY_TEMPLATE[tpl];
     if (!defaults || defaults.length === 0) {
@@ -1733,6 +1814,8 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     const baseProfile = { ...profile, timeline: JSON.stringify(timeline) };
     
     if (isCastle && !hasBlocks) {
+      const tplDefaults = getTemplateDefaultBlocks(selectedTemplate || "");
+      const blockDefaults = tplDefaults && tplDefaults.length > 0 ? tplDefaults : CASTLE_DEFAULT_BLOCKS;
       // Injectăm datele default pentru previzualizare
       return {
         guest:   { name: "Invitat Drag", status: "pending", type: "adult" },
@@ -1741,7 +1824,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
           ...CASTLE_DEFAULTS,
           ...baseProfile,
           weddingDate: baseProfile.weddingDate || new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-          customSections: JSON.stringify(CASTLE_DEFAULT_BLOCKS),
+          customSections: JSON.stringify(blockDefaults),
         },
       };
     }
@@ -1764,11 +1847,15 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     const updated = { ...selectedBlock.block, ...patch };
     setSelectedBlock(prev => prev ? { ...prev, block: updated } : null);
     if (updated.id === "__hero__") {
-      patchProfile({ heroTextStyles: updated.textStyles });
+      patchProfile({ heroTextStyles: Object.keys(updated.textStyles || {}).length === 0 ? null : updated.textStyles });
       return;
     }
     if (updated.id === "__intro__") {
-      patchProfile({ introTextStyles: updated.textStyles });
+      patchProfile({ introTextStyles: Object.keys(updated.textStyles || {}).length === 0 ? null : updated.textStyles });
+      return;
+    }
+    if (updated.id === "__timeline__") {
+      patchProfile({ timelineTextStyles: Object.keys(updated.textStyles || {}).length === 0 ? null : updated.textStyles });
       return;
     }
     const currentBlocks: InvitationBlock[] = localBlocks.length
@@ -1801,6 +1888,11 @@ const SettingsView: React.FC<SettingsViewProps> = ({
         }}
         onBlocksUpdate={nb => {
           if (onCheckActive && !onCheckActive()) return;
+          try {
+            const uid = session?.userId;
+            if (uid) localStorage.setItem(`weddingPro_hasCustomSections_${uid}`, "1");
+            else localStorage.setItem("weddingPro_hasCustomSections", "1");
+          } catch {}
           setLocalBlocks([...nb]);
           patchProfile({ customSections: JSON.stringify(nb) });
           if (selectedBlock) {

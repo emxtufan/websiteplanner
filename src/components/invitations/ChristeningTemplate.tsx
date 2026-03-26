@@ -632,19 +632,11 @@ const ProfileImageUpload: React.FC<{ url?: string; onUpload: (url: string) => vo
 const DoorHint: React.FC = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
     <style>{`
-      @keyframes dh-chevron { 0%{opacity:0;transform:translateX(var(--dx,0))} 40%{opacity:1} 80%{opacity:1} 100%{opacity:0;transform:translateX(var(--dx2,0))} }
-      @keyframes dh-dot { 0%{transform:translateY(0);opacity:1} 55%{transform:translateY(11px);opacity:0.15} 56%{transform:translateY(0);opacity:0} 80%{opacity:1} 100%{opacity:1} }
+      @keyframes dh-down { 0%{opacity:0;transform:translateY(-2px)} 50%{opacity:1;transform:translateY(2px)} 100%{opacity:0;transform:translateY(6px)} }
     `}</style>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[0,1,2].map(i => (<svg key={i} width="9" height="15" viewBox="0 0 9 15" style={{ animation: `dh-chevron 1.5s ease-in-out ${i*0.13}s infinite`, '--dx': '4px', '--dx2': '-5px' } as any}><polyline points="7,1 2,7.5 7,14" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>))}
-      </div>
-      <div style={{ width: 24, height: 38, borderRadius: 12, border: '2px solid rgba(255,255,255,0.85)', boxShadow: '0 0 16px rgba(244,114,182,0.45)', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', width: 3, height: 7, borderRadius: 2, background: 'white', animation: 'dh-dot 1.5s ease-in-out infinite' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[2,1,0].map(i => (<svg key={i} width="9" height="15" viewBox="0 0 9 15" style={{ animation: `dh-chevron 1.5s ease-in-out ${i*0.13}s infinite`, '--dx': '-4px', '--dx2': '5px' } as any}><polyline points="2,1 7,7.5 2,14" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 2, opacity: 0.9 }}>
+      <span style={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8, letterSpacing: '0.35em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>Scroll down</span>
+      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', animation: 'dh-down 1.6s ease-in-out infinite' }}>↓</span>
     </div>
   </div>
 );
@@ -780,8 +772,13 @@ const DoorSeam: React.FC<{ side: 'left' | 'right' }> = ({ side }) => (
 )
 
 // ── Castle overlay ────────────────────────────────────────────────────────────
-const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcomeText: string; editMode?: boolean; overlayRef?: React.RefObject<HTMLDivElement>; onChildNameChange?: (v: string) => void; onSubtitleChange?: (v: string) => void; onWelcomeChange?: (v: string) => void }> =
-  ({ childName, subtitle, welcomeText, editMode, overlayRef, onChildNameChange, onSubtitleChange, onWelcomeChange }) => (
+const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcomeText: string; editMode?: boolean; overlayRef?: React.RefObject<HTMLDivElement>; onChildNameChange?: (v: string) => void; onSubtitleChange?: (v: string) => void; onWelcomeChange?: (v: string) => void; previewMode?: 'doors' | 'static' }> =
+  ({ childName, subtitle, welcomeText, editMode, overlayRef, onChildNameChange, onSubtitleChange, onWelcomeChange, previewMode }) => {
+  const isStaticPreview = previewMode === 'static';
+  const nameTop = isStaticPreview ? '50%' : (editMode ? '18%' : '50%');
+  const nameTransform = isStaticPreview ? 'translateY(-50%)' : (editMode ? 'none' : 'translateY(-50%)');
+  const nameOpacity = isStaticPreview ? 1 : (editMode ? 0.45 : 1);
+  return (
   <div ref={overlayRef} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 15, pointerEvents: editMode ? 'auto' : 'none' }}>
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0,0,0,0.48) 0%, transparent 100%)' }} />
     <div style={{ position: 'absolute', top: '15%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
@@ -799,12 +796,15 @@ const CastleOverlayText: React.FC<{ childName: string; subtitle: string; welcome
         </svg>
       )}
     </div>
-    <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, transform: 'translateY(-50%)', textAlign: 'center', zIndex: 1, padding: '0 28px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} textKey="intro:name" textLabel="Intro Name" style={{ fontFamily: 'Great Vibes, cursive', fontSize: '3.2rem', lineHeight: 1.15, color: '#e9bbd2', textShadow: '0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(255,180,0,0.35)', margin: '2px auto 0', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word', textWrap: 'balance' }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle" style={{ fontFamily: 'Cinzel, serif', fontSize: '0.82rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#e9bbd2', textShadow: '0 2px 10px rgba(0,0,0,0.75)', marginTop: 2 }} />
+    <div style={{ position: 'absolute', top: nameTop, left: 0, right: 0, transform: nameTransform, textAlign: 'center', zIndex: 1, padding: '0 28px', opacity: nameOpacity }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', width: '100%' }}>
+        <InlineEdit tag="h2" editMode={!!editMode} value={childName} onChange={v => onChildNameChange?.(v)} textKey="intro:name" textLabel="Intro Name" style={{ fontFamily: 'Great Vibes, cursive', fontSize: '3.2rem', lineHeight: 1.15, color: '#e9bbd2', textShadow: '0 2px 24px rgba(0,0,0,0.85), 0 0 40px rgba(255,180,0,0.35)', margin: '2px auto 0', maxWidth: '100%', whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word', textWrap: 'balance' }} />
+        <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle" style={{ fontFamily: 'Cinzel, serif', fontSize: '0.82rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#e9bbd2', textShadow: '0 2px 10px rgba(0,0,0,0.75)', marginTop: 2 }} />
+      </div>
     </div>
   </div>
-);
+  );
+};
 
 // ── Castle Intro ──────────────────────────────────────────────────────────────
 const CastleIntro: React.FC<{
@@ -894,6 +894,7 @@ const CastleIntro: React.FC<{
           onChildNameChange={onChildNameChange}
           onSubtitleChange={onSubtitleChange}
           onWelcomeChange={onWelcomeChange}
+          previewMode={previewMode}
         />
       </div>
     );
@@ -911,7 +912,7 @@ const CastleIntro: React.FC<{
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.08)' }} />
         </div>
         <div style={{ position: 'absolute', bottom: 28, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}><DoorHint /></div>
-        <CastleOverlayText childName={childName} subtitle={subtitle} welcomeText={welcomeText} editMode={true} onChildNameChange={onChildNameChange} onSubtitleChange={onSubtitleChange} onWelcomeChange={onWelcomeChange} />
+        <CastleOverlayText childName={childName} subtitle={subtitle} welcomeText={welcomeText} editMode={true} onChildNameChange={onChildNameChange} onSubtitleChange={onSubtitleChange} onWelcomeChange={onWelcomeChange} previewMode={previewMode} />
       </div>
     );
   }
@@ -936,7 +937,7 @@ const CastleIntro: React.FC<{
           <DoorSeam side="right" />
         </div>
       </div>
-      <CastleOverlayText childName={childName} subtitle={subtitle} welcomeText={welcomeText} overlayRef={overlayRef} />
+      <CastleOverlayText childName={childName} subtitle={subtitle} welcomeText={welcomeText} overlayRef={overlayRef} previewMode={previewMode} />
       <div ref={hintRef} style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}><DoorHint /></div>
     </div>
   );

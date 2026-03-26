@@ -137,7 +137,7 @@ import {
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
 import UpgradeModal from "./UpgradeModal";
-import { getTemplateMeta } from "./invitations/registry";
+import { getTemplateDefaultBlocks, getTemplateMeta } from "./invitations/registry";
 
 const initialPanX = MARGIN_PX;
 const initialPanY = MARGIN_PX;
@@ -575,6 +575,12 @@ const DashboardApp = () => {
 
   const handleLogout = () => {
     localStorage.removeItem("weddingPro_session");
+    if (session?.userId) {
+      localStorage.removeItem(`weddingPro_hasCustomSections_${session.userId}`);
+      localStorage.removeItem(`weddingPro_hasProfileOverrides_${session.userId}`);
+    }
+    localStorage.removeItem("weddingPro_hasCustomSections");
+    localStorage.removeItem("weddingPro_hasProfileOverrides");
     setSession(null);
     setElements([]);
     setTasks(INITIAL_TASKS);
@@ -949,6 +955,38 @@ const DashboardApp = () => {
       });
       if (res.ok) {
         const data = await res.json();
+        // If user hasn't customized blocks yet, ignore server-injected defaults
+        try {
+          const uid = data?.userId || session?.userId;
+          const key = uid ? `weddingPro_hasCustomSections_${uid}` : "weddingPro_hasCustomSections";
+          const hasCustom = localStorage.getItem(key) === "1";
+          if (!hasCustom && data?.profile?.customSections) {
+            delete data.profile.customSections;
+          }
+          const pKey = uid ? `weddingPro_hasProfileOverrides_${uid}` : "weddingPro_hasProfileOverrides";
+          const hasProfileOverrides = localStorage.getItem(pKey) === "1";
+          if (!hasProfileOverrides && data?.profile) {
+            const coreKeys = new Set([
+              "isSetupComplete",
+              "eventName",
+              "eventType",
+              "weddingDate",
+              "guestEstimate",
+              "firstName",
+              "lastName",
+              "phone",
+              "email",
+              "partner1Name",
+              "partner2Name",
+              "inviteSlug",
+            ]);
+            const clean: any = {};
+            Object.keys(data.profile).forEach((k) => {
+              if (coreKeys.has(k)) clean[k] = (data.profile as any)[k];
+            });
+            data.profile = clean;
+          }
+        } catch {}
         setSession((prev) => {
           // Only update if NOT viewing snapshot to prevent overwriting read-only view
           if (viewingSnapshotId) return prev;
@@ -1147,6 +1185,28 @@ const DashboardApp = () => {
     const updatedSession = { ...session, profile: profileForStorage };
     setSession(updatedSession);
     localStorage.setItem("weddingPro_session", JSON.stringify(updatedSession));
+    if (session?.userId) {
+      localStorage.setItem(
+        `weddingPro_hasProfileOverrides_${session.userId}`,
+        "1",
+      );
+    } else {
+      localStorage.setItem("weddingPro_hasProfileOverrides", "1");
+    }
+    if (
+      newProfile.customSections &&
+      newProfile.customSections !== "[]" &&
+      newProfile.customSections !== "null"
+    ) {
+      if (session?.userId) {
+        localStorage.setItem(
+          `weddingPro_hasCustomSections_${session.userId}`,
+          "1",
+        );
+      } else {
+        localStorage.setItem("weddingPro_hasCustomSections", "1");
+      }
+    }
 
     setSaveStatus("unsaved");
   }, [session]);
@@ -2334,7 +2394,29 @@ const DashboardApp = () => {
             <InvitationMarketplace
               selectedTemplate={selectedTemplate}
               onSelectTemplate={(id) => {
-                if (handleActionAttempt()) setSelectedTemplate(id);
+                if (!handleActionAttempt()) return;
+                if (id === selectedTemplate) return;
+                setSelectedTemplate(id);
+                if (!session?.profile) return;
+                const defaults = getTemplateDefaultBlocks(id);
+                const textStyleReset = { heroTextStyles: null, introTextStyles: null, timelineTextStyles: null };
+                if (defaults && defaults.length > 0) {
+                  const seeded = defaults.map((b, i) => ({
+                    ...b,
+                    id: b.id || `def-${Date.now()}-${i}`,
+                  }));
+                  handleUpdateProfile({
+                    ...session.profile,
+                    ...textStyleReset,
+                    customSections: JSON.stringify(seeded),
+                  });
+                } else {
+                  handleUpdateProfile({
+                    ...session.profile,
+                    ...textStyleReset,
+                    customSections: "[]",
+                  });
+                }
               }}
               eventType={session.profile?.eventType || 'wedding'}
             />

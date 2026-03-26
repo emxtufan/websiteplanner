@@ -1,0 +1,1003 @@
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { InvitationTemplateProps, TemplateMeta } from "./types";
+import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { getUnicornTheme } from "./castleDefaults";
+import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
+import type { InvitationBlock, InvitationBlockType } from "../../types";
+import {
+  ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Upload, Camera, Music, Play, Pause, SkipBack, SkipForward,
+} from "lucide-react";
+
+const API_URL =
+  (typeof window !== "undefined" && (window as any).__API_URL__) ||
+  (import.meta as any)?.env?.VITE_API_URL ||
+  "http://localhost:3005/api";
+
+function deleteUploadedFile(url: string | undefined) {
+  if (!url || !url.startsWith("/uploads/")) return;
+  const _session = JSON.parse(localStorage.getItem("weddingPro_session") || "{}");
+  fetch(`${API_URL}/upload`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_session?.token || ""}` },
+    body: JSON.stringify({ url }),
+  }).catch(() => {});
+}
+
+export const meta: TemplateMeta = {
+  id: 'unicorn-academy',
+  name: 'Unicorn Academy',
+  category: 'kids',
+  description: 'Magie purpurie — Sophia & Wildstar te invită la petrecere, cu lumini de stele și corn de unicorn.',
+  colors: ['#3a006f', '#F5A623', '#DDB6F8'],
+  previewClass: "bg-purple-950 border-yellow-500",
+  elementsClass: "bg-yellow-500",
+};
+
+// ─── IMAGE DATA (base64 embedded) ────────────────────────────────────────────
+const IMG_SOPHIA = "/unicornacademy/sophia.jpg";
+const IMG_WILDSTAR = "/unicornacademy/wildstar.jpg";
+const IMG_BG = "/unicornacademy/bg.jpg";
+const IMG_MEDALLION = "/unicornacademy/medallion.jpg";
+
+// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
+const F = {
+  display : "'Cinzel','Trajan Pro','Times New Roman',serif",
+  body    : "'Nunito','Quicksand',sans-serif",
+  label   : "'Cinzel','Times New Roman',serif",
+} as const;
+
+let C = {
+  purple      : "#3a006f",
+  purpleMid   : "#5c0099",
+  purpleLight : "#7c18c0",
+  purpleGlow  : "#9b30e0",
+  lavender    : "#DDB6F8",
+  lavLight    : "#EED9FF",
+  gold        : "#F5A623",
+  goldDeep    : "#C8860F",
+  goldPale    : "#FFD580",
+  goldGlow    : "rgba(245,166,35,0.4)",
+  white       : "#FFFFFF",
+  offWhite    : "#F8F0FF",
+  starBlue    : "#88C8FF",
+  starPink    : "#FF88C8",
+  shadow      : "rgba(0,0,0,0.55)",
+};
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const cleaned = hex.replace("#", "");
+  if (cleaned.length !== 6) return hex;
+  const r = parseInt(cleaned.slice(0, 2), 16);
+  const g = parseInt(cleaned.slice(2, 4), 16);
+  const b = parseInt(cleaned.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+// ─── GLOBAL CSS ───────────────────────────────────────────────────────────────
+const UA_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Nunito:wght@400;600;700;800;900&display=swap');
+
+  @keyframes ua-float       { 0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-12px)rotate(1.5deg)} }
+  @keyframes ua-floatR      { 0%,100%{transform:translateY(0)rotate(0deg)}50%{transform:translateY(-10px)rotate(-1.5deg)} }
+  @keyframes ua-spin        { 0%{transform:rotate(0deg)}100%{transform:rotate(360deg)} }
+  @keyframes ua-spinSlow    { 0%{transform:rotate(0deg)}100%{transform:rotate(360deg)} }
+  @keyframes ua-pulse       { 0%,100%{opacity:.6;transform:scale(1)}50%{opacity:1;transform:scale(1.12)} }
+  @keyframes ua-glow        { 0%,100%{box-shadow:0 0 18px rgba(245,166,35,.35)}50%{box-shadow:0 0 42px rgba(245,166,35,.75),0 0 80px rgba(245,166,35,.3)} }
+  @keyframes ua-twinkle     { 0%,100%{opacity:.2;transform:scale(.7)rotate(0deg)}50%{opacity:1;transform:scale(1.4)rotate(20deg)} }
+  @keyframes ua-slideUp     { 0%{transform:translateY(36px);opacity:0}100%{transform:translateY(0);opacity:1} }
+  @keyframes ua-slideLeft   { 0%{transform:translateX(-60px);opacity:0}100%{transform:translateX(0);opacity:1} }
+  @keyframes ua-slideRight  { 0%{transform:translateX(60px);opacity:0}100%{transform:translateX(0);opacity:1} }
+  @keyframes ua-popIn       { 0%{transform:scale(0)rotate(-8deg);opacity:0}65%{transform:scale(1.1)rotate(3deg);opacity:1}100%{transform:scale(1)rotate(0);opacity:1} }
+  @keyframes ua-fadeIn      { 0%{opacity:0}100%{opacity:1} }
+  @keyframes ua-starBurst   { 0%{transform:scale(0)rotate(0deg);opacity:0}40%{transform:scale(1.3)rotate(180deg);opacity:1}70%{transform:scale(.95)rotate(340deg);opacity:1}100%{transform:scale(1)rotate(360deg);opacity:1} }
+  @keyframes ua-hornGlow    { 0%,100%{filter:drop-shadow(0 0 6px rgba(245,166,35,.5))}50%{filter:drop-shadow(0 0 22px rgba(245,166,35,1))drop-shadow(0 0 40px rgba(200,134,15,.6))} }
+  @keyframes ua-drift       { 0%{transform:translateX(0)translateY(0)}25%{transform:translateX(12px)translateY(-8px)}50%{transform:translateX(5px)translateY(-16px)}75%{transform:translateX(-8px)translateY(-6px)}100%{transform:translateX(0)translateY(0)} }
+  @keyframes ua-shimmer     { 0%{background-position:-200% 0}100%{background-position:200% 0} }
+  @keyframes ua-flip        { 0%{transform:translateY(-5px);opacity:.3}100%{transform:translateY(0);opacity:1} }
+  @keyframes ua-bgPulse     { 0%,100%{opacity:.08}50%{opacity:.18} }
+  @keyframes ua-borderRot   { 0%{transform:rotate(0deg)}100%{transform:rotate(360deg)} }
+  @keyframes ua-countIn     { 0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1} }
+`;
+
+// ─── SCROLL-REVEAL HOOK ───────────────────────────────────────────────────────
+function useReveal<T extends HTMLElement>(threshold = 0.1): [React.RefObject<T>, boolean] {
+  const ref  = useRef<T>(null);
+  const [vis, setVis] = useState(false);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) { setVis(true); obs.disconnect(); } }, { threshold });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+  return [ref, vis];
+}
+
+const Reveal: React.FC<{ children: React.ReactNode; delay?: number; from?: 'bottom'|'left'|'right'|'fade'; style?: React.CSSProperties }> =
+  ({ children, delay = 0, from = 'bottom', style }) => {
+  const [ref, vis] = useReveal<HTMLDivElement>();
+  const t: Record<string,string> = { bottom:'translateY(30px)', left:'translateX(-30px)', right:'translateX(30px)', fade:'translateY(0)' };
+  return (
+    <div ref={ref} style={{ opacity: vis?1:0, transform: vis?'translate(0,0)':t[from],
+      transition:`opacity .7s ${delay}s cubic-bezier(.22,1,.36,1),transform .7s ${delay}s cubic-bezier(.22,1,.36,1)`, ...style }}>
+      {children}
+    </div>
+  );
+};
+
+// ─── ANIMATED STAR PARTICLES ──────────────────────────────────────────────────
+const StarField: React.FC<{ count?: number; dark?: boolean }> = ({ count = 32, dark = false }) => {
+  const stars = useRef(Array.from({ length: count }, (_, i) => ({
+    x: (i * 137.5) % 100, y: (i * 97.3) % 100,
+    size: 0.5 + (i % 5) * 0.5,
+    delay: (i % 13) * 0.6, dur: 2.5 + (i % 7) * 0.8,
+    bright: i % 3 === 0,
+  }))).current;
+  return (
+    <>
+      {stars.map((s, i) => (
+        <div key={i} style={{
+          position: 'absolute', left: `${s.x}%`, top: `${s.y}%`,
+          fontSize: s.bright ? 14 + s.size * 4 : 8,
+          color: [C.gold, C.starBlue, C.starPink, C.white][i % 4],
+          opacity: s.bright ? 0.7 : 0.3,
+          animation: `ua-twinkle ${s.dur}s ${s.delay}s ease-in-out infinite`,
+          pointerEvents: 'none', userSelect: 'none', zIndex: 1,
+        }}>{s.bright ? '✦' : '·'}</div>
+      ))}
+    </>
+  );
+};
+
+// ─── GOLD FRAME (circular, like in the show) ─────────────────────────────────
+const GoldFrame: React.FC<{ src: string; size: number; float?: boolean; floatDelay?: number }> =
+  ({ src, size, float = false, floatDelay = 0 }) => (
+  <div style={{
+    width: size, height: size, borderRadius: '50%', position: 'relative',
+    animation: float ? `ua-float 4s ${floatDelay}s ease-in-out infinite` : undefined,
+    flexShrink: 0,
+  }}>
+    {/* Outer spinning ring */}
+    <div style={{
+      position: 'absolute', inset: -4, borderRadius: '50%',
+      border: `3px solid transparent`,
+      borderTopColor: C.gold, borderRightColor: C.goldPale,
+      animation: 'ua-spinSlow 8s linear infinite',
+    }}/>
+    {/* Gold frame base */}
+    <div style={{
+      position: 'absolute', inset: 0, borderRadius: '50%',
+      border: `4px solid ${C.gold}`,
+      boxShadow: `0 0 18px ${C.goldGlow}, inset 0 0 12px rgba(245,166,35,.15), 0 0 0 2px ${C.goldDeep}`,
+      animation: 'ua-glow 3s ease-in-out infinite',
+      zIndex: 2,
+    }}/>
+    {/* Inner accent ring */}
+    <div style={{
+      position: 'absolute', inset: 5, borderRadius: '50%',
+      border: `1.5px solid rgba(245,166,35,.4)`,
+      zIndex: 2,
+    }}/>
+    {/* Image */}
+    <img src={src} alt="" style={{
+      width: '100%', height: '100%', borderRadius: '50%',
+      objectFit: 'cover', display: 'block', position: 'relative', zIndex: 1,
+    }}/>
+    {/* Bottom ornament (like the show's frame) */}
+    <svg style={{ position:'absolute', bottom:-18, left:'50%', transform:'translateX(-50%)', zIndex:3, opacity:0.8 }}
+      width="48" height="22" viewBox="0 0 48 22" fill="none">
+      <path d="M4 2 Q24 18 44 2" stroke={C.gold} strokeWidth="2" fill="none" strokeLinecap="round"/>
+      <circle cx="4" cy="2" r="2.5" fill={C.gold}/>
+      <circle cx="44" cy="2" r="2.5" fill={C.gold}/>
+      <circle cx="24" cy="16" r="4" fill={C.gold}/>
+      <circle cx="24" cy="16" r="2" fill={C.goldPale}/>
+    </svg>
+  </div>
+);
+
+// ─── GOLD STAR MEDALLION ──────────────────────────────────────────────────────
+const StarMedallion: React.FC<{ size?: number; style?: React.CSSProperties }> =
+  ({ size = 56, style }) => (
+  <div style={{ width: size, height: size, borderRadius: '50%', position: 'relative',
+    animation: 'ua-hornGlow 2.5s ease-in-out infinite', flexShrink: 0, ...style }}>
+    <img src={IMG_MEDALLION} alt="★" style={{ width:'100%', height:'100%',
+      borderRadius:'50%', objectFit:'cover', display:'block' }}/>
+  </div>
+);
+
+// ─── UNICORN HORN SVG ─────────────────────────────────────────────────────────
+const UnicornHorn: React.FC<{ size?: number }> = ({ size = 36 }) => (
+  <svg width={size} height={size * 1.8} viewBox="0 0 36 65" fill="none"
+    style={{ animation: 'ua-hornGlow 2.5s ease-in-out infinite', filter:`drop-shadow(0 0 8px ${C.goldGlow})` }}>
+    <path d="M18 0 L26 55 L18 62 L10 55 Z" fill="url(#horn-grad)"/>
+    <path d="M18 0 L26 55" stroke="rgba(255,255,255,0.3)" strokeWidth="1.2"/>
+    <path d="M18 0 L10 55" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8"/>
+    {[10,20,30,40,50].map((y,i)=>
+      <ellipse key={i} cx="18" cy={y} rx={3+i*0.8} ry={1} fill="rgba(255,255,255,0.2)"/>)}
+    <defs>
+      <linearGradient id="horn-grad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stopColor={C.goldPale}/>
+        <stop offset="50%" stopColor={C.gold}/>
+        <stop offset="100%" stopColor={C.goldDeep}/>
+      </linearGradient>
+    </defs>
+  </svg>
+);
+
+// ─── GOLD DIVIDER ─────────────────────────────────────────────────────────────
+const GoldDivider: React.FC<{ medallion?: boolean }> = ({ medallion = false }) => (
+  <div style={{ display:'flex', alignItems:'center', gap:12, margin:'4px 0' }}>
+    <div style={{ flex:1, height:'1px', background:`linear-gradient(to right,transparent,${C.gold})`, opacity:.5 }}/>
+    {medallion
+      ? <StarMedallion size={36}/>
+      : <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+          <path d="M10 1 L11.8 7.8 L19 10 L11.8 12.2 L10 19 L8.2 12.2 L1 10 L8.2 7.8 Z"
+            fill={C.gold} opacity=".85"/>
+        </svg>}
+    <div style={{ flex:1, height:'1px', background:`linear-gradient(to left,transparent,${C.gold})`, opacity:.5 }}/>
+  </div>
+);
+
+// ─── LOCATION CARD ────────────────────────────────────────────────────────────
+const LocCard: React.FC<{ label:string; time?:string; name?:string; address?:string; wazeLink?:string }> =
+  ({ label, time, name, address, wazeLink }) => {
+  if (!name && !time && !address && !wazeLink) return null;
+  const enc = address ? encodeURIComponent(address) : '';
+  return (
+    <div style={{
+      background: `linear-gradient(135deg,rgba(92,0,153,.55),rgba(58,0,111,.7))`,
+      border: `1.5px solid rgba(245,166,35,.3)`,
+      borderTop: `3px solid ${C.gold}`,
+      borderRadius: 16, padding: '18px 22px',
+      backdropFilter: 'blur(8px)',
+      boxShadow: `0 6px 28px rgba(0,0,0,.45), inset 0 1px 0 rgba(245,166,35,.12)`,
+      position: 'relative', overflow: 'hidden',
+    }}>
+      {/* subtle bg shimmer */}
+      <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg,transparent,rgba(245,166,35,.04),transparent)',
+        backgroundSize:'200% 100%', animation:'ua-shimmer 4s linear infinite', pointerEvents:'none' }}/>
+      <div style={{ position:'relative', zIndex:1 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path d="M6 .5 L7 4.8 L11.5 6 L7 7.2 L6 11.5 L5 7.2 L.5 6 L5 4.8 Z" fill={C.gold}/>
+          </svg>
+          <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.5em', textTransform:'uppercase',
+            color:C.gold, margin:0, opacity:.85 }}>{label}</p>
+        </div>
+        {time && (
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:5 }}>
+            <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+              <circle cx="6.5" cy="6.5" r="5.5" stroke={C.lavender} strokeWidth=".8" opacity=".7"/>
+              <path d="M6.5 3.5 L6.5 6.5 L8.8 8.5" stroke={C.lavender} strokeWidth=".9"
+                strokeLinecap="round" strokeLinejoin="round" opacity=".7"/>
+            </svg>
+            <p style={{ fontFamily:F.body, fontSize:22, fontWeight:800, color:C.lavender, margin:0, letterSpacing:1 }}>{time}</p>
+          </div>
+        )}
+        <p style={{ fontFamily:F.label, fontSize:12, color:C.white, margin:'0 0 3px', letterSpacing:.5, lineHeight:1.5 }}>{name}</p>
+        {address && (
+          <div style={{ display:'flex', alignItems:'flex-start', gap:6, marginTop:5 }}>
+            <svg width="10" height="13" viewBox="0 0 10 14" fill="none" style={{ flexShrink:0, marginTop:2 }}>
+              <path d="M5 0C2.8 0 1 1.8 1 4c0 3 4 9 4 9s4-6 4-9C9 1.8 7.2 0 5 0z" fill={`${C.gold}88`}/>
+              <circle cx="5" cy="4" r="1.5" fill={C.purpleMid}/>
+            </svg>
+            <p style={{ fontFamily:F.body, fontSize:11, fontWeight:600,
+              color:`rgba(221,182,248,.55)`, margin:0, lineHeight:1.6, fontStyle:'italic' }}>{address}</p>
+          </div>
+        )}
+        {(wazeLink || address) && (
+          <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:12 }}>
+            {wazeLink && (
+              <a href={wazeLink} target="_blank" rel="noopener noreferrer" style={{
+                display:'inline-flex', alignItems:'center', gap:5, padding:'6px 16px',
+                borderRadius:50, background:C.gold, color:C.purple,
+                fontFamily:F.label, fontSize:9, letterSpacing:'.3em', textTransform:'uppercase',
+                textDecoration:'none', fontWeight:700,
+                boxShadow:`0 3px 12px ${C.goldGlow}`,
+              }}>✦ Waze</a>
+            )}
+            {address && (
+              <a href={`https://maps.google.com/?q=${enc}`} target="_blank" rel="noopener noreferrer" style={{
+                display:'inline-flex', alignItems:'center', gap:5, padding:'6px 16px',
+                borderRadius:50, background:'transparent', color:C.gold,
+                border:`1.5px solid rgba(245,166,35,.5)`,
+                fontFamily:F.label, fontSize:9, letterSpacing:'.3em', textTransform:'uppercase',
+                textDecoration:'none',
+              }}>◉ Maps</a>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── COUNTDOWN ────────────────────────────────────────────────────────────────
+interface TimeLeft { days:number; hours:number; minutes:number; seconds:number; total:number }
+function calcTimeLeft(date: string): TimeLeft {
+  const diff = new Date(date).getTime() - Date.now();
+  if (diff <= 0) return { days:0, hours:0, minutes:0, seconds:0, total:0 };
+  return { days:Math.floor(diff/86400000), hours:Math.floor((diff/3600000)%24),
+    minutes:Math.floor((diff/60000)%60), seconds:Math.floor((diff/1000)%60), total:diff };
+}
+
+const FlipDigit: React.FC<{ value:number; label:string }> = ({ value, label }) => {
+  const prev  = useRef(value);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (prev.current !== value) {
+      setFlash(true);
+      const t = setTimeout(() => setFlash(false), 300);
+      prev.current = value;
+      return () => clearTimeout(t);
+    }
+  }, [value]);
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+      <div style={{
+        width:58, height:66,
+        background:`linear-gradient(160deg,${C.purpleMid},${C.purple})`,
+        border:`1.5px solid rgba(245,166,35,.45)`,
+        borderRadius:12,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        position:'relative', overflow:'hidden',
+        boxShadow:`0 4px 18px rgba(0,0,0,.5), inset 0 1px 0 rgba(245,166,35,.15)`,
+        transform: flash ? 'scale(1.07)' : 'scale(1)',
+        transition:'transform .15s',
+      }}>
+        <div style={{ position:'absolute', inset:0,
+          background:'linear-gradient(135deg,rgba(245,166,35,.12),transparent)',
+          pointerEvents:'none' }}/>
+        <span style={{
+          fontFamily:F.display, fontSize:26, fontWeight:600,
+          color: flash ? C.goldPale : C.white, lineHeight:1,
+          textShadow:`0 0 16px rgba(245,166,35,${flash?.5:.2})`,
+          transition:'color .3s',
+        }}>{String(value).padStart(2,'0')}</span>
+      </div>
+      <span style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.38em',
+        textTransform:'uppercase', color:`rgba(221,182,248,.6)` }}>{label}</span>
+    </div>
+  );
+};
+
+const Countdown: React.FC<{ targetDate: string | undefined }> = ({ targetDate }) => {
+  const [tl, setTl]       = useState<TimeLeft|null>(null);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    setReady(true);
+    if (!targetDate) return;
+    setTl(calcTimeLeft(targetDate));
+    const id = setInterval(() => setTl(calcTimeLeft(targetDate!)), 1000);
+    return () => clearInterval(id);
+  }, [targetDate]);
+  if (!ready || !targetDate) return null;
+  if (tl?.total === 0) return (
+    <div style={{ textAlign:'center', padding:'12px 20px',
+      border:`1.5px solid rgba(245,166,35,.25)`, borderRadius:12,
+      background:'rgba(92,0,153,.3)' }}>
+      <p style={{ fontFamily:F.label, fontSize:9, letterSpacing:'.45em',
+        textTransform:'uppercase', color:C.gold, margin:0 }}>✦ Evenimentul a avut loc ✦</p>
+    </div>
+  );
+  const isSoon = (tl?.total ?? 0) < 86400000;
+  const vals = [tl?.days??0, tl?.hours??0, tl?.minutes??0, tl?.seconds??0];
+  const lbls = ['Zile','Ore','Min','Sec'];
+  return (
+    <div>
+      <div style={{ display:'flex', justifyContent:'center', marginBottom:14 }}>
+        <span style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.48em',
+          textTransform:'uppercase', color:C.gold, opacity:.75,
+          padding:'4px 16px', border:`1px solid rgba(245,166,35,.2)`, borderRadius:50 }}>
+          {isSoon ? '✦ Mâine ✦' : 'Timp rămas'}
+        </span>
+      </div>
+      <div style={{ display:'flex', justifyContent:'center', alignItems:'flex-start', gap:8 }}>
+        {vals.map((v,i) => (
+          <React.Fragment key={i}>
+            <FlipDigit value={v} label={lbls[i]}/>
+            {i < 3 && <span style={{ fontFamily:F.display, fontSize:22,
+              color:`rgba(221,182,248,.4)`, paddingTop:16, flexShrink:0 }}>:</span>}
+          </React.Fragment>
+        ))}
+      </div>
+      <div style={{ display:'flex', justifyContent:'center', alignItems:'center', gap:5, marginTop:10 }}>
+        <div style={{ width:5, height:5, borderRadius:'50%', background:C.gold,
+          animation:'ua-pulse 2s ease-in-out infinite' }}/>
+        <span style={{ fontFamily:F.label, fontSize:7, letterSpacing:'.35em',
+          textTransform:'uppercase', color:`rgba(245,166,35,.4)` }}>live</span>
+      </div>
+    </div>
+  );
+};
+
+// ─── INTRO — MAGIC PORTAL OPENING ────────────────────────────────────────────
+interface IntroProps { l1: string; l2: string; onDone: () => void }
+
+const UnicornIntro: React.FC<IntroProps> = ({ l1, l2, onDone }) => {
+  const showSecond = Boolean(l2 && l2 !== l1);
+  // 0=dark  1=bg+stars  2=medallion spins in  3=characters slide in  4=title reveals  5=hold  6=fade
+  const [phase, setPhase] = useState(0);
+  const [fade,  setFade]  = useState(false);
+
+  useEffect(() => {
+    const t = [
+      setTimeout(() => setPhase(1), 150),
+      setTimeout(() => setPhase(2), 600),
+      setTimeout(() => setPhase(3), 1150),
+      setTimeout(() => setPhase(4), 1700),
+      setTimeout(() => setPhase(5), 2500),
+      setTimeout(() => { setFade(true); setTimeout(onDone, 750); }, 3200),
+    ];
+    return () => t.forEach(clearTimeout);
+  }, [onDone]);
+
+  return (
+    <div style={{
+      position:'fixed', inset:0, zIndex:9999,
+      background:'#1a0030',
+      display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center',
+      overflow:'hidden',
+      opacity: fade ? 0 : 1,
+      transition: fade ? 'opacity .75s ease' : 'none',
+      pointerEvents: fade ? 'none' : 'auto',
+    }}>
+      <style>{UA_CSS}</style>
+
+      {/* Purple starry background */}
+      <div style={{
+        position:'absolute', inset:0,
+        backgroundImage:`url(${IMG_BG})`,
+        backgroundSize:'cover', backgroundPosition:'center',
+        opacity: phase >= 1 ? 1 : 0,
+        transition:'opacity .8s ease',
+      }}/>
+
+      {/* Extra star field overlay */}
+      <div style={{ position:'absolute', inset:0, zIndex:1 }}>
+        <StarField count={28}/>
+      </div>
+
+      {/* Glow radial center */}
+      <div style={{
+        position:'absolute', left:'50%', top:'50%',
+        transform:'translate(-50%,-50%)',
+        width:400, height:400, borderRadius:'50%',
+        background:`radial-gradient(circle,rgba(92,0,153,.45) 0%,transparent 70%)`,
+        opacity: phase >= 2 ? 1 : 0,
+        transition:'opacity .6s',
+        pointerEvents:'none', zIndex:2,
+        animation: phase >= 2 ? 'ua-bgPulse 3s ease-in-out infinite' : 'none',
+      }}/>
+
+      {/* Star Medallion — spins in */}
+      <div style={{
+        position:'relative', zIndex:10, marginBottom:8,
+        opacity: phase >= 2 ? 1 : 0,
+        transform: phase >= 2 ? 'scale(1) rotate(0deg)' : 'scale(0) rotate(-180deg)',
+        transition:'opacity .6s, transform .6s cubic-bezier(.34,1.4,.64,1)',
+      }}>
+        <StarMedallion size={72}/>
+      </div>
+
+      {/* UNICORN ACADEMY title */}
+      <div style={{
+        textAlign:'center', zIndex:10,
+        opacity: phase >= 4 ? 1 : 0,
+        transform: phase >= 4 ? 'translateY(0) scale(1)' : 'translateY(16px) scale(.9)',
+        transition:'opacity .5s, transform .5s cubic-bezier(.22,1,.36,1)',
+        marginBottom:4,
+      }}>
+        <p style={{ fontFamily:F.label, fontSize:9, letterSpacing:'.65em',
+          textTransform:'uppercase', color:C.gold, margin:'0 0 4px', opacity:.85 }}>
+          ✦ UNICORN ACADEMY ✦
+        </p>
+        <h1 style={{
+          fontFamily:F.display, fontWeight:900,
+          fontSize:'clamp(34px,9vw,58px)',
+          color:C.white, margin:'0 0 4px', lineHeight:1.05, letterSpacing:3,
+          textShadow:`0 0 32px rgba(245,166,35,.5), 0 2px 0 rgba(0,0,0,.6)`,
+        }}>
+          {showSecond ? `${l1} & ${l2}` : l1}
+        </h1>
+        <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.5em',
+          textTransform:'uppercase', color:`rgba(221,182,248,.6)`, margin:0 }}>
+          — te invită la petrecere —
+        </p>
+      </div>
+
+      {/* Characters row */}
+      <div style={{
+        display:'flex', alignItems:'flex-end', gap:20,
+        zIndex:10, marginTop:18,
+      }}>
+        {/* Sophia */}
+        <div style={{
+          opacity: phase >= 3 ? 1 : 0,
+          transform: phase >= 3 ? 'translateX(0)' : 'translateX(-80px)',
+          transition:'opacity .55s .05s, transform .55s .05s cubic-bezier(.22,1,.36,1)',
+        }}>
+          <GoldFrame src={IMG_SOPHIA} size={110} float floatDelay={0}/>
+        </div>
+
+        {/* Horn in center */}
+        <div style={{
+          opacity: phase >= 3 ? 1 : 0,
+          transform: phase >= 3 ? 'translateY(0) scale(1)' : 'translateY(-30px) scale(.5)',
+          transition:'opacity .5s .2s, transform .55s .2s cubic-bezier(.34,1.4,.64,1)',
+          flexShrink:0,
+        }}>
+          <UnicornHorn size={32}/>
+        </div>
+
+        {/* Wildstar */}
+        <div style={{
+          opacity: phase >= 3 ? 1 : 0,
+          transform: phase >= 3 ? 'translateX(0)' : 'translateX(80px)',
+          transition:'opacity .55s .1s, transform .55s .1s cubic-bezier(.22,1,.36,1)',
+        }}>
+          <GoldFrame src={IMG_WILDSTAR} size={110} float floatDelay={0.5}/>
+        </div>
+      </div>
+
+      {/* Light magic tagline */}
+      <p style={{
+        fontFamily:F.label, fontSize:9, letterSpacing:'.55em',
+        textTransform:'uppercase', color:`rgba(245,166,35,.5)`,
+        marginTop:20, zIndex:10,
+        opacity: phase >= 5 ? 1 : 0,
+        transition:'opacity .5s',
+      }}>✦ Light Magic ✦</p>
+    </div>
+  );
+};
+
+// ─── NAV BUTTONS ─────────────────────────────────────────────────────────────
+const NavBtns: React.FC<{ address?:string; wazeLink?:string }> = ({ address, wazeLink }) => {
+  if (!address && !wazeLink) return null;
+  const enc = address ? encodeURIComponent(address) : '';
+  return (
+    <div style={{ display:'flex', gap:8, justifyContent:'center', marginTop:12 }}>
+      {wazeLink && (
+        <a href={wazeLink} target="_blank" rel="noopener noreferrer" style={{
+          display:'inline-flex', alignItems:'center', gap:5, padding:'5px 14px',
+          fontFamily:F.label, fontSize:8, letterSpacing:'.3em', textTransform:'uppercase',
+          textDecoration:'none', color:C.purple,
+          background:C.gold, borderRadius:50,
+          boxShadow:`0 3px 10px ${C.goldGlow}`,
+        }}>✦ Waze</a>
+      )}
+      {address && (
+        <a href={`https://maps.google.com/?q=${enc}`} target="_blank" rel="noopener noreferrer" style={{
+          display:'inline-flex', alignItems:'center', gap:5, padding:'5px 14px',
+          fontFamily:F.label, fontSize:8, letterSpacing:'.3em', textTransform:'uppercase',
+          textDecoration:'none', color:C.gold,
+          border:`1.5px solid rgba(245,166,35,.4)`, borderRadius:50,
+          background:'transparent',
+        }}>◉ Maps</a>
+      )}
+    </div>
+  );
+};
+
+// ─── MAIN TEMPLATE ────────────────────────────────────────────────────────────
+const UnicornAcademyTemplate: React.FC<InvitationTemplateProps> = ({ data, onOpenRSVP }) => {
+  const { profile, guest } = data;
+  const timeline   = profile.timeline   ? JSON.parse(profile.timeline)   : [];
+  const godparents = profile.godparents ? JSON.parse(profile.godparents) : [];
+  const isWedding  = !profile.eventType || profile.eventType === 'wedding';
+
+  const [showIntro, setShowIntro]           = useState(true);
+  const [contentVisible, setContentVisible] = useState(false);
+
+  useEffect(() => {
+    if (showIntro) {
+      document.body.style.overflow  = 'hidden';
+      document.body.style.position  = 'fixed';
+      document.body.style.top       = '0';
+      document.body.style.left      = '0';
+      document.body.style.right     = '0';
+    } else {
+      document.body.style.overflow  = '';
+      document.body.style.position  = '';
+      document.body.style.top       = '';
+      document.body.style.left      = '';
+      document.body.style.right     = '';
+    }
+    return () => {
+      document.body.style.overflow  = '';
+      document.body.style.position  = '';
+      document.body.style.top       = '';
+      document.body.style.left      = '';
+      document.body.style.right     = '';
+    };
+  }, [showIntro]);
+
+  const handleIntroDone = () => {
+    window.scrollTo(0, 0);
+    setShowIntro(false);
+    setTimeout(() => { window.scrollTo(0, 0); setContentVisible(true); }, 60);
+  };
+
+  const l1 = (profile.partner1Name || 'S').charAt(0).toUpperCase();
+  const l2 = !isWedding ? '' : (profile.partner2Name || 'W').charAt(0).toUpperCase();
+
+  const getEventText = () => {
+    const map: Record<string, any> = {
+      wedding:     { welcome:'Cu onoare vă invităm',       celebration:'căsătoriei',     churchLabel:'Cununia',       venueLabel:'Recepția',   civilLabel:'Cununie Civilă' },
+      baptism:     { welcome:'Cu bucurie vă invităm',      celebration:'botezului',       churchLabel:'Botezul',       venueLabel:'Petrecerea', civilLabel:'' },
+      anniversary: { welcome:'Cu drag vă invităm alături', celebration:'aniversării',     churchLabel:'Ceremonia',     venueLabel:'Recepția',   civilLabel:'' },
+      kids:        { welcome:'Te invităm la',               celebration:'ziua de naștere', churchLabel:'Distracția',    venueLabel:'Petrecerea', civilLabel:'' },
+    };
+    const d = map[profile.eventType || 'wedding'] || map.wedding;
+    return {
+      welcome:     profile.welcomeText?.trim()     || d.welcome,
+      celebration: profile.celebrationText?.trim() || d.celebration,
+      churchLabel: profile.churchLabel?.trim()     || d.churchLabel,
+      venueLabel:  profile.venueLabel?.trim()      || d.venueLabel,
+      civilLabel:  profile.civilLabel?.trim()      || d.civilLabel,
+    };
+  };
+  const texts = getEventText();
+
+  const wd             = profile.weddingDate ? new Date(profile.weddingDate) : null;
+  const displayDay     = wd ? wd.getDate()                                                    : '';
+  const displayMonth   = wd ? wd.toLocaleDateString('ro-RO',{month:'long'}).toUpperCase()    : '';
+  const displayYear    = wd ? wd.getFullYear()                                                : '';
+  const displayWeekday = wd ? wd.toLocaleDateString('ro-RO',{weekday:'long'})                : '';
+
+  const sectionStyle: React.CSSProperties = {
+    background:`linear-gradient(135deg,rgba(92,0,153,.5),rgba(58,0,111,.65))`,
+    border:`1.5px solid rgba(245,166,35,.22)`,
+    borderRadius:20,
+    backdropFilter:'blur(10px)',
+    padding:'22px 22px',
+    position:'relative',
+    overflow:'hidden',
+    boxShadow:`0 8px 32px rgba(0,0,0,.45)`,
+  };
+
+  return (
+    <>
+      <style>{UA_CSS}</style>
+      {showIntro && <UnicornIntro l1={l1} l2={l2} onDone={handleIntroDone}/>}
+
+      {/* ── CONTENT ── */}
+      <div style={{
+        minHeight:'100vh',
+        position:'relative',
+        fontFamily:F.body,
+        opacity:    contentVisible ? 1 : 0,
+        transform:  contentVisible ? 'translateY(0)' : 'translateY(16px)',
+        transition:'opacity .7s cubic-bezier(.4,0,.2,1), transform .7s cubic-bezier(.4,0,.2,1)',
+        paddingBottom:60,
+      }}>
+
+        {/* Fixed purple bg from image */}
+        <div style={{ position:'fixed', inset:0, zIndex:0,
+          backgroundImage:`url(${IMG_BG})`,
+          backgroundSize:'cover', backgroundPosition:'center top',
+          filter:'brightness(.85)',
+        }}/>
+        {/* Vignette */}
+        <div style={{ position:'fixed', inset:0, zIndex:0,
+          background:'radial-gradient(ellipse 80% 80% at 50% 50%,transparent 40%,rgba(10,0,30,.6) 100%)',
+          pointerEvents:'none' }}/>
+        {/* Star field */}
+        <div style={{ position:'fixed', inset:0, zIndex:1, pointerEvents:'none' }}>
+          <StarField count={22}/>
+        </div>
+
+        <div style={{ position:'relative', zIndex:2, maxWidth:440, margin:'0 auto', padding:'28px 16px 0' }}>
+
+          {/* ── HERO CARD ── */}
+          <Reveal from="fade">
+            <div style={{
+              ...sectionStyle,
+              textAlign:'center',
+              padding:'36px 28px 32px',
+              borderTop:`3px solid ${C.gold}`,
+            }}>
+              {/* Top shimmer */}
+              <div style={{ position:'absolute', inset:0, pointerEvents:'none',
+                background:'linear-gradient(90deg,transparent,rgba(245,166,35,.05),transparent)',
+                backgroundSize:'200% 100%', animation:'ua-shimmer 5s linear infinite' }}/>
+
+              {/* Characters */}
+              <div style={{ display:'flex', justifyContent:'center', alignItems:'flex-end',
+                gap:18, marginBottom:20 }}>
+                <Reveal from="left" delay={0.1}>
+                  <GoldFrame src={IMG_SOPHIA}   size={100} float floatDelay={0}/>
+                </Reveal>
+                <div style={{ paddingBottom:16, animation:'ua-hornGlow 2.5s ease-in-out infinite' }}>
+                  <UnicornHorn size={28}/>
+                </div>
+                <Reveal from="right" delay={0.1}>
+                  <GoldFrame src={IMG_WILDSTAR} size={100} float floatDelay={0.5}/>
+                </Reveal>
+              </div>
+
+              {/* Medallion + badge */}
+              <Reveal from="fade" delay={0.2}>
+                <div style={{ display:'flex', justifyContent:'center', alignItems:'center',
+                  gap:12, marginBottom:14 }}>
+                  <div style={{ flex:1, height:'.7px', background:`linear-gradient(to right,transparent,${C.gold})`, opacity:.4 }}/>
+                  <StarMedallion size={42}/>
+                  <div style={{ flex:1, height:'.7px', background:`linear-gradient(to left,transparent,${C.gold})`, opacity:.4 }}/>
+                </div>
+                <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.62em',
+                  textTransform:'uppercase', color:C.gold, margin:'0 0 14px', opacity:.85 }}>
+                  Unicorn Academy · Invitație
+                </p>
+              </Reveal>
+
+              {/* Welcome */}
+              {profile.showWelcomeText && (
+                <Reveal from="bottom" delay={0.25}>
+                  <p style={{ fontFamily:F.body, fontSize:13, fontWeight:700, fontStyle:'italic',
+                    color:`rgba(221,182,248,.6)`, margin:'0 0 14px', lineHeight:1.7 }}>
+                    {texts.welcome}
+                  </p>
+                </Reveal>
+              )}
+
+              {/* ── NAMES ── */}
+              <Reveal from="bottom" delay={0.3}>
+                {!isWedding ? (
+                  <h1 style={{ fontFamily:F.display, fontWeight:900,
+                    fontSize:'clamp(34px,8.5vw,52px)',
+                    color:C.white, margin:'0 0 4px', lineHeight:1.05, letterSpacing:3,
+                    textShadow:`0 0 32px rgba(245,166,35,.4), 0 2px 0 rgba(0,0,0,.5)` }}>
+                    {profile.partner1Name || 'Prenume'}
+                  </h1>
+                ) : (
+                  <div style={{ margin:'0 0 4px' }}>
+                    <h1 style={{ fontFamily:F.display, fontWeight:900,
+                      fontSize:'clamp(28px,7vw,44px)',
+                      color:C.white, margin:0, lineHeight:1.1, letterSpacing:3,
+                      textShadow:`0 0 28px rgba(245,166,35,.35), 0 2px 0 rgba(0,0,0,.5)` }}>
+                      {profile.partner1Name || 'Prenume'}
+                    </h1>
+                    <div style={{ margin:'10px 0 10px',
+                      display:'flex', alignItems:'center', gap:14, justifyContent:'center' }}>
+                      <div style={{ flex:1, height:'.7px', background:`linear-gradient(to right,transparent,${C.gold})`, opacity:.5 }}/>
+                      <span style={{ fontFamily:F.body, fontSize:26, fontWeight:800,
+                        color:C.gold, lineHeight:1 }}>&amp;</span>
+                      <div style={{ flex:1, height:'.7px', background:`linear-gradient(to left,transparent,${C.gold})`, opacity:.5 }}/>
+                    </div>
+                    <h1 style={{ fontFamily:F.display, fontWeight:900,
+                      fontSize:'clamp(28px,7vw,44px)',
+                      color:C.white, margin:0, lineHeight:1.1, letterSpacing:3,
+                      textShadow:`0 0 28px rgba(245,166,35,.35), 0 2px 0 rgba(0,0,0,.5)` }}>
+                      {profile.partner2Name || 'Prenume'}
+                    </h1>
+                  </div>
+                )}
+              </Reveal>
+
+              {profile.showCelebrationText && (
+                <Reveal from="bottom" delay={0.35}>
+                  <p style={{ fontFamily:F.body, fontSize:13, fontWeight:700, fontStyle:'italic',
+                    color:`rgba(221,182,248,.5)`, margin:'12px 0 0', lineHeight:1.7 }}>
+                    vă invită la {texts.celebration}
+                  </p>
+                </Reveal>
+              )}
+
+              {/* Divider */}
+              <div style={{ margin:'24px 0' }}><GoldDivider/></div>
+
+              {/* ── DATE ── */}
+              <Reveal from="bottom" delay={0.4}>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr auto 1fr',
+                  alignItems:'center', gap:14, marginBottom:24 }}>
+                  <div style={{ textAlign:'right' }}>
+                    <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.4em',
+                      textTransform:'uppercase', color:`rgba(245,166,35,.7)`, margin:'0 0 2px' }}>
+                      {displayMonth}
+                    </p>
+                    <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.3em',
+                      color:`rgba(245,166,35,.4)`, margin:0 }}>{displayYear}</p>
+                  </div>
+                  <div style={{
+                    width:68, height:68, borderRadius:'50%',
+                    background:`radial-gradient(circle at 38% 35%,${C.purpleLight},${C.purple})`,
+                    border:`2.5px solid ${C.gold}`,
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    boxShadow:`0 0 22px ${C.goldGlow}, 0 4px 16px rgba(0,0,0,.5)`,
+                    position:'relative',
+                    animation:'ua-glow 3s ease-in-out infinite',
+                  }}>
+                    <div style={{ position:'absolute', inset:5,
+                      border:`1px solid rgba(245,166,35,.3)`, borderRadius:'50%' }}/>
+                    <span style={{ fontFamily:F.display, fontWeight:700, fontSize:24,
+                      color:C.white, lineHeight:1,
+                      textShadow:`0 0 10px rgba(245,166,35,.4)` }}>{displayDay}</span>
+                  </div>
+                  <div style={{ textAlign:'left' }}>
+                    <p style={{ fontFamily:F.body, fontSize:12, fontStyle:'italic',
+                      color:`rgba(221,182,248,.45)`, margin:0, lineHeight:1.5,
+                      textTransform:'capitalize' }}>{displayWeekday}</p>
+                  </div>
+                </div>
+              </Reveal>
+
+              {/* ── COUNTDOWN ── */}
+              <Reveal from="bottom" delay={0.45}>
+                <Countdown targetDate={profile.weddingDate}/>
+              </Reveal>
+
+              <div style={{ margin:'24px 0 18px' }}><GoldDivider medallion/></div>
+
+              {/* ── GUEST ── */}
+              <Reveal from="bottom" delay={0.5}>
+                <div style={{
+                  padding:'16px 20px',
+                  background:`rgba(92,0,153,.3)`,
+                  border:`1.5px solid rgba(245,166,35,.2)`,
+                  borderRadius:12, position:'relative',
+                }}>
+                  <div style={{ position:'absolute', top:0, left:'15%', right:'15%', height:'1.5px',
+                    background:`linear-gradient(to right,transparent,${C.gold},transparent)`, opacity:.4 }}/>
+                  <p style={{ fontFamily:F.label, fontSize:7, letterSpacing:'.55em',
+                    textTransform:'uppercase', color:`rgba(245,166,35,.5)`, margin:'0 0 7px' }}>
+                    Invitație pentru
+                  </p>
+                  <p style={{ fontFamily:F.display, fontWeight:700, fontSize:19,
+                    color:C.white, margin:0, letterSpacing:1.5,
+                    textShadow:`0 0 18px rgba(245,166,35,.2)` }}>
+                    {guest?.name || 'Invitatul Special'}
+                  </p>
+                </div>
+              </Reveal>
+            </div>
+          </Reveal>
+
+          {/* ── LOCATIONS ── */}
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginTop:6 }}>
+            {profile.showCivil && (
+              <Reveal from="left" delay={0.05}>
+                <LocCard label={texts.civilLabel} time={profile.civilTime||'11:00'}
+                  name={profile.civilLocationName} address={profile.civilLocationAddress}
+                  wazeLink={profile.civilWazeLink}/>
+              </Reveal>
+            )}
+            {profile.showChurch && (
+              <Reveal from="left" delay={0.1}>
+                <LocCard label={texts.churchLabel} time={profile.churchTime||'16:00'}
+                  name={profile.churchLocationName} address={profile.churchLocationAddress}
+                  wazeLink={profile.churchWazeLink}/>
+              </Reveal>
+            )}
+            {profile.showVenue && (
+              <Reveal from="left" delay={0.15}>
+                <LocCard label={texts.venueLabel} time={profile.eventTime||'19:00'}
+                  name={profile.locationName} address={profile.locationAddress}
+                  wazeLink={profile.venueWazeLink}/>
+              </Reveal>
+            )}
+          </div>
+
+          {/* ── GODPARENTS ── */}
+          {profile.showGodparents && godparents.length > 0 && (
+            <Reveal from="bottom" delay={0.05}>
+              <div style={{ ...sectionStyle, textAlign:'center', marginTop:6 }}>
+                <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.55em',
+                  textTransform:'uppercase', color:C.gold, margin:'0 0 14px', opacity:.85 }}>
+                  ✦ Nași ✦
+                </p>
+                <div style={{ display:'flex', flexDirection:'column', gap:9 }}>
+                  {godparents.map((p:any, i:number) => (
+                    <div key={i} style={{ fontFamily:F.body, fontSize:17, fontWeight:800,
+                      color:`rgba(221,182,248,.85)`, letterSpacing:1.5 }}>
+                      {p.godfather}
+                      <span style={{ color:C.gold, margin:'0 10px', fontSize:18 }}>&</span>
+                      {p.godmother}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          )}
+
+          {/* ── TIMELINE ── */}
+          {profile.showTimeline && timeline.length > 0 && (
+            <Reveal from="bottom" delay={0.05}>
+              <div style={{ ...sectionStyle, marginTop:6 }}>
+                <p style={{ fontFamily:F.label, fontSize:8, letterSpacing:'.55em',
+                  textTransform:'uppercase', color:C.gold, textAlign:'center',
+                  margin:'0 0 18px', opacity:.85 }}>
+                  ✦ Programul Zilei ✦
+                </p>
+                <div style={{ display:'flex', flexDirection:'column' }}>
+                  {timeline.map((item:any, i:number) => (
+                    <div key={item.id} style={{ display:'grid',
+                      gridTemplateColumns:'58px 22px 1fr', alignItems:'stretch', minHeight:44 }}>
+                      <div style={{ display:'flex', alignItems:'flex-start',
+                        justifyContent:'flex-end', paddingRight:12, paddingTop:4 }}>
+                        <span style={{ fontFamily:F.label, fontSize:10, color:C.gold,
+                          letterSpacing:.5, opacity:.9 }}>{item.time}</span>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center' }}>
+                        <div style={{
+                          width:12, height:12, borderRadius:'50%',
+                          background:`radial-gradient(circle at 35% 35%,${C.goldPale},${C.goldDeep})`,
+                          marginTop:5, flexShrink:0,
+                          boxShadow:`0 0 8px ${C.goldGlow}`,
+                        }}/>
+                        {i < timeline.length-1 && (
+                          <div style={{ flex:1, width:'1px', marginTop:3,
+                            background:`linear-gradient(to bottom,rgba(245,166,35,.4),transparent)` }}/>
+                        )}
+                      </div>
+                      <div style={{ paddingLeft:12, paddingTop:2,
+                        paddingBottom:i < timeline.length-1 ? 18 : 0 }}>
+                        <span style={{ fontFamily:F.body, fontSize:13, fontWeight:700, fontStyle:'italic',
+                          color:`rgba(221,182,248,.7)` }}>{item.title}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          )}
+
+          {/* ── RSVP ── */}
+          <Reveal from="bottom" delay={0.05}>
+            <div style={{ marginTop:6 }}>
+              <button
+                onClick={() => onOpenRSVP && onOpenRSVP()}
+                style={{
+                  width:'100%', padding:'20px',
+                  background:`linear-gradient(135deg,${C.gold},${C.goldDeep})`,
+                  border:'none', borderRadius:50,
+                  cursor:'pointer',
+                  fontFamily:F.display, fontSize:14, fontWeight:700,
+                  color:C.purple, letterSpacing:2, textTransform:'uppercase',
+                  boxShadow:`0 6px 28px ${C.goldGlow}, 0 0 0 3px rgba(245,166,35,.25)`,
+                  transition:'all .25s',
+                  position:'relative', overflow:'hidden',
+                }}
+                onMouseEnter={e => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.transform='scale(1.04)';
+                  b.style.boxShadow=`0 10px 40px ${C.goldGlow}, 0 0 0 5px rgba(245,166,35,.35)`;
+                }}
+                onMouseLeave={e => {
+                  const b = e.currentTarget as HTMLButtonElement;
+                  b.style.transform='scale(1)';
+                  b.style.boxShadow=`0 6px 28px ${C.goldGlow}, 0 0 0 3px rgba(245,166,35,.25)`;
+                }}
+              >
+                <div style={{ position:'absolute', inset:0,
+                  background:'linear-gradient(90deg,transparent,rgba(255,255,255,.25),transparent)',
+                  backgroundSize:'200% 100%', animation:'ua-shimmer 2s linear infinite', borderRadius:50 }}/>
+                <span style={{ position:'relative' }}>✦ Confirmă Prezența ✦</span>
+              </button>
+            </div>
+          </Reveal>
+
+          {/* ── FOOTER ── */}
+          <Reveal from="fade" delay={0.1}>
+            <div style={{ marginTop:28, textAlign:'center' }}>
+              <GoldDivider/>
+              <div style={{ display:'flex', justifyContent:'center', alignItems:'center',
+                gap:14, margin:'16px 0 10px' }}>
+                <GoldFrame src={IMG_SOPHIA}   size={46}/>
+                <StarMedallion size={32}/>
+                <GoldFrame src={IMG_WILDSTAR} size={46}/>
+              </div>
+              <p style={{ fontFamily:F.label, fontSize:9, letterSpacing:'.45em',
+                textTransform:'uppercase', color:`rgba(245,166,35,.3)`, margin:0 }}>
+                Unicorn Academy · {displayYear}
+              </p>
+            </div>
+          </Reveal>
+
+        </div>
+      </div>
+    </>
+  );
+};
+
+export default UnicornAcademyTemplate;

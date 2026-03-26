@@ -17,6 +17,7 @@ import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock, InvitationBlockType } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
+import { TimelineInsertButton } from "./TimelineInsertButton";
 import FlipClock from "./FlipClock";
 
 const API_URL =
@@ -654,19 +655,11 @@ const ProfileImageUpload: React.FC<{ url?: string; onUpload: (url: string) => vo
 const DoorHint: React.FC = () => (
   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
     <style>{`
-      @keyframes dh-chevron { 0%{opacity:0;transform:translateX(var(--dx,0))} 40%{opacity:1} 80%{opacity:1} 100%{opacity:0;transform:translateX(var(--dx2,0))} }
-      @keyframes dh-dot { 0%{transform:translateY(0);opacity:1} 55%{transform:translateY(11px);opacity:0.15} 56%{transform:translateY(0);opacity:0} 80%{opacity:1} 100%{opacity:1} }
+      @keyframes dh-down { 0%{opacity:0;transform:translateY(-2px)} 50%{opacity:1;transform:translateY(2px)} 100%{opacity:0;transform:translateY(6px)} }
     `}</style>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[0,1,2].map(i => (<svg key={i} width="9" height="15" viewBox="0 0 9 15" style={{ animation: `dh-chevron 1.5s ease-in-out ${i*0.13}s infinite`, '--dx': '4px', '--dx2': '-5px' } as any}><polyline points="7,1 2,7.5 7,14" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>))}
-      </div>
-      <div style={{ width: 24, height: 38, borderRadius: 12, border: '2px solid rgba(255,255,255,0.85)', boxShadow: '0 0 16px rgba(244,114,182,0.45)', position: 'relative' }}>
-        <div style={{ position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)', width: 3, height: 7, borderRadius: 2, background: 'white', animation: 'dh-dot 1.5s ease-in-out infinite' }} />
-      </div>
-      <div style={{ display: 'flex', gap: 4 }}>
-        {[2,1,0].map(i => (<svg key={i} width="9" height="15" viewBox="0 0 9 15" style={{ animation: `dh-chevron 1.5s ease-in-out ${i*0.13}s infinite`, '--dx': '-4px', '--dx2': '5px' } as any}><polyline points="2,1 7,7.5 2,14" stroke="rgba(255,255,255,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>))}
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginTop: 2, opacity: 0.9 }}>
+      <span style={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8, letterSpacing: '0.35em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.85)' }}>Scroll down</span>
+      <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.85)', animation: 'dh-down 1.6s ease-in-out infinite' }}>↓</span>
     </div>
   </div>
 );
@@ -749,14 +742,22 @@ const CastleOverlayText: React.FC<{
   inviteTop?: string; inviteMiddle?: string; inviteBottom?: string; inviteTag?: string; dateStr?: string;
   onInviteTopChange?: (v: string) => void; onInviteMiddleChange?: (v: string) => void; onInviteBottomChange?: (v: string) => void; onInviteTagChange?: (v: string) => void;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
+  previewMode?: 'doors' | 'static';
 }> = ({ childName, subtitle, welcomeText, partner2Name, isWedding, editMode, overlayRef, nameRef, inviteRef,
         onChildNameChange, onSubtitleChange, onWelcomeChange,
         inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr,
         onInviteTopChange, onInviteMiddleChange, onInviteBottomChange, onInviteTagChange,
-        themeColors }) => {
+        themeColors, previewMode }) => {
   const tc = themeColors ?? { pinkDark: '#be185d', pinkL: '#fbcfe8', pinkXL: '#fff5f7', gold: '#d4af37' };
   // Shadow negru consistent pentru lizibilitate pe orice fundal
   const S = '0 2px 8px rgba(0,0,0,0.95), 0 4px 24px rgba(0,0,0,0.8)';
+  const isStaticPreview = previewMode === 'static';
+  const nameTop = isStaticPreview ? '38%' : (editMode ? '18%' : '50%');
+  const nameTransform = isStaticPreview ? 'translateY(-50%)' : (editMode ? 'none' : 'translateY(-50%)');
+  const nameOpacity = isStaticPreview ? 1 : (editMode ? 0.45 : 1);
+  const inviteTopPos = isStaticPreview ? '78%' : (editMode ? '52%' : '50%');
+  const inviteTransform = isStaticPreview ? 'translateY(-50%) scale(0.95)' : (editMode ? 'translateY(-50%) scale(1)' : 'translateY(-50%) scale(0.88)');
+  const inviteOpacity = isStaticPreview ? 1 : (editMode ? 1 : 0);
 
   // Inițialele pentru nuntă: primul caracter din fiecare nume
   const initial1 = (childName || 'E').trim().charAt(0).toUpperCase();
@@ -785,7 +786,8 @@ const CastleOverlayText: React.FC<{
     {editMode && <div style={{ position: 'absolute', top: '1%', left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none' }}><span style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.5rem', fontWeight: 700, letterSpacing: '0.3em', textTransform: 'uppercase', color: `${tc.gold}cc`, background: 'rgba(0,0,0,0.35)', borderRadius: 99, padding: '2px 10px' }}>TEXT UȘI — FAZA 1</span></div>}
 
     {/* Phase 1: name / monogramă nuntă */}
-    <div ref={nameRef} style={{ position: 'absolute', top: editMode ? '18%' : '50%', left: 0, right: 0, transform: editMode ? 'none' : 'translateY(-50%)', textAlign: 'center', zIndex: 1, padding: '0 28px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', opacity: editMode ? 0.45 : 1 }}>
+    <div style={{ position: 'absolute', top: nameTop, left: 0, right: 0, transform: nameTransform, textAlign: 'center', zIndex: 1, padding: '0 28px', opacity: nameOpacity }}>
+      <div ref={nameRef} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px', width: '100%' }}>
 
       {isWedding ? (
         /* ── Monogramă nuntă ── */
@@ -894,21 +896,24 @@ const CastleOverlayText: React.FC<{
           <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)} textKey="intro:subtitle" textLabel="Intro Subtitle" style={{ fontFamily: 'Cinzel, serif', fontSize: '1rem', letterSpacing: '0.22em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, marginTop: 2 }} />
         </>
       )}
+      </div>
     </div>
 
     {/* Phase 2 label (edit only) */}
     {editMode && <div style={{ position: 'absolute', top: '40%', left: 0, right: 0, textAlign: 'center', zIndex: 20, pointerEvents: 'none' }}><span style={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.5rem', fontWeight: 700, letterSpacing: '0.3em', textTransform: 'uppercase', color: tc.gold, background: 'rgba(0,0,0,0.4)', borderRadius: 99, padding: '2px 10px' }}>TEXT EFECT SCROLL — FAZA 2 ✎</span></div>}
 
     {/* Phase 2: invitation text */}
-    <div ref={inviteRef} style={{ position: 'absolute', top: editMode ? '52%' : '50%', left: 0, right: 0, transform: editMode ? 'translateY(-50%) scale(1)' : 'translateY(-50%) scale(0.88)', textAlign: 'center', zIndex: 1, padding: '0 36px', display: 'flex', flexDirection: 'column', gap: '12px', opacity: editMode ? 1 : 0, pointerEvents: editMode ? 'auto' : 'none' }}>
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteTop || 'Cu bucurie vă anunțăm'} onChange={v => onInviteTopChange?.(v)} textKey="intro:inviteTop" textLabel="Intro Top"
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteMiddle || dateStr || 'Data Evenimentului'} onChange={v => onInviteMiddleChange?.(v)} textKey="intro:inviteMiddle" textLabel="Intro Middle"
-        style={{ fontFamily: 'Great Vibes, cursive', fontSize: '2.6rem', lineHeight: 1.2, color: '#ffffff', textShadow: S, margin: 0 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteBottom || 'a fost botezat'} onChange={v => onInviteBottomChange?.(v)} textKey="intro:inviteBottom" textLabel="Intro Bottom"
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.68rem', fontWeight: 400, letterSpacing: '0.35em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0, lineHeight: 2 }} />
-      <InlineEdit tag="p" editMode={!!editMode} value={inviteTag || '✦ deschide porțile ✦'} onChange={v => onInviteTagChange?.(v)} textKey="intro:inviteTag" textLabel="Intro Tag"
-        style={{ fontFamily: 'Cinzel, serif', fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.6em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', textShadow: S, margin: '2px 0 0' }} />
+    <div style={{ position: 'absolute', top: inviteTopPos, left: 0, right: 0, transform: inviteTransform, textAlign: 'center', zIndex: 1, padding: '0 36px', pointerEvents: editMode ? 'auto' : 'none' }}>
+      <div ref={inviteRef} style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', opacity: inviteOpacity }}>
+        <InlineEdit tag="p" editMode={!!editMode} value={inviteTop || 'Cu bucurie vă anunțăm'} onChange={v => onInviteTopChange?.(v)} textKey="intro:inviteTop" textLabel="Intro Top"
+          style={{ fontFamily: 'Cinzel, serif', fontSize: '0.65rem', fontWeight: 700, letterSpacing: '0.5em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0 }} />
+        <InlineEdit tag="p" editMode={!!editMode} value={inviteMiddle || dateStr || 'Data Evenimentului'} onChange={v => onInviteMiddleChange?.(v)} textKey="intro:inviteMiddle" textLabel="Intro Middle"
+          style={{ fontFamily: 'Great Vibes, cursive', fontSize: '2.6rem', lineHeight: 1.2, color: '#ffffff', textShadow: S, margin: 0 }} />
+        <InlineEdit tag="p" editMode={!!editMode} value={inviteBottom || 'a fost botezat'} onChange={v => onInviteBottomChange?.(v)} textKey="intro:inviteBottom" textLabel="Intro Bottom"
+          style={{ fontFamily: 'Cinzel, serif', fontSize: '0.68rem', fontWeight: 400, letterSpacing: '0.35em', textTransform: 'uppercase', color: '#ffffff', textShadow: S, margin: 0, lineHeight: 2 }} />
+        <InlineEdit tag="p" editMode={!!editMode} value={inviteTag || '✦ deschide porțile ✦'} onChange={v => onInviteTagChange?.(v)} textKey="intro:inviteTag" textLabel="Intro Tag"
+          style={{ fontFamily: 'Cinzel, serif', fontSize: '0.55rem', fontWeight: 700, letterSpacing: '0.6em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.75)', textShadow: S, margin: '2px 0 0' }} />
+      </div>
     </div>
   </div>
   );
@@ -1028,7 +1033,7 @@ const CastleIntro: React.FC<{
           inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
           onInviteTopChange={onInviteTopChange} onInviteMiddleChange={onInviteMiddleChange}
           onInviteBottomChange={onInviteBottomChange} onInviteTagChange={onInviteTagChange}
-          themeColors={themeColors} />
+          themeColors={themeColors} previewMode={previewMode} />
       </div>
     );
   }
@@ -1052,7 +1057,7 @@ const CastleIntro: React.FC<{
           inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
           onInviteTopChange={onInviteTopChange} onInviteMiddleChange={onInviteMiddleChange}
           onInviteBottomChange={onInviteBottomChange} onInviteTagChange={onInviteTagChange}
-          themeColors={themeColors} />
+          themeColors={themeColors} previewMode={previewMode} />
       </div>
     );
   }
@@ -1080,7 +1085,7 @@ const CastleIntro: React.FC<{
         subtitle={subtitle} welcomeText={welcomeText}
         overlayRef={overlayRef} nameRef={nameRef} inviteRef={inviteRef}
         inviteTop={inviteTop} inviteMiddle={inviteMiddle} inviteBottom={inviteBottom} inviteTag={inviteTag} dateStr={dateStr}
-        themeColors={themeColors} />
+        themeColors={themeColors} previewMode={previewMode} />
       <div ref={hintRef} style={{ position: 'absolute', bottom: 36, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}><DoorHint /></div>
     </div>
   );
@@ -1289,7 +1294,7 @@ export const CASTLE_PREVIEW_DATA = {
 // ── Insert Block Button ───────────────────────────────────────────────────────
 const BLOCK_TYPE_ICONS: Record<string, string> = {
   photo: '🖼', text: '✏️', location: '📍', calendar: '📅',
-  countdown: '⏱', music: '🎵', gift: '🎁',   whatsapp: '💬', rsvp: '✉️', divider: '—', family: '👨‍👩‍👧',
+  countdown: '⏱', timeline: '🕒', music: '🎵', gift: '🎁',   whatsapp: '💬', rsvp: '✉️', divider: '—', family: '👨‍👩‍👧',
   date: '📆', description: '📝',
 };
 const InsertBlockButton: React.FC<{
@@ -1543,8 +1548,14 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
 
   const resetToDefaults = useCallback(() => {
     if (!window.confirm('Resetezi templateul la valorile implicite? Toate modificările vor fi pierdute.')) return;
-    // Salvăm în DB default-urile (ca override explicit), dar păstrăm data evenimentului
-    onProfileUpdate?.({ ...CASTLE_DEFAULTS, weddingDate: pr.weddingDate ?? CASTLE_DEFAULTS.weddingDate });
+    onProfileUpdate?.({
+      ...CASTLE_DEFAULTS,
+      weddingDate: pr.weddingDate ?? CASTLE_DEFAULTS.weddingDate,
+      heroTextStyles: undefined,
+      introTextStyles: undefined,
+      timelineTextStyles: undefined,
+      timeline: JSON.stringify([]),
+    });
     const freshBlocks = CASTLE_DEFAULT_BLOCKS.map((b, i) => ({ ...b, id: `def-${Date.now()}-${i}` }));
     setBlocks(freshBlocks);
     onBlocksUpdate?.(freshBlocks);
@@ -1573,7 +1584,49 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
     });
   }, [onBlocksUpdate]);
 
+  const handleInsertAt = (afterIdx: number, type: string, def: any) => {
+    if (type === "timeline") {
+      const items = getTimelineItems();
+      if (items.length === 0) addTimelineItem(null);
+      addBlockAt(afterIdx, type, def);
+      setOpenInsertAt(null);
+      return;
+    }
+    addBlockAt(afterIdx, type, def);
+    setOpenInsertAt(null);
+  };
+
   const [openInsertAt, setOpenInsertAt] = useState<number | null>(null);
+  const getTimelineItems = () => safeJSON(profile.timeline, []);
+  const updateTimeline = (next: any[]) => {
+    onProfileUpdate?.({
+      timeline: JSON.stringify(next),
+      showTimeline: true,
+    });
+  };
+  const addTimelineItem = (preset: { icon?: string; title?: string } | null) => {
+    const current = getTimelineItems();
+    const next = [
+      ...current,
+      {
+        id: Date.now().toString(),
+        title: preset?.title || "",
+        time: "",
+        location: "",
+        icon: preset?.icon || "party",
+        notice: "",
+      },
+    ];
+    updateTimeline(next);
+  };
+  const updateTimelineItem = (id: string, patch: any) => {
+    const current = getTimelineItems();
+    updateTimeline(current.map((t: any) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+  const removeTimelineItem = (id: string) => {
+    const current = getTimelineItems();
+    updateTimeline(current.filter((t: any) => t.id !== id));
+  };
 
   const name1    = p.partner1Name;
   const name2    = p.partner2Name;
@@ -1591,6 +1644,7 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
     { type: 'location',  label: 'Locație',       def: { locationName: 'Castelul Magic', locationAddress: 'Strada Basmului nr. 1' } },
     { type: 'calendar',  label: '📅 Calendar',  def: {} },
     { type: 'countdown', label: '⏱ Countdown', def: {} },
+    { type: 'timeline',  label: '🕒 Cronologie', def: {} },
     { type: 'music',     label: '🎵 Muzică',    def: { musicTitle: '', musicArtist: '', musicType: 'none' } },
     { type: 'gift',      label: '🎁 Cadouri',   def: { sectionTitle: 'Sugestie cadou', content: '', iban: '', ibanName: '' } },
     { type: 'whatsapp',  label: 'WhatsApp',      def: { label: 'Contact WhatsApp', content: '0700000000' } },
@@ -2221,16 +2275,15 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
           <div className="space-y-0">
             {/* Buton insert ÎNAINTE de primul bloc */}
             {editMode && (
-              <InsertBlockButton
-                insertIdx={-1}
-                openInsertAt={openInsertAt}
-                setOpenInsertAt={setOpenInsertAt}
-                BLOCK_TYPES={BLOCK_TYPES}
-                onInsert={(type, def) => {
-                  addBlockAt(-1, type, def);
-                  setOpenInsertAt(null);
-                }}
-              />
+                <InsertBlockButton
+                  insertIdx={-1}
+                  openInsertAt={openInsertAt}
+                  setOpenInsertAt={setOpenInsertAt}
+                  BLOCK_TYPES={BLOCK_TYPES}
+                  onInsert={(type, def) => {
+                    handleInsertAt(-1, type, def);
+                  }}
+                />
             )}
             {blocks
               .filter((b) => editMode || b.show !== false)
@@ -2253,19 +2306,39 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                   >
                     <BlockStyleProvider
                       value={
-                        {
-                          blockId: block.id,
-                          textStyles: block.textStyles,
-                          onTextSelect: (textKey, textLabel) => onBlockSelect?.(block, idx, textKey, textLabel),
-                          fontFamily: block.blockFontFamily,
-                          fontSize: block.blockFontSize,
-                          fontWeight: block.blockFontWeight,
-                          fontStyle: block.blockFontStyle,
-                          letterSpacing: block.blockLetterSpacing,
-                          lineHeight: block.blockLineHeight,
-                          textColor: block.textColor && block.textColor !== 'transparent' ? block.textColor : undefined,
-                          textAlign: block.blockAlign,
-                        } as BlockStyle
+                        block.type === "timeline"
+                          ? ({
+                              blockId: "__timeline__",
+                              textStyles: (profile as any).timelineTextStyles,
+                              onTextSelect: (textKey, textLabel) =>
+                                onBlockSelect?.(
+                                  {
+                                    id: "__timeline__",
+                                    type: "timeline",
+                                    textStyles: (profile as any).timelineTextStyles,
+                                  } as any,
+                                  idx,
+                                  textKey,
+                                  textLabel
+                                ),
+                            } as BlockStyle)
+                          : ({
+                              blockId: block.id,
+                              textStyles: block.textStyles,
+                              onTextSelect: (textKey, textLabel) =>
+                                onBlockSelect?.(block, idx, textKey, textLabel),
+                              fontFamily: block.blockFontFamily,
+                              fontSize: block.blockFontSize,
+                              fontWeight: block.blockFontWeight,
+                              fontStyle: block.blockFontStyle,
+                              letterSpacing: block.blockLetterSpacing,
+                              lineHeight: block.blockLineHeight,
+                              textColor:
+                                block.textColor && block.textColor !== "transparent"
+                                  ? block.textColor
+                                  : undefined,
+                              textAlign: block.blockAlign,
+                            } as BlockStyle)
                       }
                     >
                       {editMode && (
@@ -2574,6 +2647,218 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                           }
                         />
                       )}
+                      {block.type === "timeline" &&
+                        (() => {
+                          const timelineItems = getTimelineItems();
+                          if (!editMode && timelineItems.length === 0) return null;
+                          return (
+                            <Reveal
+                              style={
+                                editMode ? { position: "relative", zIndex: 200 } : undefined
+                              }
+                            >
+                              <div
+                                style={{
+                                  background: "white",
+                                  border: `1px solid ${PINK_L}`,
+                                  borderRadius: 16,
+                                  padding: "20px 24px",
+                                }}
+                              >
+                                <p
+                                  style={{
+                                    fontFamily: SANS,
+                                    fontSize: 8,
+                                    fontWeight: 700,
+                                    letterSpacing: "0.42em",
+                                    textTransform: "uppercase",
+                                    color: PINK_DARK,
+                                    textAlign: "center",
+                                    margin: "0 0 16px",
+                                  }}
+                                >
+                                  Programul Zilei
+                                </p>
+                                {timelineItems.length === 0 && editMode && (
+                                  <p
+                                    style={{
+                                      fontFamily: SERIF,
+                                      fontSize: 12,
+                                      fontStyle: "italic",
+                                      color: MUTED,
+                                      textAlign: "center",
+                                      margin: "0 0 8px",
+                                    }}
+                                  >
+                                    Adauga primul moment al zilei.
+                                  </p>
+                                )}
+                                {timelineItems.map((item: any, i: number) => (
+                                  <div
+                                    key={item.id}
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "58px 44px 1fr",
+                                      alignItems: "stretch",
+                                      minHeight: 64,
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "flex-start",
+                                        justifyContent: "center",
+                                        paddingTop: 10,
+                                      }}
+                                    >
+                                      <InlineTime
+                                        editMode={editMode}
+                                        value={item.time || ""}
+                                        onChange={(v) =>
+                                          updateTimelineItem(item.id, { time: v })
+                                        }
+                                        textKey={`timeline:${item.id}:time`}
+                                        textLabel={`Ora ${i + 1}`}
+                                        style={{
+                                          fontFamily: SERIF,
+                                          fontSize: 15,
+                                          fontWeight: 600,
+                                          color: PINK_DARK,
+                                          lineHeight: 1.2,
+                                          textAlign: "center",
+                                          width: "100%",
+                                        }}
+                                      />
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        flexDirection: "column",
+                                        alignItems: "center",
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          width: 38,
+                                          height: 38,
+                                          borderRadius: "50%",
+                                          background: PINK_XL,
+                                          border: `1.5px solid ${PINK_L}`,
+                                          display: "flex",
+                                          alignItems: "center",
+                                          justifyContent: "center",
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        <WeddingIcon
+                                          iconKey={item.icon || "party"}
+                                          size={20}
+                                          color={PINK_DARK}
+                                        />
+                                      </div>
+                                      {i < timelineItems.length - 1 && (
+                                        <div
+                                          style={{
+                                            flex: 1,
+                                            width: 1,
+                                            background: `linear-gradient(to bottom, ${PINK_L}, transparent)`,
+                                            marginTop: 4,
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                    <div
+                                      style={{
+                                        paddingLeft: 12,
+                                        paddingTop: 10,
+                                        paddingBottom:
+                                          i < timelineItems.length - 1 ? 20 : 0,
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          display: "flex",
+                                          alignItems: "center",
+                                          gap: 8,
+                                        }}
+                                      >
+                                        <InlineEdit
+                                          tag="span"
+                                          editMode={editMode}
+                                          value={item.title || ""}
+                                          onChange={(v) =>
+                                            updateTimelineItem(item.id, { title: v })
+                                          }
+                                          placeholder="Moment..."
+                                          textKey={`timeline:${item.id}:title`}
+                                          textLabel={`Titlu ${i + 1}`}
+                                          style={{
+                                            fontFamily: SANS,
+                                            fontSize: 15,
+                                            fontWeight: 600,
+                                            color: TEXT,
+                                            display: "block",
+                                            lineHeight: 1.3,
+                                          }}
+                                        />
+                                        {editMode && (
+                                          <button
+                                            type="button"
+                                            onClick={() => removeTimelineItem(item.id)}
+                                            style={{
+                                              background: "none",
+                                              border: "none",
+                                              cursor: "pointer",
+                                              color: MUTED,
+                                              fontSize: 14,
+                                              padding: "0 4px",
+                                              opacity: 0.5,
+                                              lineHeight: 1,
+                                            }}
+                                          >
+                                            ✕
+                                          </button>
+                                        )}
+                                      </div>
+                                      {(editMode || item.notice) && (
+                                        <InlineEdit
+                                          tag="span"
+                                          editMode={editMode}
+                                          value={item.notice || ""}
+                                          onChange={(v) =>
+                                            updateTimelineItem(item.id, { notice: v })
+                                          }
+                                          placeholder="Nota..."
+                                          textKey={`timeline:${item.id}:notice`}
+                                          textLabel={`Nota ${i + 1}`}
+                                          style={{
+                                            fontFamily: SERIF,
+                                            fontSize: 13,
+                                            fontStyle: "italic",
+                                            color: MUTED,
+                                            display: "block",
+                                            marginTop: 4,
+                                            lineHeight: 1.5,
+                                          }}
+                                        />
+                                      )}
+                                    </div>
+                                  </div>
+                                ))}
+                                <TimelineInsertButton
+                                  editMode={editMode}
+                                  colors={{
+                                    dark: PINK_DARK,
+                                    light: PINK_L,
+                                    xl: PINK_XL,
+                                    muted: MUTED,
+                                  }}
+                                  onAdd={(preset) => addTimelineItem(preset)}
+                                />
+                              </div>
+                            </Reveal>
+                          );
+                        })()}
                       {block.type === "music" && (
                         <Reveal>
                           <MusicBlock
@@ -3022,154 +3307,13 @@ const CastleMagicTemplate: React.FC<InvitationTemplateProps & {
                       setOpenInsertAt={setOpenInsertAt}
                       BLOCK_TYPES={BLOCK_TYPES}
                       onInsert={(type, def) => {
-                        addBlockAt(idx, type, def);
-                        setOpenInsertAt(null);
+                        handleInsertAt(idx, type, def);
                       }}
                     />
                   )}
                 </div>
               ))}
           </div>
-
-          {profile.showTimeline &&
-            (() => {
-              const timelineItems = safeJSON(profile.timeline, []);
-              if (!timelineItems.length) return null;
-              return (
-                <Reveal>
-                  <div
-                    style={{
-                      background: "white",
-                      border: `1px solid ${PINK_L}`,
-                      borderRadius: 16,
-                      padding: "20px 24px",
-                      marginTop: 40,
-                    }}
-                  >
-                    <p
-                      style={{
-                        fontFamily: SANS,
-                        fontSize: 8,
-                        fontWeight: 700,
-                        letterSpacing: "0.42em",
-                        textTransform: "uppercase",
-                        color: PINK_DARK,
-                        textAlign: "center",
-                        margin: "0 0 16px",
-                      }}
-                    >
-                      Programul Zilei
-                    </p>
-                    {timelineItems.map((item: any, i: number) => (
-                      <div
-                        key={item.id}
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "58px 44px 1fr",
-                          alignItems: "stretch",
-                          minHeight: 64,
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "flex-end",
-                            paddingRight: 10,
-                            paddingTop: 10,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontFamily: SERIF,
-                              fontSize: 15,
-                              fontWeight: 600,
-                              color: PINK_DARK,
-                              lineHeight: 1.2,
-                            }}
-                          >
-                            {item.time}
-                          </span>
-                        </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                          }}
-                        >
-                          <div
-                            style={{
-                              width: 38,
-                              height: 38,
-                              borderRadius: "50%",
-                              background: PINK_XL,
-                              border: `1.5px solid ${PINK_L}`,
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                            }}
-                          >
-                            <WeddingIcon
-                              iconKey={item.icon || "party"}
-                              size={20}
-                              color={PINK_DARK}
-                            />
-                          </div>
-                          {i < timelineItems.length - 1 && (
-                            <div
-                              style={{
-                                flex: 1,
-                                width: 1,
-                                background: `linear-gradient(to bottom, ${PINK_L}, transparent)`,
-                                marginTop: 4,
-                              }}
-                            />
-                          )}
-                        </div>
-                        <div
-                          style={{
-                            paddingLeft: 12,
-                            paddingTop: 10,
-                            paddingBottom:
-                              i < timelineItems.length - 1 ? 20 : 0,
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontFamily: SANS,
-                              fontSize: 15,
-                              fontWeight: 600,
-                              color: TEXT,
-                              display: "block",
-                              lineHeight: 1.3,
-                            }}
-                          >
-                            {item.title}
-                          </span>
-                          {item.notice && (
-                            <span
-                              style={{
-                                fontFamily: SERIF,
-                                fontSize: 13,
-                                fontStyle: "italic",
-                                color: MUTED,
-                                display: "block",
-                                marginTop: 4,
-                                lineHeight: 1.5,
-                              }}
-                            >
-                              {item.notice}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Reveal>
-              );
-            })()}
 
           {/* {showRsvp && (
             <Reveal>

@@ -1,5 +1,6 @@
 import { TemplateMeta, InvitationTemplateProps } from "./types";
 import React from "react";
+import type { InvitationBlock } from "../../types";
 
 import * as ClassicTemplate from "./ClassicTemplate";
 import * as RoyalRoseTemplate from "./RoyalRoseTemplate";
@@ -12,6 +13,11 @@ import * as TerraBohoTemplate from "./TerraBohoTemplate";
 import * as ArchRoseTemplate from "./ArchRoseTemplate";
 import * as JungleMagicEffectTemplate from "./JungleMagicEffect";
 import * as LordEffectsTemplate from "./LordEffects";
+import * as GabbysDollhouseTemplate from "./GabbysDollhouseTemplate";
+import * as FrozenTemplate from "./FrozenTemplate";
+import * as UnicornAcademyTemplate from "./UnicornAcademyTemplate";
+import * as AdventureRoadTemplate from "./AdventureRoadTemplate";
+import * as JurassicTemplate from "./JurassicTemplate";
 
 // import * as ChristeningTemplate from "./ChristeningTemplate";
 import * as CastleMagicTemplateBoy from "./BoyCastelMagicTemplates";
@@ -36,6 +42,11 @@ const modules = [
   // { ...ClassicTemplate, meta: { ...ClassicTemplate.meta, id: 'classic-baptism', name: 'Classic Botez', category: 'baptism', tags: ['baptism', 'kids'], description: 'Design clasic elegant pentru botez.' } },
   { ...CastleMagicTemplateBoy,  meta: { ...CastleMagicTemplateBoy.meta,  id: 'castle-magic-boys', name: 'Boy Castel',    category: 'baptism',  tags: ['baptism', 'kids'] } },
   { ...CastleMagicTemplateGirl, meta: { ...CastleMagicTemplateGirl.meta, id: 'castle-magic-girl', name: 'Girl Castel',   category: 'baptism',  tags: ['baptism', 'kids'] } },
+  { ...GabbysDollhouseTemplate, meta: { ...GabbysDollhouseTemplate.meta, id: 'gabbys-dollhouse',  name: "Gabby's Dollhouse", category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
+  { ...FrozenTemplate,          meta: { ...FrozenTemplate.meta,          id: 'frozen',           name: 'Frozen',          category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
+  { ...UnicornAcademyTemplate,  meta: { ...UnicornAcademyTemplate.meta,  id: 'unicorn-academy', name: 'Unicorn Academy', category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
+  { ...AdventureRoadTemplate,    meta: { ...AdventureRoadTemplate.meta,    id: 'adventure-road',    name: 'Adventure Road',    category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
+  { ...JurassicTemplate,         meta: { ...JurassicTemplate.meta,         id: 'jurassic-park',     name: 'Jurassic Park',     category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
 
   // ── Aniversare ────────────────────────────────────────────────────────────
   // { ...ClassicTemplate, meta: { ...ClassicTemplate.meta, id: 'classic-anniversary', name: 'Classic Aniversare', category: 'anniversary', tags: ['anniversary'], description: 'Design clasic pentru aniversări.' } },
@@ -50,6 +61,9 @@ export const getTemplateMeta = (id: string): TemplateMeta | null => {
 };
 export const templates: TemplateMeta[] = [];
 export const components: Record<string, React.FC<InvitationTemplateProps>> = {};
+const defaultBlocksById: Record<string, InvitationBlock[]> = {};
+const defaultProfileById: Record<string, Record<string, any>> = {};
+const previewDataById: Record<string, any> = {};
 
 modules.forEach((mod) => {
   if (mod && mod.meta && mod.default) {
@@ -59,9 +73,30 @@ modules.forEach((mod) => {
     }
     templates.push(mod.meta as TemplateMeta);
     components[mod.meta.id] = mod.default;
+    if ((mod as any).CASTLE_DEFAULT_BLOCKS) {
+      defaultBlocksById[mod.meta.id] = (mod as any).CASTLE_DEFAULT_BLOCKS as InvitationBlock[];
+    }
+    if ((mod as any).CASTLE_DEFAULTS) {
+      defaultProfileById[mod.meta.id] = (mod as any).CASTLE_DEFAULTS as Record<string, any>;
+    }
+    if ((mod as any).CASTLE_PREVIEW_DATA) {
+      previewDataById[mod.meta.id] = (mod as any).CASTLE_PREVIEW_DATA;
+    }
   }
 });
 
 export const getTemplateComponent = (id: string): React.FC<InvitationTemplateProps> | null => {
   return components[id] || null;
+};
+
+export const getTemplateDefaultBlocks = (id: string): InvitationBlock[] | null => {
+  return defaultBlocksById[id] || null;
+};
+
+export const getTemplateDefaultProfile = (id: string): Record<string, any> | null => {
+  return defaultProfileById[id] || null;
+};
+
+export const getTemplatePreviewData = (id: string): any | null => {
+  return previewDataById[id] || null;
 };
