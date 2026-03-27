@@ -32,9 +32,10 @@ import FrozenTemplate from "./invitations/FrozenTemplate";
 import UnicornAcademyTemplate from "./invitations/UnicornAcademyTemplate";
 import AdventureRoadTemplate from "./invitations/AdventureRoadTemplate";
 import JurassicTemplate from "./invitations/JurassicTemplate";
+import ZootropolisTemplate from "./invitations/ZootropolisTemplate";
 import { TextSelectionCtx } from "./BlockStyleContext";
-
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES, GABBY_THEMES, FROZEN_THEMES, UNICORN_THEMES, ADVENTURE_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES } from "./invitations/castleDefaults";
+import LittleMermaidTemplate  from "./invitations/LittleMermaidTemplate";
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES, GABBY_THEMES, FROZEN_THEMES, UNICORN_THEMES, ADVENTURE_BOY_THEMES, ADVENTURE_GIRL_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES, ZOOTROPOLIS_BOY_THEMES, ZOOTROPOLIS_GIRL_THEMES, MERMAID_BOY_THEMES, MERMAID_GIRL_THEMES } from "./invitations/castleDefaults";
 import { getTemplateDefaultBlocks, getTemplateDefaultProfile } from "./invitations/registry";
 import { TemplateMeta } from "./invitations/types";
 
@@ -64,6 +65,8 @@ const EDITABLE_TEMPLATES: Record<string, React.FC<EditableTemplateProps>> = {
   'unicorn-academy': UnicornAcademyTemplate as React.FC<EditableTemplateProps>,
   'adventure-road': AdventureRoadTemplate as React.FC<EditableTemplateProps>,
   'jurassic-park':  JurassicTemplate as React.FC<EditableTemplateProps>,
+  'zootropolis':  ZootropolisTemplate as React.FC<EditableTemplateProps>,
+  'little-mermaid':  LittleMermaidTemplate as React.FC<EditableTemplateProps>,
 };
 const getEditableTemplate = (id: string): React.FC<EditableTemplateProps> =>
   EDITABLE_TEMPLATES[id] || ClassicTemplate as React.FC<EditableTemplateProps>;
@@ -432,7 +435,7 @@ const SettingsContent: React.FC<{
         </div>
       </Collapsible>
 
-      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose' || selectedTemplate === 'gabbys-dollhouse' || selectedTemplate === 'frozen' || selectedTemplate === 'unicorn-academy' || selectedTemplate === 'adventure-road' || selectedTemplate === 'jurassic-park') && (() => {
+      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose' || selectedTemplate === 'gabbys-dollhouse' || selectedTemplate === 'frozen' || selectedTemplate === 'unicorn-academy' || selectedTemplate === 'adventure-road' || selectedTemplate === 'jurassic-park' || selectedTemplate === 'zootropolis' || selectedTemplate === 'little-mermaid') && (() => {
         const themes = selectedTemplate === 'lord-effects'
           ? LORD_MONO_THEMES
           : selectedTemplate === 'castle-magic-boys'
@@ -446,9 +449,13 @@ const SettingsContent: React.FC<{
                 : selectedTemplate === 'unicorn-academy'
                   ? UNICORN_THEMES
                   : selectedTemplate === 'adventure-road'
-                    ? ADVENTURE_THEMES
+                    ? [...ADVENTURE_BOY_THEMES, ...ADVENTURE_GIRL_THEMES]
                   : selectedTemplate === 'jurassic-park'
                     ? [...JURASSIC_BOY_THEMES, ...JURASSIC_GIRL_THEMES]
+                  : selectedTemplate === 'zootropolis'
+                    ? [...ZOOTROPOLIS_BOY_THEMES, ...ZOOTROPOLIS_GIRL_THEMES]
+                  : selectedTemplate === 'little-mermaid'
+                    ? [...MERMAID_BOY_THEMES, ...MERMAID_GIRL_THEMES]
                   : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
                     ? ROMANTIC_THEMES
                     : CASTLE_THEMES;
@@ -1647,7 +1654,7 @@ const SettingsView: React.FC<SettingsViewProps> = ({
   // ── Door images preview — fetch din admin config ─────────────────────────────
   const [doorImages, setDoorImages] = useState<Record<string, { desktop?: string; mobile?: string }>>({});
   useEffect(() => {
-    if (!(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects')) return;
+    if (!(selectedTemplate?.startsWith('castle-magic') || selectedTemplate === 'lord-effects' || selectedTemplate === 'jurassic-park' || selectedTemplate === 'zootropolis' || selectedTemplate === 'little-mermaid')) return;
     fetch(`${API_URL}/config/template-defaults/${selectedTemplate}`, {
       headers: { Authorization: `Bearer ${session?.token || ''}` },
     })

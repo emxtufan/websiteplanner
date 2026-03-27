@@ -1166,15 +1166,15 @@ const AdventureRoadTemplate: React.FC<InvitationTemplateProps & {
 
   const theme = getAdventureTheme((profile as any).colorTheme);
   C = {
-    navyDark : theme.PINK_DARK,
-    navyMid  : theme.PINK_D,
-    sky      : theme.PINK_L,
-    skyLight : theme.PINK_XL,
-    skyPale  : theme.CREAM,
-    cream    : theme.CREAM,
-    text     : theme.TEXT,
-    muted    : theme.MUTED,
-    gold     : theme.GOLD,
+    navyDark : theme.navyDark,
+    navyMid  : theme.navyMid,
+    sky      : theme.sky,
+    skyLight : theme.skyLight,
+    skyPale  : theme.skyPale,
+    cream    : theme.skyPale,
+    text     : theme.text,
+    muted    : theme.muted,
+    gold     : theme.gold,
   };
 
   // ── Block state management ────────────────────────────────────────────────

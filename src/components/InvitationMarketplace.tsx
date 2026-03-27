@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, Sparkles, Image as ImageIcon, Lock, Heart, Baby, Gift, PartyPopper, Eye, Briefcase, AlertTriangle } from "lucide-react";
+import { Check, Sparkles, Image as ImageIcon, Lock, Heart, Baby, Gift, PartyPopper, Briefcase, AlertTriangle, Settings2 } from "lucide-react";
 import { Card, CardContent } from "./ui/card";
 import Button from "./ui/button";
 import { cn } from "../lib/utils";
@@ -14,6 +14,7 @@ const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3005/
 interface InvitationMarketplaceProps {
   selectedTemplate: string;
   onSelectTemplate: (templateId: string) => void;
+  onEditTemplate?: (templateId: string) => void;
   onCheckActive?: () => boolean;
   isEventActive?: boolean;
   eventType?: string;
@@ -72,8 +73,8 @@ const MarketplacePreviewContent = ({ template }: { template: any }) => {
     );
 };
 
-export default function InvitationMarketplace({ 
-    selectedTemplate, onSelectTemplate,
+export default function InvitationMarketplace({
+    selectedTemplate, onSelectTemplate, onEditTemplate,
     onCheckActive, isEventActive = true,
     eventType = 'wedding'
 }: InvitationMarketplaceProps) {
@@ -253,9 +254,9 @@ export default function InvitationMarketplace({
                                     size="sm"
                                     variant="secondary"
                                     className="flex-1 sm:flex-none h-8 text-[10px] font-bold"
-                                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); setPreviewTemplate(template); }}
+                                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEditTemplate?.(template.id); }}
                                   >
-                                    <Eye className="w-3.5 h-3.5 mr-1" /> PREVIEW
+                                    <Settings2 className="w-3.5 h-3.5 mr-1" /> EDIT TEMPLATE
                                   </Button>
                                   <Button
                                     size="sm"

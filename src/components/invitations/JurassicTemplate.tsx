@@ -249,13 +249,13 @@ const JurassicOverlayText: React.FC<{
       <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'radial-gradient(ellipse 75% 65% at 50% 50%, rgba(0,0,0,.1) 0%, transparent 100%)' }}/>
 
       {/* Logo deasupra */}
-      <div style={{ position: 'absolute', top: '6%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
+      {/* <div style={{ position: 'absolute', top: '6%', left: 0, right: 0, textAlign: 'center', zIndex: 1 }}>
         <img src={i.logo} alt="Jurassic Park" style={{
           width: 'min(200px,52vw)', objectFit: 'contain', display: 'block', margin: '0 auto',
           filter: `drop-shadow(0 0 18px ${hexToRgba(C.amber,.7)}) drop-shadow(0 4px 12px rgba(0,0,0,.9))`,
           animation: 'jr-float 4s ease-in-out infinite',
         }}/>
-      </div>
+      </div> */}
 
       {/* FAZA 1 — Nume pe uși */}
       <div style={{ position: 'absolute', top: nameTop, left: 0, right: 0, transform: nameTransform, textAlign: 'center', zIndex: 1, padding: '0 28px', opacity: nameOpacity }}>
@@ -274,14 +274,14 @@ const JurassicOverlayText: React.FC<{
           <InlineEdit tag="p" editMode={!!editMode} value={subtitle} onChange={v => onSubtitleChange?.(v)}
             style={{ fontFamily: display, fontSize: '.85rem', letterSpacing: '.3em', textTransform: 'uppercase', color: hexToRgba(C.amber,.9), textShadow: S, marginTop: 4, opacity: .9 }}/>
           {/* Raptori flanking */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 28, marginTop: 8 }}>
+          {/* <div style={{ display: 'flex', justifyContent: 'center', gap: 28, marginTop: 8 }}>
             <div style={{ animation: 'jr-float 3.5s ease-in-out infinite' }}>
               <img src={i.raptor1} alt="" style={{ height: 58, objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.8))' }}/>
             </div>
             <div style={{ animation: 'jr-floatR 4s .4s ease-in-out infinite' }}>
               <img src={i.raptor2} alt="" style={{ height: 58, objectFit: 'contain', filter: 'drop-shadow(0 4px 12px rgba(0,0,0,.8))', transform: 'scaleX(-1)' }}/>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 

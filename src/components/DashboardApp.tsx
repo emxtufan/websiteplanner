@@ -2419,6 +2419,12 @@ const DashboardApp = () => {
                 }
               }}
               eventType={session.profile?.eventType || 'wedding'}
+              onEditTemplate={(id) => {
+                if (id !== selectedTemplate) {
+                  setSelectedTemplate(id);
+                }
+                setView("settings");
+              }}
             />
           ) : view === "billing" ? (
             <BillingView

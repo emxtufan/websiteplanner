@@ -222,18 +222,54 @@ export const ROYAL_ROSE_THEMES: CastleColorTheme[] = [
 export const getRoyalRoseTheme = (id?: string): CastleColorTheme =>
   ROYAL_ROSE_THEMES.find(t => t.id === id) ?? ROYAL_ROSE_THEMES[0];
 
-// ── Adventure Road themes — dark navy, sky, gold ──────────────────────────────
-export const ADVENTURE_THEMES: CastleColorTheme[] = [
-  { id: 'sky',       emoji: '✈️', name: 'Sky Blue',     PINK_DARK: '#0c2340', PINK_D: '#1e3a5f', PINK_L: '#0ea5e9', PINK_XL: '#7dd3fc', CREAM: '#e0f2fe', TEXT: '#e2e8f0', MUTED: 'rgba(148,163,184,0.8)', GOLD: '#f59e0b' },
-  { id: 'navy',      emoji: '⚓', name: 'Navy',          PINK_DARK: '#0f172a', PINK_D: '#1e3a5f', PINK_L: '#3b82f6', PINK_XL: '#93c5fd', CREAM: '#dbeafe', TEXT: '#e2e8f0', MUTED: 'rgba(148,163,184,0.8)', GOLD: '#fbbf24' },
-  { id: 'ocean',     emoji: '🌊', name: 'Ocean',         PINK_DARK: '#083344', PINK_D: '#0e7490', PINK_L: '#06b6d4', PINK_XL: '#a5f3fc', CREAM: '#ecfeff', TEXT: '#e0f2fe', MUTED: 'rgba(148,163,184,0.8)', GOLD: '#f59e0b' },
-  { id: 'midnight',  emoji: '🌙', name: 'Midnight',      PINK_DARK: '#1e1b4b', PINK_D: '#312e81', PINK_L: '#6366f1', PINK_XL: '#c7d2fe', CREAM: '#eef2ff', TEXT: '#e2e8f0', MUTED: 'rgba(148,163,184,0.8)', GOLD: '#fbbf24' },
-  { id: 'forest',    emoji: '🌲', name: 'Forest',        PINK_DARK: '#052e16', PINK_D: '#166534', PINK_L: '#16a34a', PINK_XL: '#86efac', CREAM: '#f0fdf4', TEXT: '#d1fae5', MUTED: 'rgba(148,163,184,0.8)', GOLD: '#a3e635' },
-  { id: 'sunset',    emoji: '🌅', name: 'Sunset',        PINK_DARK: '#1c0a00', PINK_D: '#7c2d12', PINK_L: '#f97316', PINK_XL: '#fed7aa', CREAM: '#fff7ed', TEXT: '#fef3c7', MUTED: 'rgba(251,191,36,0.7)',  GOLD: '#fbbf24' },
+// ── Adventure Road themes ──────────────────────────────────────────────────────
+export interface AdventureColorTheme {
+  id: string;
+  name: string;
+  emoji: string;
+  // semantic fields used by the template
+  navyDark: string;
+  navyMid:  string;
+  sky:      string;
+  skyLight: string;
+  skyPale:  string;
+  text:     string;
+  muted:    string;
+  gold:     string;
+  // swatch aliases (used by SettingsView color picker)
+  PINK_DARK: string;  // = navyDark (dark bg)
+  PINK_L:    string;  // = sky      (main accent — vizibil)
+  PINK_XL:   string;  // = skyLight (lighter accent — vizibil)
+}
+
+function ar(t: Omit<AdventureColorTheme, 'PINK_DARK'|'PINK_L'|'PINK_XL'>): AdventureColorTheme {
+  return { ...t, PINK_DARK: t.navyDark, PINK_L: t.sky, PINK_XL: t.skyLight };
+}
+
+// ── Băieți ────────────────────────────────────────────────────────────────────
+export const ADVENTURE_BOY_THEMES: AdventureColorTheme[] = [
+  ar({ id: 'sky',      emoji: '✈️', name: 'Sky Blue',   navyDark:'#0c2340', navyMid:'#1e3a5f', sky:'#0ea5e9', skyLight:'#7dd3fc', skyPale:'#e0f2fe', text:'#e2e8f0', muted:'rgba(148,163,184,0.8)', gold:'#f59e0b' }),
+  ar({ id: 'navy',     emoji: '⚓',  name: 'Navy',       navyDark:'#0f172a', navyMid:'#1e3a5f', sky:'#3b82f6', skyLight:'#93c5fd', skyPale:'#dbeafe', text:'#e2e8f0', muted:'rgba(148,163,184,0.8)', gold:'#fbbf24' }),
+  ar({ id: 'ocean',    emoji: '🌊', name: 'Ocean',       navyDark:'#083344', navyMid:'#0e7490', sky:'#06b6d4', skyLight:'#a5f3fc', skyPale:'#ecfeff', text:'#e0f2fe', muted:'rgba(148,163,184,0.8)', gold:'#f59e0b' }),
+  ar({ id: 'midnight', emoji: '🌙', name: 'Midnight',    navyDark:'#1e1b4b', navyMid:'#312e81', sky:'#6366f1', skyLight:'#c7d2fe', skyPale:'#eef2ff', text:'#e2e8f0', muted:'rgba(148,163,184,0.8)', gold:'#fbbf24' }),
+  ar({ id: 'forest',   emoji: '🌲', name: 'Forest',      navyDark:'#052e16', navyMid:'#166534', sky:'#16a34a', skyLight:'#86efac', skyPale:'#f0fdf4', text:'#d1fae5', muted:'rgba(148,163,184,0.8)', gold:'#a3e635' }),
+  ar({ id: 'sunset',   emoji: '🌅', name: 'Sunset',      navyDark:'#1c0a00', navyMid:'#7c2d12', sky:'#f97316', skyLight:'#fed7aa', skyPale:'#fff7ed', text:'#fef3c7', muted:'rgba(251,191,36,0.7)',  gold:'#fbbf24' }),
 ];
 
-export const getAdventureTheme = (id?: string): CastleColorTheme =>
-  ADVENTURE_THEMES.find(t => t.id === id) ?? ADVENTURE_THEMES[0];
+// ── Fete ──────────────────────────────────────────────────────────────────────
+export const ADVENTURE_GIRL_THEMES: AdventureColorTheme[] = [
+  ar({ id: 'rose',     emoji: '🌸', name: 'Rose Road',   navyDark:'#1a0812', navyMid:'#3b1128', sky:'#e03898', skyLight:'#f9a8d4', skyPale:'#fce7f3', text:'#fce7f3', muted:'rgba(236,72,153,0.6)',  gold:'#f472b6' }),
+  ar({ id: 'lavender', emoji: '💜', name: 'Lavender',    navyDark:'#0e0818', navyMid:'#2e1065', sky:'#a855f7', skyLight:'#d8b4fe', skyPale:'#faf5ff', text:'#ede9fe', muted:'rgba(167,139,250,0.7)', gold:'#c084fc' }),
+  ar({ id: 'coral',    emoji: '🪸', name: 'Coral Cruise',navyDark:'#1c0a05', navyMid:'#7c2d12', sky:'#f43f5e', skyLight:'#fda4af', skyPale:'#fff1f2', text:'#ffe4e6', muted:'rgba(251,113,133,0.7)', gold:'#fb923c' }),
+  ar({ id: 'mint',     emoji: '🌿', name: 'Mint Express',navyDark:'#022c22', navyMid:'#065f46', sky:'#10b981', skyLight:'#6ee7b7', skyPale:'#ecfdf5', text:'#d1fae5', muted:'rgba(52,211,153,0.7)',  gold:'#34d399' }),
+  ar({ id: 'golden',   emoji: '✨', name: 'Golden Sky',  navyDark:'#1c1400', navyMid:'#78350f', sky:'#f59e0b', skyLight:'#fde68a', skyPale:'#fffbeb', text:'#fef3c7', muted:'rgba(251,191,36,0.7)',  gold:'#fbbf24' }),
+  ar({ id: 'peach',    emoji: '🍑', name: 'Peach Drive', navyDark:'#1c0a00', navyMid:'#7c2d12', sky:'#fb923c', skyLight:'#fed7aa', skyPale:'#fff7ed', text:'#fef3c7', muted:'rgba(253,186,116,0.7)', gold:'#fbbf24' }),
+];
+
+export const getAdventureTheme = (id?: string): AdventureColorTheme => {
+  const all = [...ADVENTURE_BOY_THEMES, ...ADVENTURE_GIRL_THEMES];
+  return all.find(t => t.id === id) ?? ADVENTURE_BOY_THEMES[0];
+};
 
 // ── Jurassic Park themes ───────────────────────────────────────────────────────
 export interface JurassicColorTheme {
@@ -286,6 +322,114 @@ export const getJurassicTheme = (id?: string): JurassicColorTheme => {
   return all.find(t => t.id === id) ?? JURASSIC_BOY_THEMES[0];
 };
 
+// ── Zootropolis themes ─────────────────────────────────────────────────────────
+export interface ZootropolisColorTheme {
+  id: string;
+  name: string;
+  emoji: string;
+  // semantic fields used by the template
+  city:        string;
+  cityMid:     string;
+  steel:       string;
+  steelLight:  string;
+  orange:      string;
+  orangeLight: string;
+  orangePale:  string;
+  sky:         string;
+  skyDeep:     string;
+  // swatch aliases (used by SettingsView color picker)
+  PINK_DARK: string;  // = city       (dark bg)
+  PINK_L:    string;  // = orange     (main accent — vizibil)
+  PINK_XL:   string;  // = steelLight (secondary accent — vizibil)
+}
+
+function zt(t: Omit<ZootropolisColorTheme, 'PINK_DARK'|'PINK_L'|'PINK_XL'>): ZootropolisColorTheme {
+  return { ...t, PINK_DARK: t.city, PINK_L: t.orange, PINK_XL: t.steelLight };
+}
+
+// ── Băieți ────────────────────────────────────────────────────────────────────
+export const ZOOTROPOLIS_BOY_THEMES: ZootropolisColorTheme[] = [
+  zt({ id:'default',    emoji:'🦊', name:'Classic Zootopia', city:'#0D1B2A', cityMid:'#1B2838', steel:'#2B4162', steelLight:'#4361EE', orange:'#E85D04', orangeLight:'#F4A261', orangePale:'#FFBA49', sky:'#90E0EF', skyDeep:'#48CAE4' }),
+  zt({ id:'nightcity',  emoji:'🌃', name:'Night City',       city:'#0a0014', cityMid:'#14002a', steel:'#280050', steelLight:'#a855f7', orange:'#f43f5e', orangeLight:'#fb7185', orangePale:'#fda4af', sky:'#c084fc', skyDeep:'#a855f7' }),
+  zt({ id:'tundra',     emoji:'🐻‍❄️', name:'Tundratown',   city:'#071a2e', cityMid:'#0c2a4a', steel:'#1a4a6a', steelLight:'#38bdf8', orange:'#06b6d4', orangeLight:'#67e8f9', orangePale:'#e0f9ff', sky:'#bae6fd', skyDeep:'#7dd3fc' }),
+  zt({ id:'sahara',     emoji:'🦁', name:'Sahara Square',    city:'#1c0a00', cityMid:'#3b1500', steel:'#6b2e00', steelLight:'#f97316', orange:'#f59e0b', orangeLight:'#fbbf24', orangePale:'#fde68a', sky:'#fed7aa', skyDeep:'#fb923c' }),
+  zt({ id:'rainforest', emoji:'🐸', name:'Rainforest',       city:'#051a0a', cityMid:'#0a2e14', steel:'#155020', steelLight:'#16a34a', orange:'#65a30d', orangeLight:'#84cc16', orangePale:'#d9f99d', sky:'#bbf7d0', skyDeep:'#4ade80' }),
+  zt({ id:'nocturnal',  emoji:'🦇', name:'Nocturnal Club',   city:'#050914', cityMid:'#0c1428', steel:'#151f3c', steelLight:'#0ea5e9', orange:'#06b6d4', orangeLight:'#22d3ee', orangePale:'#a5f3fc', sky:'#7dd3fc', skyDeep:'#38bdf8' }),
+];
+
+// ── Fete ──────────────────────────────────────────────────────────────────────
+export const ZOOTROPOLIS_GIRL_THEMES: ZootropolisColorTheme[] = [
+  zt({ id:'rose_city',       emoji:'🌸', name:'Rose City',       city:'#1a0812', cityMid:'#281020', steel:'#3a1830', steelLight:'#e879f9', orange:'#ec4899', orangeLight:'#f472b6', orangePale:'#fce7f3', sky:'#fbcfe8', skyDeep:'#f9a8d4' }),
+  zt({ 
+  id:'soft_blush',       
+  emoji:'🌸', 
+  name:'Soft Blush',       
+  city:'#241218', 
+  cityMid:'#2f1a22', 
+  steel:'#3a232c', 
+  steelLight:'#fbcfe8', 
+  orange:'#f9a8d4', 
+  orangeLight:'#fce7f3', 
+  orangePale:'#fdf4f8', 
+  sky:'#fdf2f8', 
+  skyDeep:'#fce7f3' 
+}),
+  zt({ id:'little_rodentia', emoji:'🐭', name:'Little Rodentia', city:'#1a0818', cityMid:'#2d1040', steel:'#4a1a6a', steelLight:'#c084fc', orange:'#a855f7', orangeLight:'#d8b4fe', orangePale:'#f3e8ff', sky:'#ede9fe', skyDeep:'#c4b5fd' }),
+  zt({ id:'bunny',           emoji:'🐰', name:'Bunny Meadows',   city:'#1a0828', cityMid:'#2e1060', steel:'#4a1888', steelLight:'#818cf8', orange:'#6366f1', orangeLight:'#a5b4fc', orangePale:'#e0e7ff', sky:'#c7d2fe', skyDeep:'#a5b4fc' }),
+  zt({ id:'cherry',          emoji:'🍒', name:'Cherry Blossom',  city:'#1a0508', cityMid:'#250b10', steel:'#3a1018', steelLight:'#fb7185', orange:'#f43f5e', orangeLight:'#fda4af', orangePale:'#ffe4e6', sky:'#fecdd3', skyDeep:'#fda4af' }),
+  zt({ id:'foxglove',        emoji:'🦊', name:'Foxglove',        city:'#1c0a00', cityMid:'#321200', steel:'#5a2000', steelLight:'#f97316', orange:'#ec4899', orangeLight:'#f9a8d4', orangePale:'#fce7f3', sky:'#fed7aa', skyDeep:'#fb923c' }),
+  zt({ id:'moonblossom',     emoji:'🌙', name:'Moon Blossom',    city:'#0e0820', cityMid:'#1a1040', steel:'#2a1a60', steelLight:'#a78bfa', orange:'#c084fc', orangeLight:'#e879f9', orangePale:'#fdf4ff', sky:'#f0abfc', skyDeep:'#e879f9' }),
+];
+
+export const getZootropolisTheme = (id?: string): ZootropolisColorTheme => {
+  const all = [...ZOOTROPOLIS_BOY_THEMES, ...ZOOTROPOLIS_GIRL_THEMES];
+  return all.find(t => t.id === id) ?? ZOOTROPOLIS_BOY_THEMES[0];
+};
+
+// ── Little Mermaid themes ──────────────────────────────────────────────────────
+export interface MermaidColorTheme {
+  id: string; name: string; emoji: string;
+  // template color fields
+  ocean:    string;  // darkest background
+  deep:     string;  // dark background
+  mid:      string;  // mid background
+  bright:   string;  // bright accent
+  teal:     string;  // primary teal / main accent
+  tealPale: string;  // light teal / seam glow
+  coral:    string;  // secondary accent
+  pink:     string;  // tertiary accent
+  gold:     string;  // gold accent
+  pearl:    string;  // very light — admin card bg
+  // swatch aliases (used by SettingsView & TemplateManagement)
+  PINK_DARK: string; // = teal
+  PINK_L:    string; // = tealPale
+  PINK_XL:   string; // = pearl
+}
+
+function mr(t: Omit<MermaidColorTheme, 'PINK_DARK'|'PINK_L'|'PINK_XL'>): MermaidColorTheme {
+  return { ...t, PINK_DARK: t.teal, PINK_L: t.tealPale, PINK_XL: t.pearl };
+}
+
+// ── Băieți ────────────────────────────────────────────────────────────────────
+export const MERMAID_BOY_THEMES: MermaidColorTheme[] = [
+  mr({ id:'default',   emoji:'🧜‍♀️', name:'Ocean Blue',    ocean:'#041E42', deep:'#0A2D5A', mid:'#0D4A8A', bright:'#1877C9', teal:'#00C8AA', tealPale:'#7FFFDA', coral:'#FF6B6B', pink:'#CC3366', gold:'#F5C842', pearl:'#E8F7F9' }),
+  mr({ id:'midnight',  emoji:'🌊',   name:'Midnight Sea',  ocean:'#040820', deep:'#080d38', mid:'#101855', bright:'#3050e0', teal:'#00a8e8', tealPale:'#90e0ff', coral:'#e070b0', pink:'#a040c0', gold:'#ffd060', pearl:'#e0f0ff' }),
+  mr({ id:'deep_sea',  emoji:'🐟',   name:'Deep Sea',      ocean:'#020818', deep:'#041430', mid:'#072240', bright:'#0055aa', teal:'#00b8d4', tealPale:'#80e8ff', coral:'#ff8050', pink:'#e05080', gold:'#f0d060', pearl:'#e0f4f8' }),
+  mr({ id:'tropic',    emoji:'🌴',   name:'Tropical',      ocean:'#013020', deep:'#024530', mid:'#036040', bright:'#20c060', teal:'#00e8b0', tealPale:'#90ffe8', coral:'#ff9030', pink:'#ff5070', gold:'#ffe050', pearl:'#e0fff4' }),
+];
+
+// ── Fete ──────────────────────────────────────────────────────────────────────
+export const MERMAID_GIRL_THEMES: MermaidColorTheme[] = [
+  mr({ id:'princess',  emoji:'👑',  name:'Princess',       ocean:'#1a0830', deep:'#2a1048', mid:'#3d1868', bright:'#9040e0', teal:'#e060f0', tealPale:'#f8c0ff', coral:'#ff80b0', pink:'#ff3880', gold:'#ffd060', pearl:'#fdf0ff' }),
+  mr({ id:'ariel_pink',emoji:'🩷',  name:'Ariel Pink',     ocean:'#200818', deep:'#38102a', mid:'#501840', bright:'#c03080', teal:'#ff5090', tealPale:'#ffb0d0', coral:'#ff9060', pink:'#e03060', gold:'#ffd080', pearl:'#fff0f6' }),
+  mr({ id:'lavender',  emoji:'💜',  name:'Lavender Dream', ocean:'#10081e', deep:'#1e1038', mid:'#2c1858', bright:'#7040c0', teal:'#a065e0', tealPale:'#d8b0ff', coral:'#f070d0', pink:'#e040a0', gold:'#f8d060', pearl:'#f8f0ff' }),
+  mr({ id:'coral_girl',emoji:'🪸',  name:'Coral Glow',     ocean:'#1a0808', deep:'#2e1010', mid:'#451818', bright:'#c03040', teal:'#ff6060', tealPale:'#ffc0b8', coral:'#ff9070', pink:'#ff4070', gold:'#ffd080', pearl:'#fff5f5' }),
+];
+
+export const getMermaidTheme = (id?: string): MermaidColorTheme => {
+  const all = [...MERMAID_BOY_THEMES, ...MERMAID_GIRL_THEMES];
+  return all.find(t => t.id === id) ?? MERMAID_BOY_THEMES[0];
+};
 
 // ── Valori implicite profil ───────────────────────────────────────────────────
 export const CASTLE_DEFAULTS = {

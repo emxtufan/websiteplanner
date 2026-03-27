@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Save, Upload, Check, Loader2, Trash2, ChevronDown, ChevronUp, RefreshCw, Plus } from 'lucide-react';
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, getCastleTheme, getLordTheme, CastleColorTheme, ROMANTIC_THEMES, LORD_MONO_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES, getJurassicTheme } from '../components/invitations/castleDefaults';
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, getCastleTheme, getLordTheme, CastleColorTheme, ROMANTIC_THEMES, LORD_MONO_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES, getJurassicTheme, ZOOTROPOLIS_BOY_THEMES, ZOOTROPOLIS_GIRL_THEMES, getZootropolisTheme, MERMAID_BOY_THEMES, MERMAID_GIRL_THEMES, getMermaidTheme } from '../components/invitations/castleDefaults';
 
 const API_URL =
   (typeof window !== 'undefined' && (window as any).__API_URL__) ||
@@ -33,6 +33,8 @@ const VARIANTS = [
   { id: 'romantic', label: 'Romantic',    emoji: '🌸', color: '#7f0000', bg: '#faf5ff', desc: 'Versiunea pentru fete' },
   { id: 'regal',         label: 'Regal',        emoji: '👑', color: '#92400e', bg: '#fffbeb', desc: 'Template royal cu video intro' },
   { id: 'jurassic-park', label: 'Jurassic Park', emoji: '🦕', color: '#c87820', bg: '#fdf8ec', desc: 'Aventură jurasică — teme băieți & fete' },
+  { id: 'zootropolis',   label: 'Zootropolis',   emoji: '🦊', color: '#E85D04', bg: '#fff7ed', desc: 'Metropola animală — teme băieți & fete' },
+  { id: 'little-mermaid', label: 'Little Mermaid', emoji: '🧜‍♀️', color: '#92400e', bg: '#fffbeb', desc: 'Template Mica Sirenă cu video intro' },
 ];
 
 const emptyConfig = (): VariantConfig => ({ colorTheme: 'default', themeImages: {}, introVariants: {} });
@@ -44,7 +46,7 @@ const TemplateManagement: React.FC = () => {
   const [saving,   setSaving]   = useState<Record<string, boolean>>({});
   const [saved,    setSaved]    = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({
-    'castle-magic': true, 'castle-magic-boys': true, 'castle-magic-girl': true, 'lord-effects': true, 'jurassic-park': true,
+    'castle-magic': true, 'castle-magic-boys': true, 'castle-magic-girl': true, 'lord-effects': true, 'jurassic-park': true, 'zootropolis': true,'little-mermaid': true,
   });
 
   // ── Load all variants on mount ─────────────────────────────────────────────
@@ -218,7 +220,7 @@ Fișierele vor fi șterse permanent.`)) return;
                   <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', fontFamily: 'monospace', background: '#f3f4f6', padding: '2px 8px', borderRadius: 6 }}>{variant.id}</span>
                 </div>
                 <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>
-                  {variant.desc} · Temă implicită: <strong style={{ color: variant.color }}>{variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).emoji : variant.id === 'jurassic-park' ? getJurassicTheme(cfg.colorTheme).emoji : getCastleTheme(cfg.colorTheme).emoji} {variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).name : variant.id === 'jurassic-park' ? getJurassicTheme(cfg.colorTheme).name : getCastleTheme(cfg.colorTheme).name}</strong>
+                  {variant.desc} · Temă implicită: <strong style={{ color: variant.color }}>{variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).emoji : variant.id === 'jurassic-park' ? getJurassicTheme(cfg.colorTheme).emoji : variant.id === 'zootropolis' ? getZootropolisTheme(cfg.colorTheme).emoji : variant.id === 'little-mermaid' ? getMermaidTheme(cfg.colorTheme).emoji : getCastleTheme(cfg.colorTheme).emoji} {variant.id === 'lord-effects' ? getLordTheme(cfg.colorTheme).name : variant.id === 'jurassic-park' ? getJurassicTheme(cfg.colorTheme).name : variant.id === 'zootropolis' ? getZootropolisTheme(cfg.colorTheme).name : variant.id === 'little-mermaid' ? getMermaidTheme(cfg.colorTheme).name : getCastleTheme(cfg.colorTheme).name}</strong>
                   {themesWithImgs > 0 && <> · <span style={{ color: '#4f46e5' }}>🚪 {themesWithImgs} teme cu imagini</span></>}
                 </p>
               </div>
@@ -362,6 +364,10 @@ Fișierele vor fi șterse permanent.`)) return;
                 ? ROMANTIC_THEMES
                 : variant.id === 'jurassic-park'
                 ? [...JURASSIC_BOY_THEMES, ...JURASSIC_GIRL_THEMES] as unknown as CastleColorTheme[]
+                : variant.id === 'zootropolis'
+                ? [...ZOOTROPOLIS_BOY_THEMES, ...ZOOTROPOLIS_GIRL_THEMES] as unknown as CastleColorTheme[]
+                : variant.id === 'little-mermaid'
+                ? [...MERMAID_BOY_THEMES, ...MERMAID_GIRL_THEMES] as unknown as CastleColorTheme[]
                 : CASTLE_THEMES
           ).map(theme => {
             const imgs = cfg.themeImages[theme.id] || {};

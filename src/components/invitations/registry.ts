@@ -22,7 +22,10 @@ import * as JurassicTemplate from "./JurassicTemplate";
 // import * as ChristeningTemplate from "./ChristeningTemplate";
 import * as CastleMagicTemplateBoy from "./BoyCastelMagicTemplates";
 import * as CastleMagicTemplateGirl from "./GirlCastelMagicTemplates";
+import * as ZootropolisTemplate from "./ZootropolisTemplate";
 
+
+import * as LittleMermaidTemplate from "./LittleMermaidTemplate";
 // Manual registry of modules
 const modules = [
   // ── Nuntă ────────────────────────────────────────────────────────────────
@@ -47,7 +50,8 @@ const modules = [
   { ...UnicornAcademyTemplate,  meta: { ...UnicornAcademyTemplate.meta,  id: 'unicorn-academy', name: 'Unicorn Academy', category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
   { ...AdventureRoadTemplate,    meta: { ...AdventureRoadTemplate.meta,    id: 'adventure-road',    name: 'Adventure Road',    category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
   { ...JurassicTemplate,         meta: { ...JurassicTemplate.meta,         id: 'jurassic-park',     name: 'Jurassic Park',     category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
-
+  { ...ZootropolisTemplate,         meta: { ...ZootropolisTemplate.meta,         id: 'zootropolis',     name: 'Zootropolis',     category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
+  { ...LittleMermaidTemplate,         meta: { ...LittleMermaidTemplate.meta,         id: 'little-mermaid',     name: 'Little Mermaid',     category: 'baptism', tags: ['baptism', 'kids', 'birthday'] } },
   // ── Aniversare ────────────────────────────────────────────────────────────
   // { ...ClassicTemplate, meta: { ...ClassicTemplate.meta, id: 'classic-anniversary', name: 'Classic Aniversare', category: 'anniversary', tags: ['anniversary'], description: 'Design clasic pentru aniversări.' } },
 
