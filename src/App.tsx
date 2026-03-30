@@ -33,6 +33,23 @@ const App = () => {
 
     // Determine view based on path
     const renderView = () => {
+        const storedSessionRaw = localStorage.getItem('weddingPro_session');
+        let hasActiveSession = false;
+        if (storedSessionRaw) {
+            try {
+                const parsed = JSON.parse(storedSessionRaw);
+                hasActiveSession = !!parsed?.token && !!parsed?.userId;
+            } catch {
+                hasActiveSession = false;
+            }
+        }
+
+        if ((currentPath === '/login' || currentPath === '/register') && hasActiveSession) {
+            window.history.replaceState({}, '', '/dashboard');
+            setCurrentPath('/dashboard');
+            return <DashboardApp />;
+        }
+
         if (currentPath.startsWith('/admin')) {
             return <AdminApp />;
         }

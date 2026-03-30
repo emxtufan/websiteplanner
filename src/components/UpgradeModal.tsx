@@ -1,19 +1,20 @@
-
-import React, { useState, useEffect } from 'react';
-import { Loader2, Check, Mail, ExternalLink, AlertTriangle, ShieldCheck, Pencil } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Loader2, Check, Mail, ExternalLink, AlertTriangle, CreditCard } from 'lucide-react';
 import { Dialog, DialogContent } from './ui/dialog';
 import Button from './ui/button';
 import Input from './ui/input';
-import { API_URL, PLAN_LIMITS } from '../constants';
+import { API_URL } from '../constants';
+import { UserProfile } from '../types';
 
 interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
   userEmail?: string;
+  userProfile?: Partial<UserProfile>;
   onUpgradeSuccess: (payments?: any[]) => void;
-  premiumPrice?: number; // Optional prop
-  oldPrice?: number; // Optional prop for marketing
+  premiumPrice?: number;
+  oldPrice?: number;
 }
 
 const CartIcon = () => (
@@ -30,180 +31,371 @@ const CartIcon = () => (
   </svg>
 );
 
-const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, userId, userEmail, onUpgradeSuccess, premiumPrice, oldPrice }) => {
+const UpgradeModal: React.FC<UpgradeModalProps> = ({
+  isOpen,
+  onClose,
+  userId,
+  userEmail,
+  userProfile,
+  onUpgradeSuccess,
+  premiumPrice,
+  oldPrice,
+}) => {
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessingNetopia, setIsProcessingNetopia] = useState(false);
   const [billingEmail, setBillingEmail] = useState(userEmail || '');
-  const [isEditingEmail, setIsEditingEmail] = useState(!userEmail || !userEmail.includes('@'));
+  const [billingType, setBillingType] = useState<'individual' | 'company'>('individual');
+  const [billingName, setBillingName] = useState('');
+  const [billingCompany, setBillingCompany] = useState('');
+  const [billingVatCode, setBillingVatCode] = useState('');
+  const [billingRegNo, setBillingRegNo] = useState('');
+  const [billingAddress, setBillingAddress] = useState('');
+  const [billingCity, setBillingCity] = useState('');
+  const [billingCounty, setBillingCounty] = useState('');
+  const [billingCountry, setBillingCountry] = useState('Romania');
+  const [billingPhone, setBillingPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // Format price (cents to unit)
-  const displayPrice = premiumPrice ? (premiumPrice / 100).toFixed(0) : "49";
+  const displayPrice = premiumPrice ? (premiumPrice / 100).toFixed(0) : '49';
   const displayOldPrice = oldPrice ? (oldPrice / 100).toFixed(0) : null;
 
   useEffect(() => {
-      if (isOpen) {
-          setError(null);
-          const initialEmail = userEmail || '';
-          setBillingEmail(initialEmail);
-          const hasValidEmail = initialEmail.includes('@') && initialEmail.length > 3;
-          setIsEditingEmail(!hasValidEmail);
-      }
-  }, [isOpen, userEmail]);
+    if (!isOpen) return;
+    setError(null);
+
+    const profile = userProfile || {};
+    const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+
+    setBillingType(profile.billingType === 'company' ? 'company' : 'individual');
+    setBillingName(profile.billingName || fullName || '');
+    setBillingCompany(profile.billingCompany || '');
+    setBillingVatCode(profile.billingVatCode || '');
+    setBillingRegNo(profile.billingRegNo || '');
+    setBillingAddress(profile.billingAddress || profile.address || '');
+    setBillingCity(profile.billingCity || profile.city || '');
+    setBillingCounty(profile.billingCounty || profile.county || '');
+    setBillingCountry(profile.billingCountry || profile.country || 'Romania');
+    setBillingPhone(profile.billingPhone || profile.phone || '');
+
+    const initialEmail = (profile.billingEmail || userEmail || profile.email || '').trim();
+    setBillingEmail(initialEmail);
+  }, [isOpen, userEmail, userProfile]);
+
+  const getBillingPayload = () => {
+    const email = (billingEmail || userEmail || '').trim();
+    return {
+      type: billingType,
+      name: billingName.trim(),
+      company: billingCompany.trim(),
+      vatCode: billingVatCode.trim(),
+      regNo: billingRegNo.trim(),
+      address: billingAddress.trim(),
+      city: billingCity.trim(),
+      county: billingCounty.trim(),
+      country: billingCountry.trim(),
+      email,
+      phone: billingPhone.trim(),
+    };
+  };
+
+  const validateBilling = () => {
+    const payload = getBillingPayload();
+    if (!payload.email || !payload.email.includes('@')) {
+      return 'Te rugam sa introduci o adresa de email valida pentru factura.';
+    }
+    if (!payload.name) {
+      return 'Completeaza numele persoanei de facturare.';
+    }
+    if (payload.type === 'company' && !payload.company) {
+      return 'Pentru firma, completeaza numele companiei.';
+    }
+    if (!payload.address) {
+      return 'Completeaza adresa de facturare.';
+    }
+    if (!payload.city) {
+      return 'Completeaza orasul de facturare.';
+    }
+    if (!payload.country) {
+      return 'Completeaza tara de facturare.';
+    }
+    return null;
+  };
 
   const handlePayment = async () => {
     setError(null);
-    let emailToSend = billingEmail || userEmail || '';
-    emailToSend = emailToSend.trim();
-
-    if (!emailToSend || !emailToSend.includes('@')) {
-        setError("Te rugăm să introduci o adresă de email validă pentru factură.");
-        setIsEditingEmail(true); 
-        return;
+    const validationError = validateBilling();
+    if (validationError) {
+      setError(validationError);
+      return;
     }
 
     setIsProcessing(true);
     const session = JSON.parse(localStorage.getItem('weddingPro_session') || '{}');
-    
+
     try {
-        const res = await fetch(`${API_URL}/upgrade`, {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${session.token}` 
-            },
-            body: JSON.stringify({ 
-                userId,
-                email: emailToSend
-            })
-        });
+      const billing = getBillingPayload();
+      const res = await fetch(`${API_URL}/upgrade`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          userId,
+          email: billing.email,
+          billing,
+        }),
+      });
 
-        const data = await res.json();
-
-        if (res.ok && data.url) {
-            window.location.href = data.url; 
-        } else {
-            console.error("❌ Payment failed:", data.error);
-            setError(data.error || "Eroare la inițierea plății.");
-            setIsProcessing(false);
-        }
-    } catch (error) {
-        console.error("❌ Network/Fetch Error:", error);
-        setError("Eroare de conexiune cu serverul de plăți.");
+      const data = await res.json();
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+      } else {
+        setError(data.error || 'Eroare la initierea platii.');
         setIsProcessing(false);
+      }
+    } catch (err) {
+      console.error('Payment error:', err);
+      setError('Eroare de conexiune cu serverul de plati.');
+      setIsProcessing(false);
+    }
+  };
+
+  const handleNetopiaPayment = async () => {
+    setError(null);
+    const validationError = validateBilling();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setIsProcessingNetopia(true);
+    const session = JSON.parse(localStorage.getItem('weddingPro_session') || '{}');
+    try {
+      const billing = getBillingPayload();
+      const res = await fetch(`${API_URL}/netopia/initiate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          email: billing.email,
+          billing,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setError(data.error || 'Eroare la initierea platii Netopia.');
+        return;
+      }
+      const form = document.createElement('form');
+      form.method = 'POST';
+      form.action = data.paymentUrl;
+      [['iv', data.iv], ['env_key', data.env_key], ['data', data.data], ['cipher', data.cipher]].forEach(([name, value]) => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = name;
+        input.value = value;
+        form.appendChild(input);
+      });
+      document.body.appendChild(form);
+      form.submit();
+    } catch (err) {
+      console.error('Netopia payment error:', err);
+      setError('Eroare de conexiune cu serverul de plati.');
+    } finally {
+      setIsProcessingNetopia(false);
     }
   };
 
   const features = [
-    `Invitați Nelimitați`,
-    "Planificator Mese Nelimitat",
-    "Acces la Tema Modern Dark & Floral",
-    "Calculator Buget Automat",
-    "Export PDF (În curând)"
+    'Invitatii Nelimitate',
+    'Planificator Mese Nelimitat',
+    'Acces la Tema Modern Dark & Floral',
+    'Calculator Buget Automat',
+    'Export PDF (In curand)',
   ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="max-w-md p-0 overflow-hidden border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950 shadow-2xl">
-            
-            {/* Header Section */}
-            <div className="bg-neutral-50 dark:bg-neutral-900/50 p-6 flex flex-col items-center justify-center border-b border-neutral-100 dark:border-neutral-800">
-                <div className="mb-4 p-3 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700">
-                    <CartIcon />
+      <DialogContent className="max-w-2xl p-0 overflow-hidden border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950 shadow-2xl">
+        <div className="bg-neutral-50 dark:bg-neutral-900/50 p-6 flex flex-col items-center justify-center border-b border-neutral-100 dark:border-neutral-800">
+          <div className="mb-4 p-3 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700">
+            <CartIcon />
+          </div>
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 tracking-tight">Upgrade la Premium</h2>
+          <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 text-center max-w-[360px] leading-relaxed">
+            Deblocheaza toate functionalitatile.
+          </p>
+        </div>
+
+        <div className="p-6 max-h-[75vh] overflow-y-auto">
+          <div className="space-y-3 mb-6">
+            {features.map((feature, idx) => (
+              <div key={idx} className="flex items-center gap-3 group">
+                <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
+                  <Check className="w-3 h-3 text-primary" />
                 </div>
-                <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 tracking-tight">Upgrade la Premium</h2>
-                <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 text-center max-w-[280px] leading-relaxed">
-                   Deblochează toate funcționalitățile.
-                </p>
+                <span className="text-sm text-neutral-600 dark:text-neutral-300 font-medium">{feature}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-6 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 bg-neutral-50/60 dark:bg-neutral-900/30">
+            <div className="mb-3">
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Date de facturare</p>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
+                Aceste date sunt trimise catre Stripe si salvate in contul tau.
+              </p>
             </div>
-            
-            <div className="p-6">
-                <div className="space-y-3 mb-6">
-                    {features.map((feature, idx) => (
-                        <div key={idx} className="flex items-center gap-3 group">
-                            <div className="w-5 h-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0 group-hover:bg-primary/20 transition-colors">
-                                <Check className="w-3 h-3 text-primary" />
-                            </div>
-                            <span className="text-sm text-neutral-600 dark:text-neutral-300 font-medium">{feature}</span>
-                        </div>
-                    ))}
-                </div>
 
-                <div className="mb-6">
-                    {!isEditingEmail && billingEmail ? (
-                        <div className="flex items-center justify-between p-3 bg-indigo-50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-lg animate-in fade-in">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <ShieldCheck className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                                <div className="text-xs overflow-hidden">
-                                    <p className="text-indigo-600 dark:text-indigo-400 font-medium">Factura se trimite la:</p>
-                                    <p className="font-semibold text-indigo-900 dark:text-indigo-200 truncate">{billingEmail}</p>
-                                </div>
-                            </div>
-                            <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-7 px-2 text-xs text-indigo-500 hover:text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
-                                onClick={() => setIsEditingEmail(true)}
-                            >
-                                <Pencil className="w-3 h-3 mr-1" /> Modifică
-                            </Button>
-                        </div>
-                    ) : (
-                        <div className="space-y-2 animate-in fade-in zoom-in-95">
-                            <label className="text-xs font-semibold text-muted-foreground ml-1">Email Facturare</label>
-                            <div className="relative">
-                                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                                <Input 
-                                    value={billingEmail} 
-                                    onChange={(e) => setBillingEmail(e.target.value)} 
-                                    placeholder={userEmail || "adresa@email.com"} 
-                                    className="pl-9"
-                                    autoFocus={isEditingEmail}
-                                />
-                            </div>
-                            <p className="text-[10px] text-muted-foreground ml-1">Vom trimite factura și confirmarea plății aici.</p>
-                        </div>
-                    )}
-                </div>
-
-                {error && (
-                    <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/10 rounded-md text-red-600 text-xs font-medium animate-in fade-in">
-                        <AlertTriangle className="w-4 h-4 shrink-0" />
-                        {error}
-                    </div>
-                )}
-
-                <div className="flex items-center justify-between mb-6 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
-                    <div className="flex flex-col">
-                        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Preț Unic</span>
-                        <div className="flex items-baseline gap-1.5">
-                            {displayOldPrice && (
-                                <span className="text-sm text-neutral-400 line-through decoration-neutral-400/50">{displayOldPrice} LEI</span>
-                            )}
-                        </div>
-                    </div>
-                    <div className="text-right">
-                         <span className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">{displayPrice} LEI</span>
-                    </div>
-                </div>
-
-                <Button 
-                    type="button"
-                    className="w-full h-11 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-[#635BFF] hover:bg-[#5851E3] text-white" 
-                    onClick={handlePayment} 
-                    disabled={isProcessing}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Tip facturare</label>
+                <select
+                  value={billingType}
+                  onChange={(e) => setBillingType(e.target.value === 'company' ? 'company' : 'individual')}
+                  className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                 >
-                    {isProcessing ? (
-                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se inițiază plata...</>
-                    ) : (
-                        <><ExternalLink className="w-4 h-4 mr-2" /> Plătește cu Stripe</>
-                    )}
-                </Button>
-                
-                <p className="text-[10px] text-center text-neutral-400 mt-4">
-                    Plată securizată. Nu stocăm datele cardului tău.
-                </p>
+                  <option value="individual">Persoana fizica</option>
+                  <option value="company">Companie</option>
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Email facturare</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    value={billingEmail}
+                    onChange={(e) => setBillingEmail(e.target.value)}
+                    placeholder={userEmail || 'adresa@email.com'}
+                    className="pl-9"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Nume complet</label>
+                <Input value={billingName} onChange={(e) => setBillingName(e.target.value)} placeholder="Ex: Maria Popescu" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Telefon</label>
+                <Input value={billingPhone} onChange={(e) => setBillingPhone(e.target.value)} placeholder="07xxxxxxxx" />
+              </div>
+
+              {billingType === 'company' && (
+                <>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Companie</label>
+                    <Input value={billingCompany} onChange={(e) => setBillingCompany(e.target.value)} placeholder="SC Exemplu SRL" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">CUI</label>
+                    <Input value={billingVatCode} onChange={(e) => setBillingVatCode(e.target.value)} placeholder="RO12345678" />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs font-semibold text-muted-foreground">Nr. Reg. Comertului</label>
+                    <Input value={billingRegNo} onChange={(e) => setBillingRegNo(e.target.value)} placeholder="J40/0000/2026" />
+                  </div>
+                </>
+              )}
+
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">Adresa</label>
+                <Input
+                  value={billingAddress}
+                  onChange={(e) => setBillingAddress(e.target.value)}
+                  placeholder="Strada, numar, bloc, apartament"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Oras</label>
+                <Input value={billingCity} onChange={(e) => setBillingCity(e.target.value)} placeholder="Bucuresti" />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">Judet</label>
+                <Input value={billingCounty} onChange={(e) => setBillingCounty(e.target.value)} placeholder="Ilfov" />
+              </div>
+
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-xs font-semibold text-muted-foreground">Tara</label>
+                <Input value={billingCountry} onChange={(e) => setBillingCountry(e.target.value)} placeholder="Romania" />
+              </div>
             </div>
-        </DialogContent>
+          </div>
+
+          {error && (
+            <div className="flex items-center gap-2 p-3 mb-4 bg-red-50 dark:bg-red-900/10 rounded-md text-red-600 text-xs font-medium animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              {error}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between mb-6 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Pret unic</span>
+              <div className="flex items-baseline gap-1.5">
+                {displayOldPrice && (
+                  <span className="text-sm text-neutral-400 line-through decoration-neutral-400/50">{displayOldPrice} LEI</span>
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">{displayPrice} LEI</span>
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            className="w-full h-11 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-[#635BFF] hover:bg-[#5851E3] text-white"
+            onClick={handlePayment}
+            disabled={isProcessing || isProcessingNetopia}
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se initiaza plata...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="w-4 h-4 mr-2" /> Plateste cu Stripe
+              </>
+            )}
+          </Button>
+
+          <div className="flex items-center gap-3 my-3">
+            <div className="flex-1 h-px bg-neutral-100 dark:bg-neutral-800" />
+            <span className="text-[10px] text-neutral-400 font-medium">SAU</span>
+            <div className="flex-1 h-px bg-neutral-100 dark:bg-neutral-800" />
+          </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full h-11 text-sm font-medium border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-all"
+            onClick={handleNetopiaPayment}
+            disabled={isProcessing || isProcessingNetopia}
+          >
+            {isProcessingNetopia ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" /> Se initiaza...
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4 mr-2" /> Plateste cu Netopia
+              </>
+            )}
+          </Button>
+
+          <p className="text-[10px] text-center text-neutral-400 mt-4">
+            Plata securizata. Nu stocam datele cardului tau.
+          </p>
+        </div>
+      </DialogContent>
     </Dialog>
   );
 };

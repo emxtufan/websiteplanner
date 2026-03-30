@@ -3,7 +3,15 @@
     "allow": [
       "Bash(node -e \"const d=require\\(''C:/Users/Asus/.claude/projects/c--Users-Asus-Desktop-invite/4969d42a-4c79-435a-ac18-a77858120a17/tool-results/toolu_01CWeGWvdQfRiV9iHDSf44Mi.json''\\); console.log\\(d[0].text.substring\\(0,15000\\)\\)\")",
       "Bash(node -e \"const fs=require\\(''fs''\\);const content=fs.readFileSync\\(''c:/Users/Asus/Desktop/invite/src/components/invitations/UnicornAcademyTemplate.tsx'',''utf8''\\);const lines=content.split\\(''\\\\n''\\);console.log\\(''Total lines by newline:'',lines.length\\);console.log\\(''File size:'',content.length\\);// Print lines around where the base64 comment ends:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"import\\(''dotenv''\\).then\\(d => { d.default.config\\({ path: ''c:/Users/Asus/Desktop/invite/.env'' }\\); console.log\\(''APP_URL:'', process.env.APP_URL\\); console.log\\(''NETOPIA_SIGNATURE:'', process.env.NETOPIA_SIGNATURE\\); }\\)\")",
+      "Bash(mongosh \"mongodb://127.0.0.1:27017/wedding-planner\" --quiet --eval \"db.users.find\\({}, { payments: 1 }\\).limit\\(2\\).forEach\\(u => { u.payments.forEach\\(p => print\\(JSON.stringify\\({ id: p.invoiceId, status: p.status, pdf: p.invoicePdfUrl, num: p.invoiceNumber }\\)\\)\\) }\\)\")",
+      "Bash(node -e \":*)",
+      "Bash(node --experimental-vm-modules -e \":*)",
+      "Bash(node -e \"const {MongoClient}=require\\(''mongodb''\\);async function run\\(\\){const c=new MongoClient\\(''mongodb://127.0.0.1:27017''\\);await c.connect\\(\\);const u=await c.db\\(''wedding-planner''\\).collection\\(''users''\\).find\\({},{projection:{payments:1}}\\).limit\\(3\\).toArray\\(\\);u.forEach\\(u=>u.payments&&u.payments.forEach\\(p=>console.log\\(JSON.stringify\\({id:p.invoiceId,st:p.status,pdf:p.invoicePdfUrl||null,num:p.invoiceNumber||null}\\)\\)\\)\\);await c.close\\(\\);}run\\(\\).catch\\(e=>console.error\\(e.message\\)\\);\")",
+      "Bash(node --input-type=module --eval \":*)",
+      "Bash(grep -n \"invoicePdfUrl = \\\\`/uploads/invoices\" \"c:/Users/Asus/Desktop/invite/server.js\")"
     ]
   }
 }

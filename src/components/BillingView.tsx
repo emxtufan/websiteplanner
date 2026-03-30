@@ -1,11 +1,12 @@
 
 import React, { useState } from "react";
-import { Check, CreditCard, Download, ShieldCheck, RefreshCw, FileText, X, Receipt, ExternalLink, Calendar } from "lucide-react";
+import { Check, CreditCard, Download, ShieldCheck, RefreshCw, X, Receipt } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
 import Button from "./ui/button";
 import { UserSession, PaymentRecord } from "../types";
 import { cn } from "../lib/utils";
 import { useToast } from "./ui/use-toast";
+import { API_URL } from "../constants";
 import { Dialog, DialogContent } from "./ui/dialog";
 
 interface BillingViewProps {
@@ -198,7 +199,7 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                              {/* "View details" link visual */}
                              <div className="mt-6 flex items-center gap-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 cursor-default">
                                 <ShieldCheck className="w-3 h-3" />
-                                Payment processed securely by Stripe
+                                {selectedPayment.invoiceNumber ? 'Payment processed securely by Netopia' : 'Payment processed securely by Stripe'}
                              </div>
                         </div>
 
@@ -215,7 +216,11 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-zinc-500 dark:text-zinc-400">Invoice number</span>
                                 <span className="font-medium text-zinc-900 dark:text-zinc-200 font-mono">
-                                    {selectedPayment.invoiceId ? selectedPayment.invoiceId.split('_')[1]?.toUpperCase() || selectedPayment.invoiceId.slice(-8).toUpperCase() : 'N/A'}
+                                    {selectedPayment.invoiceNumber
+                                        ? selectedPayment.invoiceNumber
+                                        : selectedPayment.invoiceId
+                                            ? selectedPayment.invoiceId.split('_')[1]?.toUpperCase() || selectedPayment.invoiceId.slice(-8).toUpperCase()
+                                            : 'N/A'}
                                 </span>
                             </div>
                             <div className="h-px bg-zinc-200 dark:bg-zinc-800 w-full" />
@@ -238,21 +243,10 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                             
                             {/* 3. Action Buttons */}
                             <div className="flex flex-col gap-3 mt-8">
-                                {/* Download Invoice PDF */}
-                                <Button 
-                                    variant="outline"
-                                    className="w-full h-11 bg-white dark:bg-zinc-950 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 shadow-sm transition-all"
-                                    onClick={() => selectedPayment.invoicePdfUrl && window.open(selectedPayment.invoicePdfUrl, '_blank')}
-                                    disabled={!selectedPayment.invoicePdfUrl}
-                                >
-                                    <FileText className="w-4 h-4 mr-2 text-zinc-500" />
-                                    Download invoice
-                                </Button>
-
-                                {/* Download Receipt (PDF Direct) */}
-                                <Button 
+                                {/* View / Print Invoice */}
+                                <Button
                                     className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20 transition-all"
-                                    onClick={() => selectedPayment.invoicePdfUrl && window.open(selectedPayment.invoicePdfUrl, '_blank')}
+                                    onClick={() => { if (selectedPayment.invoicePdfUrl) { const url = selectedPayment.invoicePdfUrl.startsWith('/') ? API_URL.replace('/api', '') + selectedPayment.invoicePdfUrl : selectedPayment.invoicePdfUrl; window.open(url, '_blank'); } }}
                                     disabled={!selectedPayment.invoicePdfUrl}
                                 >
                                     <Receipt className="w-4 h-4 mr-2" />

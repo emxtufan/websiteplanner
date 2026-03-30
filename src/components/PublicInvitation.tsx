@@ -128,6 +128,7 @@ const PublicInvitation = () => {
                     body: JSON.stringify({
                         ownerId: data.ownerId,
                         name: rsvpPayload.name, // Name collected from modal
+                        status: rsvpPayload.status,
                         rsvpData: rsvpPayload.rsvpData
                     })
                 });

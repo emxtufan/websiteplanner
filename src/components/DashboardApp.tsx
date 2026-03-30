@@ -186,6 +186,110 @@ const navGroups = [
 // Flattened list helper for title finding
 const allNavItems = navGroups.flat();
 
+type InAppNotification = {
+  _id: string;
+  title: string;
+  message: string;
+  priority: "normal" | "high";
+  createdAt?: string;
+  createdBy?: string;
+  createdByRole?: string;
+  isRead?: boolean;
+  readAt?: string;
+};
+
+type ActivitySnapshot = {
+  lastLoginAt?: string;
+  lastProfileUpdateAt?: string;
+  lastProjectUpdateAt?: string;
+  lastGuestsUpdateAt?: string;
+  lastActionAt?: string;
+  lastActionLabel?: string;
+};
+
+type AccountDraft = {
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  eventRole: string;
+  eventType: string;
+  eventName: string;
+  weddingDate: string;
+  guestEstimate: string;
+  partner1Name: string;
+  partner2Name: string;
+  inviteSlug: string;
+  address: string;
+  city: string;
+  county: string;
+  country: string;
+  billingType: string;
+  billingName: string;
+  billingCompany: string;
+  billingVatCode: string;
+  billingRegNo: string;
+  billingEmail: string;
+  billingPhone: string;
+  billingAddress: string;
+  billingCity: string;
+  billingCounty: string;
+  billingCountry: string;
+};
+
+const formatDateTime = (value?: string | Date) => {
+  if (!value) return "N/A";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "N/A";
+  return d.toLocaleString("ro-RO", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const toDateInputValue = (value?: string | Date) => {
+  if (!value) return "";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
+};
+
+const buildAccountDraft = (session: UserSession | null): AccountDraft => {
+  const profile = (session?.profile || {}) as UserProfile;
+  return {
+    email: String(session?.user || profile?.email || "").trim(),
+    firstName: String(profile?.firstName || ""),
+    lastName: String(profile?.lastName || ""),
+    phone: String(profile?.phone || ""),
+    eventRole: String(profile?.eventRole || ""),
+    eventType: String(profile?.eventType || "wedding"),
+    eventName: String(profile?.eventName || ""),
+    weddingDate: toDateInputValue(profile?.weddingDate),
+    guestEstimate: String(profile?.guestEstimate ?? ""),
+    partner1Name: String(profile?.partner1Name || ""),
+    partner2Name: String(profile?.partner2Name || ""),
+    inviteSlug: String(profile?.inviteSlug || ""),
+    address: String(profile?.address || ""),
+    city: String(profile?.city || ""),
+    county: String(profile?.county || ""),
+    country: String(profile?.country || ""),
+    billingType: String(profile?.billingType || ""),
+    billingName: String(profile?.billingName || ""),
+    billingCompany: String(profile?.billingCompany || ""),
+    billingVatCode: String(profile?.billingVatCode || ""),
+    billingRegNo: String(profile?.billingRegNo || ""),
+    billingEmail: String(profile?.billingEmail || ""),
+    billingPhone: String(profile?.billingPhone || ""),
+    billingAddress: String(profile?.billingAddress || ""),
+    billingCity: String(profile?.billingCity || ""),
+    billingCounty: String(profile?.billingCounty || ""),
+    billingCountry: String(profile?.billingCountry || ""),
+  };
+};
+
 const GuestInput = memo(
   ({
     initialName,
@@ -413,7 +517,13 @@ const DashboardApp = () => {
   // --- STATE ---
   const [session, setSession] = useState<UserSession | null>(() => {
     const saved = localStorage.getItem("weddingPro_session");
-    return saved ? JSON.parse(saved) : null;
+    if (!saved) return null;
+    try {
+      return JSON.parse(saved);
+    } catch {
+      localStorage.removeItem("weddingPro_session");
+      return null;
+    }
   });
 
   const [view, setView] = useState<
@@ -456,7 +566,27 @@ const DashboardApp = () => {
 
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsPanelOpen, setIsNotificationsPanelOpen] = useState(false);
+  const [isAccountPanelOpen, setIsAccountPanelOpen] = useState(false);
   const [showUpgradeBanner, setShowUpgradeBanner] = useState(true);
+  const [notifications, setNotifications] = useState<InAppNotification[]>([]);
+  const [notificationActivity, setNotificationActivity] = useState<ActivitySnapshot>({});
+  const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [accountDraft, setAccountDraft] = useState<AccountDraft>(() =>
+    buildAccountDraft(session),
+  );
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const [pendingEmailChange, setPendingEmailChange] = useState("");
+  const [emailChangeOtpCode, setEmailChangeOtpCode] = useState("");
+  const [isConfirmingEmailChange, setIsConfirmingEmailChange] = useState(false);
+  const [accountPanelMessage, setAccountPanelMessage] = useState<{
+    type: "success" | "error" | "info";
+    text: string;
+  } | null>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -497,6 +627,10 @@ const DashboardApp = () => {
   const [setupEventType, setSetupEventType] = useState("wedding");
   const [setupDate, setSetupDate] = useState("");
   const [setupName, setSetupName] = useState("");
+  const [setupRole, setSetupRole] = useState("organizer");
+  const [setupContactName, setSetupContactName] = useState("");
+  const [setupPhone, setSetupPhone] = useState("");
+  const [setupAddress, setSetupAddress] = useState("");
   const [isSettingUp, setIsSettingUp] = useState(false);
 
   // --- ARCHIVED VIEW STATE ---
@@ -521,6 +655,44 @@ const DashboardApp = () => {
     session?.limits || (isPremium ? PLAN_LIMITS.premium : PLAN_LIMITS.free);
   const needsSetup =
     session && session.profile && !session.profile.isSetupComplete;
+  const unreadNotifications = useMemo(
+    () => notifications.filter((n) => n.isRead !== true).length,
+    [notifications],
+  );
+
+  useEffect(() => {
+    // Safety reset: unele ecrane/template-uri pot lasa body-ul blocat pe hidden/fixed.
+    if (document.body.style.overflow === "hidden" || document.body.style.position === "fixed") {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!needsSetup || !session?.profile) return;
+    const profile = session.profile;
+    const defaultContactName =
+      `${profile.firstName || ""} ${profile.lastName || ""}`.trim() || "";
+    setSetupEventType(profile.eventType || "wedding");
+    setSetupDate(
+      profile.weddingDate
+        ? new Date(profile.weddingDate).toISOString().split("T")[0]
+        : "",
+    );
+    setSetupName(profile.eventName || "");
+    setSetupRole((profile as any).eventRole || "organizer");
+    setSetupContactName(defaultContactName);
+    setSetupPhone(profile.phone || "");
+    setSetupAddress(profile.address || "");
+  }, [needsSetup, session?.profile]);
+
+  useEffect(() => {
+    setAccountDraft(buildAccountDraft(session));
+  }, [session?.user, session?.profile]);
 
   // --- GLOBAL MODIFICATION CHECK ---
   const handleActionAttempt = useCallback(() => {
@@ -585,12 +757,328 @@ const DashboardApp = () => {
     setElements([]);
     setTasks(INITIAL_TASKS);
     setBudgetCategories(INITIAL_BUDGET_CATEGORIES);
+    setNotifications([]);
+    setNotificationActivity({});
+    setIsNotificationsPanelOpen(false);
+    setIsAccountPanelOpen(false);
     toast({
       title: "Deconectat",
       description: "Te așteptăm să revii!",
       variant: "default",
     });
   };
+
+  const openAccountPanel = useCallback(() => {
+    setIsUserMenuOpen(false);
+    setIsNotificationsPanelOpen(false);
+    setIsAccountPanelOpen(true);
+    setAccountPanelMessage(null);
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setPendingEmailChange("");
+    setEmailChangeOtpCode("");
+    setAccountDraft(buildAccountDraft(session));
+  }, [session]);
+
+  const updateAccountDraft = useCallback(
+    (key: keyof AccountDraft, value: string) => {
+      setAccountDraft((prev) => ({ ...prev, [key]: value }));
+    },
+    [],
+  );
+
+  const handleSaveAccountInfo = useCallback(async () => {
+    if (!session?.token) return;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const trimmedEmail = String(accountDraft.email || "").trim().toLowerCase();
+    if (!trimmedEmail || !emailRegex.test(trimmedEmail)) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Emailul contului este invalid.",
+      });
+      return;
+    }
+
+    const guestEstimateNum = Number(accountDraft.guestEstimate || 0);
+    const profilePayload: Partial<UserProfile> = {
+      firstName: accountDraft.firstName.trim(),
+      lastName: accountDraft.lastName.trim(),
+      phone: accountDraft.phone.trim(),
+      eventRole: accountDraft.eventRole.trim(),
+      eventType: (accountDraft.eventType || "wedding") as any,
+      eventName: accountDraft.eventName.trim(),
+      weddingDate: accountDraft.weddingDate || "",
+      guestEstimate: Number.isFinite(guestEstimateNum) ? guestEstimateNum : 0,
+      partner1Name: accountDraft.partner1Name.trim(),
+      partner2Name: accountDraft.partner2Name.trim(),
+      inviteSlug: accountDraft.inviteSlug.trim(),
+      address: accountDraft.address.trim(),
+      city: accountDraft.city.trim(),
+      county: accountDraft.county.trim(),
+      country: accountDraft.country.trim(),
+      billingType: accountDraft.billingType.trim(),
+      billingName: accountDraft.billingName.trim(),
+      billingCompany: accountDraft.billingCompany.trim(),
+      billingVatCode: accountDraft.billingVatCode.trim(),
+      billingRegNo: accountDraft.billingRegNo.trim(),
+      billingEmail: accountDraft.billingEmail.trim(),
+      billingPhone: accountDraft.billingPhone.trim(),
+      billingAddress: accountDraft.billingAddress.trim(),
+      billingCity: accountDraft.billingCity.trim(),
+      billingCounty: accountDraft.billingCounty.trim(),
+      billingCountry: accountDraft.billingCountry.trim(),
+    };
+
+    setIsSavingAccount(true);
+    setAccountPanelMessage(null);
+    try {
+      const res = await fetch(`${API_URL}/profile`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ profile: profilePayload }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Nu am putut salva datele contului.");
+      }
+
+      const previousEmail = String(session.user || "").trim().toLowerCase();
+      let nextUserEmail = previousEmail;
+      let infoText = "Datele contului au fost actualizate.";
+
+      if (trimmedEmail !== previousEmail) {
+        const reqRes = await fetch(`${API_URL}/auth/request-email-change`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.token}`,
+          },
+          body: JSON.stringify({ newEmail: trimmedEmail }),
+        });
+        const reqData = await reqRes.json().catch(() => ({}));
+        if (!reqRes.ok) {
+          throw new Error(reqData?.error || "Nu am putut porni verificarea pentru noul email.");
+        }
+        setPendingEmailChange(trimmedEmail);
+        setEmailChangeOtpCode("");
+        infoText =
+          reqData?.message ||
+          "Datele au fost salvate. Verifica noul email si introdu codul OTP pentru confirmare.";
+      }
+
+      setSession((prev) => {
+        if (!prev) return prev;
+        const updated = {
+          ...prev,
+          user: nextUserEmail,
+          profile: {
+            ...(prev.profile || {}),
+            ...profilePayload,
+            email: prev.profile?.email || prev.user,
+          },
+        } as any;
+        localStorage.setItem("weddingPro_session", JSON.stringify(updated));
+        return updated;
+      });
+
+      setAccountPanelMessage({
+        type: "success",
+        text: infoText,
+      });
+    } catch (err: any) {
+      setAccountPanelMessage({
+        type: "error",
+        text: err?.message || "Nu am putut salva datele contului.",
+      });
+    } finally {
+      setIsSavingAccount(false);
+    }
+  }, [accountDraft, session?.token, session?.user]);
+
+  const handleConfirmEmailChangeFromAccount = useCallback(async () => {
+    if (!session?.token) return;
+    if (!pendingEmailChange) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Nu exista o schimbare de email in asteptare.",
+      });
+      return;
+    }
+    if (!/^\d{6}$/.test(String(emailChangeOtpCode || "").trim())) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Introdu un cod OTP valid din 6 cifre.",
+      });
+      return;
+    }
+
+    setIsConfirmingEmailChange(true);
+    setAccountPanelMessage(null);
+    try {
+      const response = await fetch(`${API_URL}/auth/confirm-email-change`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({ otp: String(emailChangeOtpCode || "").trim() }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Nu am putut confirma noul email.");
+      }
+
+      const confirmedEmail = String(data?.email || pendingEmailChange).trim().toLowerCase();
+      setSession((prev) => {
+        if (!prev) return prev;
+        const updated = {
+          ...prev,
+          user: confirmedEmail,
+          profile: {
+            ...(prev.profile || {}),
+            email: confirmedEmail,
+          },
+        } as any;
+        localStorage.setItem("weddingPro_session", JSON.stringify(updated));
+        return updated;
+      });
+      setAccountDraft((prev) => ({ ...prev, email: confirmedEmail }));
+      setPendingEmailChange("");
+      setEmailChangeOtpCode("");
+      setAccountPanelMessage({
+        type: "success",
+        text: data?.message || "Emailul contului a fost actualizat si verificat.",
+      });
+    } catch (err: any) {
+      setAccountPanelMessage({
+        type: "error",
+        text: err?.message || "Nu am putut confirma noul email.",
+      });
+    } finally {
+      setIsConfirmingEmailChange(false);
+    }
+  }, [emailChangeOtpCode, pendingEmailChange, session?.token]);
+
+  const handleChangePasswordFromAccount = useCallback(async () => {
+    if (!session?.token) return;
+    if (!currentPassword.trim()) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Completeaza parola curenta.",
+      });
+      return;
+    }
+    if (!newPassword || newPassword.length < 6) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Parola noua trebuie sa aiba minim 6 caractere.",
+      });
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Confirmarea parolei noi nu coincide.",
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setAccountPanelMessage(null);
+    try {
+      const response = await fetch(`${API_URL}/auth/change-password`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.token}`,
+        },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Nu am putut schimba parola.");
+      }
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmNewPassword("");
+      setAccountPanelMessage({
+        type: "success",
+        text:
+          data?.message ||
+          "Parola a fost schimbata. Ai primit notificare in cont si pe email.",
+      });
+    } catch (err: any) {
+      setAccountPanelMessage({
+        type: "error",
+        text: err?.message || "Nu am putut schimba parola.",
+      });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  }, [confirmNewPassword, currentPassword, newPassword, session?.token]);
+
+  const loadNotifications = useCallback(async () => {
+    if (!session?.token) return;
+    setIsNotificationsLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/notifications`, {
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Nu am putut incarca notificarile.");
+      setNotifications(Array.isArray(data?.notifications) ? data.notifications : []);
+      setNotificationActivity((data?.activity || {}) as ActivitySnapshot);
+    } catch (err: any) {
+      toast({
+        title: "Notificari indisponibile",
+        description: err?.message || "Nu am putut incarca notificarile.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsNotificationsLoading(false);
+    }
+  }, [session?.token, toast]);
+
+  const markNotificationRead = useCallback(
+    async (id: string) => {
+      if (!session?.token || !id) return;
+      setNotifications((prev) =>
+        prev.map((n) => (n._id === id ? { ...n, isRead: true, readAt: new Date().toISOString() } : n)),
+      );
+      try {
+        await fetch(`${API_URL}/notifications/${id}/read`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.token}` },
+        });
+      } catch {
+        // optimistic update only
+      }
+    },
+    [session?.token],
+  );
+
+  const markAllNotificationsRead = useCallback(async () => {
+    if (!session?.token) return;
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, isRead: true, readAt: n.readAt || new Date().toISOString() })),
+    );
+    try {
+      await fetch(`${API_URL}/notifications/read-all`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.token}` },
+      });
+    } catch {
+      // optimistic update only
+    }
+  }, [session?.token]);
 
   const handleSetupSubmit = async () => {
     if (!setupDate) {
@@ -601,8 +1089,26 @@ const DashboardApp = () => {
       });
       return;
     }
+    if (!setupContactName.trim() || !setupRole.trim()) {
+      toast({
+        title: "Date lipsa",
+        description: "Completeaza numele organizatorului si rolul in eveniment.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!setupPhone.trim() || !setupAddress.trim()) {
+      toast({
+        title: "Date lipsa",
+        description: "Completeaza telefonul si adresa de contact.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSettingUp(true);
     try {
+      const [firstName, ...restName] = setupContactName.trim().split(/\s+/);
+      const lastName = restName.join(" ");
       const res = await fetch(`${API_URL}/user/setup-event`, {
         method: "POST",
         headers: {
@@ -613,10 +1119,17 @@ const DashboardApp = () => {
           eventType: setupEventType,
           weddingDate: setupDate,
           eventName: setupName.trim() || `Eveniment ${setupEventType}`,
+          eventRole: setupRole.trim(),
+          contactName: setupContactName.trim(),
+          phone: setupPhone.trim(),
+          address: setupAddress.trim(),
+          firstName: firstName || "",
+          lastName: lastName || "",
         }),
       });
 
       if (res.ok) {
+        const data = await res.json();
         const updatedSession = {
           ...session,
           profile: {
@@ -625,6 +1138,12 @@ const DashboardApp = () => {
             eventType: setupEventType,
             weddingDate: setupDate,
             eventName: setupName.trim() || `Eveniment ${setupEventType}`,
+            eventRole: setupRole.trim(),
+            firstName: firstName || session?.profile?.firstName || "",
+            lastName: lastName || session?.profile?.lastName || "",
+            phone: setupPhone.trim(),
+            address: setupAddress.trim(),
+            ...(data?.profile || {}),
           },
         };
         setSession(updatedSession as any);
@@ -1050,6 +1569,36 @@ const DashboardApp = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    if (!isAccountPanelOpen && !isNotificationsPanelOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (isAccountPanelOpen) {
+        setIsAccountPanelOpen(false);
+        return;
+      }
+      if (isNotificationsPanelOpen) {
+        setIsNotificationsPanelOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isAccountPanelOpen, isNotificationsPanelOpen]);
+
+  useEffect(() => {
+    if (!isNotificationsPanelOpen) return;
+    loadNotifications();
+  }, [isNotificationsPanelOpen, loadNotifications]);
+
+  useEffect(() => {
+    if (!session?.token) {
+      setNotifications([]);
+      setNotificationActivity({});
+      return;
+    }
+    loadNotifications();
+  }, [session?.token, loadNotifications]);
+
   // MAIN INITIALIZATION EFFECT
   useEffect(() => {
     const initData = async () => {
@@ -1151,6 +1700,9 @@ const DashboardApp = () => {
   const handleLogin = (newSession: UserSession) => {
     setSession(newSession);
     localStorage.setItem("weddingPro_session", JSON.stringify(newSession));
+    if (window.location.pathname !== "/dashboard") {
+      window.history.replaceState({}, "", "/dashboard");
+    }
     if (newSession.token) {
       loadUserData(newSession.userId, newSession.token);
       fetchGuestList(newSession.userId, newSession.token);
@@ -1636,7 +2188,7 @@ const DashboardApp = () => {
     });
   };
 
-  if (!session) return <AuthForm onLogin={handleLogin} />;
+  if (!session) return <AuthForm onLogin={handleLogin} syncAuthPath={false} />;
   if (isLoadingData)
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -1657,10 +2209,10 @@ const DashboardApp = () => {
 
       {/* MANDATORY SETUP DIALOG */}
       {needsSetup && (
-        <div className="fixed inset-0 z-[100] bg-background/90 backdrop-blur-sm flex items-center justify-center p-4">
-          <Card className="w-full max-w-md shadow-2xl border-primary/20">
+        <div className="fixed inset-0 z-[100] bg-background/90 backdrop-blur-sm flex items-start justify-center p-4 overflow-y-auto">
+          <Card className="w-full max-w-md shadow-2xl border-primary/20 my-4 max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden">
             {/* ... (Same setup form) ... */}
-            <CardHeader className="text-center pb-2">
+            <CardHeader className="text-center pb-2 shrink-0">
               <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 shadow-inner">
                 <Sparkles className="h-7 w-7 text-primary" />
               </div>
@@ -1671,7 +2223,7 @@ const DashboardApp = () => {
                 Hai să configurăm primul tău eveniment.
               </p>
             </CardHeader>
-            <CardContent className="space-y-6 pt-4">
+            <CardContent className="space-y-6 pt-4 overflow-y-auto flex-1 min-h-0">
               <div className="space-y-2">
                 <label className="text-sm font-semibold">
                   Numele Evenimentului
@@ -1720,6 +2272,52 @@ const DashboardApp = () => {
                 </div>
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-semibold">Rolul tau in eveniment</label>
+                <select
+                  className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={setupRole}
+                  onChange={(e) => setSetupRole(e.target.value)}
+                >
+                  <option value="organizer">Organizator</option>
+                  <option value="planner">Event Planner</option>
+                  <option value="bride">Mireasa</option>
+                  <option value="groom">Mire</option>
+                  <option value="parent">Parinte</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-semibold">Numele celui care face proiectul</label>
+                <Input
+                  type="text"
+                  className="h-11"
+                  placeholder="ex: Maria Ionescu"
+                  value={setupContactName}
+                  onChange={(e) => setSetupContactName(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Telefon</label>
+                  <Input
+                    type="text"
+                    className="h-11"
+                    placeholder="07xxxxxxxx"
+                    value={setupPhone}
+                    onChange={(e) => setSetupPhone(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold">Adresa</label>
+                  <Input
+                    type="text"
+                    className="h-11"
+                    placeholder="Strada, numar, oras"
+                    value={setupAddress}
+                    onChange={(e) => setSetupAddress(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-semibold">
                   Data Evenimentului
                 </label>
@@ -1737,7 +2335,7 @@ const DashboardApp = () => {
               <Button
                 className="w-full h-12 text-base font-semibold"
                 onClick={handleSetupSubmit}
-                disabled={!setupDate || isSettingUp}
+                disabled={!setupDate || !setupRole || !setupContactName.trim() || !setupPhone.trim() || !setupAddress.trim() || isSettingUp}
               >
                 {isSettingUp ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -1786,6 +2384,7 @@ const DashboardApp = () => {
         onClose={() => setShowUpgradeModal(false)}
         userId={session.userId}
         userEmail={session.profile?.email || session.user}
+        userProfile={session.profile}
         onUpgradeSuccess={handleUpgradeSuccess}
         premiumPrice={session.premiumPrice}
         oldPrice={session.pricing?.oldPrice}
@@ -2120,7 +2719,13 @@ const DashboardApp = () => {
             )}
           <div className="relative" ref={userMenuRef}>
             <button
-              onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+              onClick={() => {
+                setIsUserMenuOpen((prev) => {
+                  const next = !prev;
+                  if (!next) setIsNotificationsPanelOpen(false);
+                  return next;
+                });
+              }}
               className={cn(
                 "flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm transition-all hover:bg-accent hover:text-accent-foreground outline-none ring-offset-background focus-visible:ring-2",
                 isUserMenuOpen && "bg-accent",
@@ -2138,8 +2743,13 @@ const DashboardApp = () => {
                     <span className="truncate font-semibold">
                       {session.user}
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                    <span className="truncate text-xs text-muted-foreground flex items-center gap-2">
                       {isPremium ? "Premium Plan" : "Free Plan"}
+                      {unreadNotifications > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                          {unreadNotifications}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
@@ -2172,6 +2782,7 @@ const DashboardApp = () => {
                       onClick={() => {
                         setShowUpgradeModal(true);
                         setIsUserMenuOpen(false);
+                        setIsNotificationsPanelOpen(false);
                       }}
                       className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                     >
@@ -2183,8 +2794,7 @@ const DashboardApp = () => {
                 <div className="p-1">
                   <button
                     onClick={() => {
-                      setView("settings");
-                      setIsUserMenuOpen(false);
+                      openAccountPanel();
                     }}
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
@@ -2194,6 +2804,7 @@ const DashboardApp = () => {
                     onClick={() => {
                       setView("billing");
                       setIsUserMenuOpen(false);
+                      setIsNotificationsPanelOpen(false);
                     }}
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
@@ -2215,10 +2826,16 @@ const DashboardApp = () => {
                   <button
                     onClick={() => {
                       setIsUserMenuOpen(false);
+                      setIsNotificationsPanelOpen(true);
                     }}
                     className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent hover:text-accent-foreground transition-colors"
                   >
                     <Bell className="w-4 h-4 mr-2" /> Notifications
+                    {unreadNotifications > 0 && (
+                      <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
+                        {unreadNotifications}
+                      </span>
+                    )}
                   </button>
                 </div>
                 <div className="h-px bg-border my-1" />
@@ -2235,6 +2852,430 @@ const DashboardApp = () => {
           </div>
         </div>
       </aside>
+      {isAccountPanelOpen && (
+        <div
+          className="fixed inset-0 z-[121] bg-black/55 backdrop-blur-[2px]"
+          onClick={() => setIsAccountPanelOpen(false)}
+        >
+          <div
+            className="absolute inset-y-0 right-0 w-full max-w-2xl bg-background border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border px-4 md:px-6 py-4 shrink-0">
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <BadgeCheck className="w-5 h-5" /> Account
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Date cont, eveniment, facturare si securitate.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountPanelOpen(false)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-accent transition-colors"
+                aria-label="Inchide panel account"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-4">
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                  <div>
+                    <div className="text-sm font-semibold">Profil client</div>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Toate campurile sunt editabile. Pentru email, schimbarea se valideaza prin OTP.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={handleSaveAccountInfo}
+                    disabled={isSavingAccount}
+                    className="min-w-[170px]"
+                  >
+                    {isSavingAccount ? "Se salveaza..." : "Salveaza modificarile"}
+                  </Button>
+                </div>
+
+                {accountPanelMessage && (
+                  <div
+                    className={cn(
+                      "rounded-md border px-3 py-2 text-sm mb-3",
+                      accountPanelMessage.type === "success" &&
+                        "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+                      accountPanelMessage.type === "error" &&
+                        "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+                      accountPanelMessage.type === "info" &&
+                        "border-blue-300 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300",
+                    )}
+                  >
+                    {accountPanelMessage.text}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Email cont (cu verificare OTP)</label>
+                    <Input
+                      type="email"
+                      value={accountDraft.email}
+                      onChange={(e: any) => updateAccountDraft("email", e.target.value)}
+                      placeholder="email@exemplu.com"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Prenume</label>
+                    <Input value={accountDraft.firstName} onChange={(e: any) => updateAccountDraft("firstName", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Nume</label>
+                    <Input value={accountDraft.lastName} onChange={(e: any) => updateAccountDraft("lastName", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Telefon</label>
+                    <Input value={accountDraft.phone} onChange={(e: any) => updateAccountDraft("phone", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Rol organizator</label>
+                    <Input value={accountDraft.eventRole} onChange={(e: any) => updateAccountDraft("eventRole", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {pendingEmailChange && (
+                <div className="rounded-lg border border-blue-300 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30 p-4 space-y-3">
+                  <div className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                    Confirma noul email: {pendingEmailChange}
+                  </div>
+                  <p className="text-xs text-blue-700/80 dark:text-blue-300/80">
+                    Introdu codul OTP primit pe noua adresa de email pentru a finaliza schimbarea.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Input
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="Cod OTP (6 cifre)"
+                      value={emailChangeOtpCode}
+                      onChange={(e: any) =>
+                        setEmailChangeOtpCode(String(e.target.value || "").replace(/\D/g, "").slice(0, 6))
+                      }
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleConfirmEmailChangeFromAccount}
+                      disabled={isConfirmingEmailChange}
+                      className="sm:min-w-[170px]"
+                    >
+                      {isConfirmingEmailChange ? "Se confirma..." : "Confirma emailul"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="text-sm font-semibold mb-3">Date eveniment</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Tip eveniment</label>
+                    <select
+                      value={accountDraft.eventType}
+                      onChange={(e) => updateAccountDraft("eventType", e.target.value)}
+                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="wedding">Nunta</option>
+                      <option value="baptism">Botez</option>
+                      <option value="anniversary">Aniversare</option>
+                      <option value="kids">Petrecere copii</option>
+                      <option value="office">Eveniment corporate</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Nume eveniment</label>
+                    <Input value={accountDraft.eventName} onChange={(e: any) => updateAccountDraft("eventName", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Data eveniment</label>
+                    <Input type="date" value={accountDraft.weddingDate} onChange={(e: any) => updateAccountDraft("weddingDate", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Estimare invitati</label>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={accountDraft.guestEstimate}
+                      onChange={(e: any) => updateAccountDraft("guestEstimate", e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Partener 1</label>
+                    <Input value={accountDraft.partner1Name} onChange={(e: any) => updateAccountDraft("partner1Name", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Partener 2</label>
+                    <Input value={accountDraft.partner2Name} onChange={(e: any) => updateAccountDraft("partner2Name", e.target.value)} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Slug invitatie</label>
+                    <Input value={accountDraft.inviteSlug} onChange={(e: any) => updateAccountDraft("inviteSlug", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="text-sm font-semibold mb-3">Adresa si contact</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Adresa</label>
+                    <Input value={accountDraft.address} onChange={(e: any) => updateAccountDraft("address", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Oras</label>
+                    <Input value={accountDraft.city} onChange={(e: any) => updateAccountDraft("city", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Judet</label>
+                    <Input value={accountDraft.county} onChange={(e: any) => updateAccountDraft("county", e.target.value)} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Tara</label>
+                    <Input value={accountDraft.country} onChange={(e: any) => updateAccountDraft("country", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="text-sm font-semibold mb-3">Date facturare</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Tip facturare</label>
+                    <select
+                      value={accountDraft.billingType}
+                      onChange={(e) => updateAccountDraft("billingType", e.target.value)}
+                      className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    >
+                      <option value="">Selecteaza</option>
+                      <option value="individual">Persoana fizica</option>
+                      <option value="company">Persoana juridica</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Nume facturare</label>
+                    <Input value={accountDraft.billingName} onChange={(e: any) => updateAccountDraft("billingName", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Companie</label>
+                    <Input value={accountDraft.billingCompany} onChange={(e: any) => updateAccountDraft("billingCompany", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">CUI / CIF</label>
+                    <Input value={accountDraft.billingVatCode} onChange={(e: any) => updateAccountDraft("billingVatCode", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Nr. Reg. Comert</label>
+                    <Input value={accountDraft.billingRegNo} onChange={(e: any) => updateAccountDraft("billingRegNo", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Email facturare</label>
+                    <Input type="email" value={accountDraft.billingEmail} onChange={(e: any) => updateAccountDraft("billingEmail", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Telefon facturare</label>
+                    <Input value={accountDraft.billingPhone} onChange={(e: any) => updateAccountDraft("billingPhone", e.target.value)} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Adresa facturare</label>
+                    <Input value={accountDraft.billingAddress} onChange={(e: any) => updateAccountDraft("billingAddress", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Oras facturare</label>
+                    <Input value={accountDraft.billingCity} onChange={(e: any) => updateAccountDraft("billingCity", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Judet facturare</label>
+                    <Input value={accountDraft.billingCounty} onChange={(e: any) => updateAccountDraft("billingCounty", e.target.value)} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs text-muted-foreground">Tara facturare</label>
+                    <Input value={accountDraft.billingCountry} onChange={(e: any) => updateAccountDraft("billingCountry", e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                <div>
+                  <div className="text-sm font-semibold">Schimbare parola</div>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Completeaza parola curenta, parola noua si confirmarea parolei.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Parola curenta</label>
+                    <Input
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e: any) => setCurrentPassword(e.target.value)}
+                      placeholder="Introdu parola curenta"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Parola noua</label>
+                    <Input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e: any) => setNewPassword(e.target.value)}
+                      placeholder="Minim 6 caractere"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Confirmare parola noua</label>
+                    <Input
+                      type="password"
+                      value={confirmNewPassword}
+                      onChange={(e: any) => setConfirmNewPassword(e.target.value)}
+                      placeholder="Repeta parola noua"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    onClick={handleChangePasswordFromAccount}
+                    disabled={isChangingPassword}
+                    className="min-w-[180px]"
+                  >
+                    {isChangingPassword ? "Se actualizeaza..." : "Schimba parola"}
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    Dupa schimbare primesti notificare in cont si email de securitate.
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {isNotificationsPanelOpen && (
+        <div
+          className="fixed inset-0 z-[120] bg-black/55 backdrop-blur-[2px] p-4 md:p-8"
+          onClick={() => setIsNotificationsPanelOpen(false)}
+        >
+          <div
+            className="mx-auto w-full max-w-4xl h-full max-h-[85vh] rounded-xl border border-zinc-200 dark:border-zinc-800 bg-background shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-border px-4 md:px-5 py-4 shrink-0">
+              <div>
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <Bell className="w-5 h-5" /> Notifications
+                </h3>
+                <p className="text-sm text-muted-foreground">
+                  Activitate cont si mesaje trimise de admin.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsNotificationsPanelOpen(false)}
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md hover:bg-accent transition-colors"
+                aria-label="Inchide notificari"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-4">
+              <div className="rounded-md border border-border p-3 bg-muted/30">
+                <div className="text-sm font-semibold mb-3">Activitate cont</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-muted-foreground">
+                  <div className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 border border-border">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="w-3 h-3" /> Ultima logare
+                    </span>
+                    <span>{formatDateTime(notificationActivity?.lastLoginAt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 border border-border">
+                    <span>Ultima modificare setari</span>
+                    <span>{formatDateTime(notificationActivity?.lastProfileUpdateAt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 border border-border">
+                    <span>Ultima modificare proiect</span>
+                    <span>{formatDateTime(notificationActivity?.lastProjectUpdateAt)}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 rounded bg-background px-2 py-1.5 border border-border">
+                    <span>Ultima modificare invitati</span>
+                    <span>{formatDateTime(notificationActivity?.lastGuestsUpdateAt)}</span>
+                  </div>
+                </div>
+                <div className="pt-2 text-xs italic text-muted-foreground">
+                  {notificationActivity?.lastActionLabel || "Fara activitate recenta"}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="text-sm font-semibold">Notificari admin</div>
+                <button
+                  type="button"
+                  className="text-xs text-primary hover:underline disabled:opacity-50"
+                  onClick={markAllNotificationsRead}
+                  disabled={!notifications.length}
+                >
+                  Marcheaza tot ca citit
+                </button>
+              </div>
+
+              {isNotificationsLoading ? (
+                <div className="text-sm text-muted-foreground py-2">Se incarca...</div>
+              ) : notifications.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-2">
+                  Nu ai notificari momentan.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {notifications.slice(0, 20).map((n) => (
+                    <button
+                      key={n._id}
+                      type="button"
+                      onClick={() => markNotificationRead(n._id)}
+                      className={cn(
+                        "w-full text-left rounded-md border p-3 transition-colors",
+                        n.isRead
+                          ? "border-border bg-background"
+                          : "border-primary/30 bg-primary/5",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-sm font-semibold flex items-center gap-1.5">
+                          {n.priority === "high" ? (
+                            <AlertCircle className="w-4 h-4 text-red-500" />
+                          ) : (
+                            <Bell className="w-4 h-4 text-primary" />
+                          )}
+                          {n.title}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDateTime(n.createdAt)}
+                        </span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">
+                        {n.message}
+                      </div>
+                      {n.createdBy && (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          De la: {n.createdBy}
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <main
         className={cn(

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LayoutDashboard, Users, ShieldCheck, LogOut, Settings, ChevronLeft, ChevronRight, Bell, Layout, ShoppingBag, Inbox } from 'lucide-react';
+import { LayoutDashboard, Users, ShieldCheck, LogOut, Settings, ChevronLeft, ChevronRight, Bell, Layout, ShoppingBag, Inbox, Mail } from 'lucide-react';
 import { UserSession } from '../types';
 import Button from '../components/ui/button';
 import { useToast } from '../components/ui/use-toast';
@@ -9,6 +9,7 @@ import AdminSettings from './AdminSettings';
 import TemplateManagement from './TemplateManagement';
 import ServiceManagement from './ServiceManagement';
 import ServiceRequests from '../components/ServiceRequests';
+import EmailCenter from './EmailCenter';
 import AuthForm from '../components/AuthForm';
 import { cn } from '../lib/utils';
 import { Avatar, AvatarFallback } from '../components/ui/avatar';
@@ -16,7 +17,7 @@ import { Toaster } from 'react-hot-toast';
 
 const AdminApp = () => {
     const [session, setSession] = useState<UserSession | null>(null);
-    const [view, setView] = useState<'dashboard' | 'users' | 'settings' | 'templates' | 'services' | 'service-requests'>('dashboard');
+    const [view, setView] = useState<'dashboard' | 'users' | 'settings' | 'templates' | 'services' | 'service-requests' | 'emails'>('dashboard');
     const [isLoading, setIsLoading] = useState(true);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const { toast } = useToast();
@@ -69,7 +70,7 @@ const AdminApp = () => {
                     </div>
                     <div className="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-1 shadow-2xl">
                         <div className="bg-white dark:bg-zinc-900 rounded-xl overflow-hidden">
-                            <AuthForm onLogin={handleLogin} className="h-auto bg-transparent p-0 shadow-none border-0" />
+                            <AuthForm onLogin={handleLogin} syncAuthPath={false} className="h-auto bg-transparent p-0 shadow-none border-0" />
                         </div>
                     </div>
                     <div className="text-center mt-8">
@@ -87,6 +88,7 @@ const AdminApp = () => {
         { id: 'users',      label: 'Utilizatori',       icon: Users           },
         { id: 'services',         label: 'Servicii',          icon: ShoppingBag },
         { id: 'service-requests', label: 'Cereri Servicii',    icon: Inbox       },
+        { id: 'emails',           label: 'Email Center',       icon: Mail        },
         { id: 'templates',  label: 'Template-uri',      icon: Layout          },
         { id: 'settings',   label: 'Setări Sistem',     icon: Settings        },
     ];
@@ -96,6 +98,7 @@ const AdminApp = () => {
         users:     'Utilizatori',
         services:           'Servicii Marketplace',
         'service-requests': 'Cereri Servicii',
+        emails:    'Email Center',
         // templates: 'Template-uri',
         settings:  'Setări Sistem',
     };
@@ -197,6 +200,7 @@ const AdminApp = () => {
                         {view === 'dashboard' && <AdminDashboard token={session.token || ''} />}
                         {view === 'users'     && <UserManagement token={session.token || ''} />}
                         {view === 'services'  && <ServiceManagement token={session.token || ''} />}
+                        {view === 'emails'    && <EmailCenter token={session.token || ''} />}
                         {view === 'templates' && <TemplateManagement />}
                         {view === 'settings'          && <AdminSettings token={session.token || ''} />}
                         {view === 'service-requests'  && <ServiceRequests session={session} />}

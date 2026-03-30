@@ -42,7 +42,9 @@
     "morgan": "^1.10.0",
     "motion": "^12.34.2",
     "multer": "^2.1.0",
+    "node-forge": "^1.4.0",
     "ogl": "^1.0.11",
+    "pdfkit": "^0.18.0",
     "play-dl": "^1.9.7",
     "postprocessing": "^6.38.2",
     "prismjs": "^1.30.0",
@@ -52,10 +54,12 @@
     "react-hot-toast": "^2.6.0",
     "react-pdf-table": "^1.0.0-alfa.3",
     "react-simple-code-editor": "^0.14.1",
+    "resend": "^6.9.4",
     "stripe": "^14.14.0",
     "tailwind-merge": "^1.14.0",
     "tailwindcss-animate": "^1.0.7",
     "three": "^0.167.1",
+    "xml2js": "^0.6.2",
     "youtubei.js": "^16.0.1"
   },
   "devDependencies": {

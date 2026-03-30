@@ -1,17 +1,25 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs'; 
-import rateLimit from 'express-rate-limit'; 
-import helmet from 'helmet'; 
-import jwt from 'jsonwebtoken'; 
-import morgan from 'morgan'; 
-import Stripe from 'stripe'; 
+import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
+import jwt from 'jsonwebtoken';
+import morgan from 'morgan';
+import Stripe from 'stripe';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { OAuth2Client } from 'google-auth-library';
 import multer from 'multer';
 import fs from 'fs';
+import crypto from 'crypto';
+import { Builder, Parser } from 'xml2js';
+import forge from 'node-forge';
+import PDFDocument from 'pdfkit';
+import { createEmailNotifications } from './emailNotifications.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,30 +32,75 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/wedding-pl
 const JWT_SECRET = process.env.JWT_SECRET || 'secret-cheie-securizata-schimba-in-prod'; 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || ''; 
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || 'whsec_7389ce1d132933699dee9189532cfbf8867420c5f5383319351846984a46707b'; 
-const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000'; 
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const RESEND_FROM = process.env.RESEND_FROM || 'WeddingPro <onboarding@resend.dev>';
+const EMAIL_OTP_TTL_MINUTES = Number(process.env.EMAIL_OTP_TTL_MINUTES || 10);
+const EMAIL_OTP_COOLDOWN_SECONDS = Number(process.env.EMAIL_OTP_COOLDOWN_SECONDS || 60);
+const EMAIL_OTP_MAX_ATTEMPTS = Number(process.env.EMAIL_OTP_MAX_ATTEMPTS || 5);
+const PASSWORD_RESET_OTP_TTL_MINUTES = Number(process.env.PASSWORD_RESET_OTP_TTL_MINUTES || EMAIL_OTP_TTL_MINUTES);
+const PASSWORD_RESET_OTP_COOLDOWN_SECONDS = Number(process.env.PASSWORD_RESET_OTP_COOLDOWN_SECONDS || EMAIL_OTP_COOLDOWN_SECONDS);
+const PASSWORD_RESET_OTP_MAX_ATTEMPTS = Number(process.env.PASSWORD_RESET_OTP_MAX_ATTEMPTS || EMAIL_OTP_MAX_ATTEMPTS);
+const EMAIL_WELCOME_ENABLED = process.env.EMAIL_WELCOME_ENABLED !== 'false';
+const EMAIL_LOGIN_ALERT_ENABLED = process.env.EMAIL_LOGIN_ALERT_ENABLED !== 'false';
+const EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES = Number(process.env.EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES || 180);
+const EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES = Number(process.env.EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES || 180);
+
+// --- NETOPIA ---
+const NETOPIA_SIGNATURE = process.env.NETOPIA_SIGNATURE || '';
+const NETOPIA_SANDBOX   = process.env.NETOPIA_SANDBOX !== 'false'; // true by default
+const APP_URL = (process.env.APP_URL || CLIENT_URL).replace(/\/$/, '');
 
 // --- IMPORTANT: Pune acelasi ID aici pentru verificare (deși e opțional dacă folosești doar token decoder simplu, e recomandat pentru securitate) ---
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || 'PASTE_YOUR_GOOGLE_CLIENT_ID_HERE';
 
 const stripe = new Stripe(STRIPE_SECRET_KEY);
 const googleClient = new OAuth2Client(GOOGLE_CLIENT_ID);
-
+const emailNotifications = createEmailNotifications({
+  apiKey: RESEND_API_KEY,
+  from: RESEND_FROM,
+  appName: 'WeddingPro',
+  clientUrl: CLIENT_URL,
+  logger: console,
+});
+app.use(helmet({ contentSecurityPolicy: false }));
 // --- SECURITY MIDDLEWARE ---
-app.use(
-  helmet({
-    contentSecurityPolicy: {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://esm.sh", "https://accounts.google.com"],
-        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com"],
-        fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
-        imgSrc: ["'self'", "data:", "https://*", "https://lh3.googleusercontent.com"],
-        connectSrc: ["'self'", "https://*", "https://accounts.google.com"],
-        frameSrc: ["'self'", "https://accounts.google.com"]
-      },
-    },
-  })
-);
+// app.use(
+//   helmet({
+//     contentSecurityPolicy: {
+//       directives: {
+//         defaultSrc: ["'self'"],
+//         scriptSrc: [
+//           "'self'",
+//           "'unsafe-inline'",
+//           "'unsafe-eval'",
+//           "https://esm.sh",
+//           "https://accounts.google.com"
+//         ],
+//         styleSrc: [
+//           "'self'",
+//           "'unsafe-inline'",
+//           "https://fonts.googleapis.com",
+//           "https://accounts.google.com"
+//         ],
+//         fontSrc: [
+//           "'self'",
+//           "https://fonts.gstatic.com",
+//           "https://cdnjs.cloudflare.com"
+//         ],
+//         imgSrc: ["'self'", "data:", "https://*", "https://lh3.googleusercontent.com"],
+//         connectSrc: ["'self'", "https://*", "https://accounts.google.com"],
+//         frameSrc: ["'self'", "https://accounts.google.com"],
+
+//         formAction: [
+//           "'self'",
+//           "https://sandboxsecure.mobilpay.ro",
+//           "https://secure.mobilpay.ro"
+//         ]
+//       }
+//     }
+//   })
+// );
 
 app.use(cors({
     origin: [
@@ -66,6 +119,7 @@ app.use(cors({
 // --- SCHEMAS ---
 const SystemConfigSchema = new mongoose.Schema({
     key: { type: String, default: 'global_config', unique: true },
+    invoiceCounter: { type: Number, default: 0 },
     limits: {
         free: {
             maxGuests: { type: Number, default: 1 },
@@ -119,13 +173,18 @@ const TemplateDefaults = mongoose.model('TemplateDefaults', TemplateDefaultsSche
 const PaymentSchema = new mongoose.Schema({
     date: { type: Date, default: Date.now },
     amount: Number,
-    invoiceId: String,
+    invoiceId: String,      // ORD_... (referință internă)
+    invoiceNumber: String,  // FACT-2026-0001 (număr fiscal)
     billingEmail: String,
-    invoicePdfUrl: String, 
+    invoicePdfUrl: String,
     hostedInvoiceUrl: String,
+    paymentMethod: String,
     status: { type: String, default: 'Paid' },
     relatedEventDate: Date,
-    relatedEventName: String // Added to track which event was paid for
+    relatedEventName: String,
+    billingFirstName: String,
+    billingLastName: String,
+    billingAddress: String,
 });
 
 const ArchivedSnapshotSchema = new mongoose.Schema({
@@ -139,6 +198,53 @@ const UserSchema = new mongoose.Schema({
   pass: { type: String }, // Optional for Google Auth users
   authProvider: { type: String, default: 'local' }, // 'local' or 'google'
   googleId: String,
+  emailVerified: { type: Boolean, default: true },
+  emailVerification: {
+    otpHash: String,
+    otpExpiresAt: Date,
+    lastSentAt: Date,
+    verifyAttempts: { type: Number, default: 0 },
+  },
+  passwordReset: {
+    otpHash: String,
+    otpExpiresAt: Date,
+    lastSentAt: Date,
+    verifyAttempts: { type: Number, default: 0 },
+    requestedAt: Date,
+    lastResetAt: Date,
+  },
+  emailChange: {
+    pendingEmail: String,
+    otpHash: String,
+    otpExpiresAt: Date,
+    lastSentAt: Date,
+    verifyAttempts: { type: Number, default: 0 },
+    requestedAt: Date,
+    confirmedAt: Date,
+  },
+  loginAlerts: {
+    lastSentAt: Date,
+    lastIp: String,
+    lastUserAgent: String,
+  },
+  notifications: [{
+    title: String,
+    message: String,
+    priority: { type: String, enum: ['normal', 'high'], default: 'normal' },
+    createdAt: { type: Date, default: Date.now },
+    createdBy: String,
+    createdByRole: String,
+    isRead: { type: Boolean, default: false },
+    readAt: Date,
+  }],
+  activity: {
+    lastLoginAt: Date,
+    lastProfileUpdateAt: Date,
+    lastProjectUpdateAt: Date,
+    lastGuestsUpdateAt: Date,
+    lastActionAt: Date,
+    lastActionLabel: String,
+  },
   plan: { type: String, default: 'free', enum: ['free', 'premium'] },
   isAdmin: { type: Boolean, default: false }, 
   createdAt: { type: Date, default: Date.now }, 
@@ -166,6 +272,21 @@ const UserSchema = new mongoose.Schema({
     phone: String,
     email: String, 
     address: String,
+    city: String,
+    county: String,
+    country: String,
+    eventRole: String,
+    billingType: String,
+    billingName: String,
+    billingCompany: String,
+    billingVatCode: String,
+    billingRegNo: String,
+    billingAddress: String,
+    billingCity: String,
+    billingCounty: String,
+    billingCountry: String,
+    billingEmail: String,
+    billingPhone: String,
     godparents: String,
     parents: String,
     locationName: String,
@@ -408,7 +529,8 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const session = event.data.object;
     const userId = session.client_reference_id;
     const customerEmail = session.customer_details?.email;
-    const amountTotal = session.amount_total ? session.amount_total / 100 : 0; 
+    const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
+    const meta = session.metadata || {};
 
     try {
         let invoicePdfUrl = null;
@@ -427,22 +549,58 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         const user = await User.findById(userId);
         const relatedEventDate = user?.profile?.weddingDate;
         const relatedEventName = user?.profile?.eventName || 'Eveniment Nedenumit';
+        const billingEmail = (meta.billingEmail || customerEmail || '').trim();
+        const billingType = (meta.billingType || '').trim();
+        const billingName = (meta.billingName || '').trim();
+        const billingCompany = (meta.billingCompany || '').trim();
+        const billingCity = (meta.billingCity || '').trim();
+        const billingCounty = (meta.billingCounty || '').trim();
+        const billingCountry = (meta.billingCountry || '').trim();
+        const baseAddress = (meta.billingAddress || '').trim();
+        const billingAddress = [baseAddress, billingCity, billingCounty, billingCountry].filter(Boolean).join(', ');
+        const displayName = billingCompany || billingName;
+        const nameParts = displayName.split(/\s+/).filter(Boolean);
+        const billingFirstName = nameParts[0] || '';
+        const billingLastName = nameParts.slice(1).join(' ');
 
         const newPayment = {
             date: new Date(),
             amount: amountTotal,
             invoiceId: session.invoice || session.id,
-            billingEmail: customerEmail,
+            billingEmail,
+            billingFirstName,
+            billingLastName,
+            billingAddress,
             invoicePdfUrl: invoicePdfUrl,
             hostedInvoiceUrl: hostedInvoiceUrl,
+            paymentMethod: 'stripe_card',
             status: 'Paid',
             relatedEventDate: relatedEventDate,
             relatedEventName: relatedEventName // Store the name for history
         };
 
+        const profileBillingSet = {};
+        if (billingType) profileBillingSet['profile.billingType'] = billingType;
+        if (billingName) profileBillingSet['profile.billingName'] = billingName;
+        if (billingCompany) profileBillingSet['profile.billingCompany'] = billingCompany;
+        if (meta.billingVatCode) profileBillingSet['profile.billingVatCode'] = meta.billingVatCode;
+        if (meta.billingRegNo) profileBillingSet['profile.billingRegNo'] = meta.billingRegNo;
+        if (meta.billingAddress) profileBillingSet['profile.billingAddress'] = meta.billingAddress;
+        if (meta.billingCity) profileBillingSet['profile.billingCity'] = meta.billingCity;
+        if (meta.billingCounty) profileBillingSet['profile.billingCounty'] = meta.billingCounty;
+        if (meta.billingCountry) profileBillingSet['profile.billingCountry'] = meta.billingCountry;
+        if (billingEmail) {
+            profileBillingSet['profile.billingEmail'] = billingEmail;
+            profileBillingSet['profile.email'] = billingEmail;
+        }
+        if (meta.billingPhone) profileBillingSet['profile.billingPhone'] = meta.billingPhone;
+
         await User.findByIdAndUpdate(userId, {
-            plan: 'premium',
-            $push: { payments: newPayment }
+            $set: {
+                plan: 'premium',
+                ...profileBillingSet,
+            },
+            $push: { payments: newPayment },
         });
     } catch (dbError) {
         console.error('❌ Database Update Failed:', dbError);
@@ -697,13 +855,813 @@ mongoose.connect(MONGO_URI)
 
 // --- UTILS ---
 const generateToken = () => Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+const normalizeEmail = (email = '') => String(email).trim().toLowerCase();
+const normalizeText = (value = '') => String(value ?? '').trim();
+const generateEmailOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+const hashEmailOtp = (email, otp) =>
+  crypto
+    .createHash('sha256')
+    .update(`${JWT_SECRET}|${normalizeEmail(email)}|${otp}`)
+    .digest('hex');
+
+const getUserDisplayName = (userDoc) =>
+  userDoc?.profile?.firstName ||
+  userDoc?.profile?.partner1Name ||
+  userDoc?.profile?.eventName ||
+  userDoc?.user ||
+  'prietene';
+
+const computeDaysUntilDate = (dateValue) => {
+  if (!dateValue) return null;
+  const target = new Date(dateValue);
+  if (Number.isNaN(target.getTime())) return null;
+  const now = new Date();
+  target.setHours(12, 0, 0, 0);
+  now.setHours(12, 0, 0, 0);
+  return Math.round((target.getTime() - now.getTime()) / 86400000);
+};
+
+async function pushUserNotification(userId, payload = {}) {
+  const title = String(payload.title || '').trim();
+  const message = String(payload.message || '').trim();
+  if (!title || !message) return false;
+
+  const priority = String(payload.priority || '').toLowerCase() === 'high' ? 'high' : 'normal';
+  const createdBy = String(payload.createdBy || '').trim();
+  const createdByRole = String(payload.createdByRole || '').trim();
+  const now = new Date();
+
+  await User.findByIdAndUpdate(userId, {
+    $push: {
+      notifications: {
+        $each: [{
+          title: title.slice(0, 180),
+          message: message.slice(0, 3000),
+          priority,
+          createdAt: now,
+          createdBy: createdBy.slice(0, 120),
+          createdByRole: createdByRole.slice(0, 60),
+          isRead: false,
+        }],
+        $position: 0,
+      },
+    },
+    $set: {
+      'activity.lastActionAt': now,
+      'activity.lastActionLabel': 'Notificare noua primita',
+    },
+  });
+
+  return true;
+}
+
+async function sendEmailVerificationOtp(email, otp) {
+  return emailNotifications.sendVerificationOtp({
+    email,
+    otp,
+    ttlMinutes: EMAIL_OTP_TTL_MINUTES,
+  });
+}
+
+async function sendPasswordResetOtp(email, otp, name = '') {
+  return emailNotifications.sendPasswordResetOtp({
+    email,
+    name,
+    otp,
+    ttlMinutes: PASSWORD_RESET_OTP_TTL_MINUTES,
+  });
+}
 
 // --- ROUTES ---
 
 // AUTH LOCAL
+// OTP email verification flow (kept before legacy routes so it takes precedence)
 app.post('/api/register', async (req, res) => {
   try {
-    const { user, pass } = req.body; 
+    const body = req.body || {};
+    const user = normalizeEmail(body.user);
+    const { pass } = body;
+    const firstName = normalizeText(body.firstName);
+    const lastName = normalizeText(body.lastName);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!user || !emailRegex.test(user)) {
+      return res.status(400).send({ error: 'Adresa de email este obligatorie si trebuie sa fie valida.' });
+    }
+    if (!pass || pass.length < 6) {
+      return res.status(400).send({ error: 'Parola trebuie sa aiba minim 6 caractere.' });
+    }
+    if (!firstName || !lastName) {
+      return res.status(400).send({ error: 'Prenumele si numele sunt obligatorii.' });
+    }
+
+    const existingUser = await User.findOne({ user });
+    if (existingUser) {
+      if (existingUser.authProvider === 'local' && existingUser.emailVerified === false) {
+        return res.status(400).send({
+          error: 'Acest cont exista, dar emailul nu este inca verificat.',
+          code: 'EMAIL_NOT_VERIFIED',
+          email: existingUser.user,
+        });
+      }
+      return res.status(400).send({ error: 'Cont deja existent pentru acest email.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(pass, salt);
+    const otp = generateEmailOtp();
+    const otpExpiresAt = new Date(Date.now() + EMAIL_OTP_TTL_MINUTES * 60 * 1000);
+    const isFirstUser = (await User.countDocuments({})) === 0;
+
+    const newUser = new User({
+      user,
+      pass: hashedPassword,
+      authProvider: 'local',
+      emailVerified: false,
+      emailVerification: {
+        otpHash: hashEmailOtp(user, otp),
+        otpExpiresAt,
+        lastSentAt: new Date(),
+        verifyAttempts: 0,
+      },
+      plan: 'free',
+      isAdmin: isFirstUser,
+      profile: {
+        email: user,
+        isSetupComplete: false,
+        eventType: 'wedding',
+        guestEstimate: 150,
+        firstName,
+        lastName,
+      },
+    });
+
+    await newUser.save();
+    const sent = await sendEmailVerificationOtp(user, otp);
+    if (!sent) {
+      await User.findByIdAndDelete(newUser._id);
+      return res.status(500).send({ error: 'Nu am putut trimite emailul de verificare. Incearca din nou.' });
+    }
+
+    return res.send({
+      success: true,
+      requiresEmailVerification: true,
+      email: user,
+      message: 'Ti-am trimis un cod OTP pe email. Verifica inbox-ul pentru activare.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/resend-otp', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    if (!user) return res.status(400).send({ error: 'Email invalid.' });
+
+    const foundUser = await User.findOne({ user });
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+    if (foundUser.authProvider !== 'local') {
+      return res.status(400).send({ error: 'Acest cont nu foloseste autentificare locala.' });
+    }
+    if (foundUser.emailVerified !== false) {
+      return res.status(400).send({ error: 'Emailul este deja verificat.' });
+    }
+
+    const lastSentAt = foundUser.emailVerification?.lastSentAt
+      ? new Date(foundUser.emailVerification.lastSentAt).getTime()
+      : 0;
+    const elapsed = Date.now() - lastSentAt;
+    const cooldownMs = EMAIL_OTP_COOLDOWN_SECONDS * 1000;
+    if (lastSentAt && elapsed < cooldownMs) {
+      const retryAfter = Math.ceil((cooldownMs - elapsed) / 1000);
+      return res.status(429).send({
+        error: `Poti solicita un nou cod peste ${retryAfter} secunde.`,
+        retryAfter,
+      });
+    }
+
+    const otp = generateEmailOtp();
+    foundUser.emailVerification = {
+      otpHash: hashEmailOtp(user, otp),
+      otpExpiresAt: new Date(Date.now() + EMAIL_OTP_TTL_MINUTES * 60 * 1000),
+      lastSentAt: new Date(),
+      verifyAttempts: 0,
+    };
+    await foundUser.save();
+
+    const sent = await sendEmailVerificationOtp(user, otp);
+    if (!sent) {
+      return res.status(500).send({ error: 'Nu am putut retrimite codul OTP.' });
+    }
+
+    return res.send({ success: true, message: 'Cod OTP retrimis pe email.' });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/request-password-reset', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!user || !emailRegex.test(user)) {
+      return res.status(400).send({ error: 'Adresa de email este obligatorie si trebuie sa fie valida.' });
+    }
+
+    const foundUser = await User.findOne({ user });
+    if (!foundUser) {
+      return res.send({
+        success: true,
+        message: 'Daca exista un cont cu acest email, am trimis codul OTP pentru resetare.',
+      });
+    }
+
+    if (foundUser.authProvider === 'google' && !foundUser.pass) {
+      return res.status(400).send({
+        error: 'Acest cont foloseste autentificarea Google. Conecteaza-te cu Google.',
+        code: 'GOOGLE_AUTH_ACCOUNT',
+      });
+    }
+
+    const nowMs = Date.now();
+    const resetData = foundUser.passwordReset || {};
+    const lastSentMs = resetData.lastSentAt ? new Date(resetData.lastSentAt).getTime() : 0;
+    const cooldownMs = PASSWORD_RESET_OTP_COOLDOWN_SECONDS * 1000;
+    if (lastSentMs && nowMs - lastSentMs < cooldownMs) {
+      const retryInSeconds = Math.max(1, Math.ceil((cooldownMs - (nowMs - lastSentMs)) / 1000));
+      return res.status(429).send({
+        error: `Te rugam sa astepti ${retryInSeconds} secunde inainte sa ceri un cod nou.`,
+        code: 'OTP_COOLDOWN',
+        retryInSeconds,
+      });
+    }
+
+    const otp = generateEmailOtp();
+    const otpHash = hashEmailOtp(user, otp);
+    foundUser.passwordReset = {
+      otpHash,
+      otpExpiresAt: new Date(nowMs + PASSWORD_RESET_OTP_TTL_MINUTES * 60 * 1000),
+      lastSentAt: new Date(nowMs),
+      verifyAttempts: 0,
+      requestedAt: new Date(nowMs),
+      lastResetAt: resetData.lastResetAt,
+    };
+    await foundUser.save();
+
+    const sent = await sendPasswordResetOtp(foundUser.user, otp, getUserDisplayName(foundUser));
+    if (!sent) {
+      return res.status(500).send({ error: 'Nu am putut trimite emailul de resetare. Incearca din nou.' });
+    }
+
+    return res.send({
+      success: true,
+      message: 'Am trimis codul OTP pentru resetarea parolei.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    const otp = String(req.body?.otp || '').trim();
+    const newPassword = String(req.body?.newPassword || '');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!user || !emailRegex.test(user)) {
+      return res.status(400).send({ error: 'Adresa de email este invalida.' });
+    }
+    if (!/^\d{6}$/.test(otp)) {
+      return res.status(400).send({ error: 'Cod OTP invalid.' });
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).send({ error: 'Parola trebuie sa aiba minim 6 caractere.' });
+    }
+
+    const foundUser = await User.findOne({ user });
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+    if (foundUser.authProvider === 'google' && !foundUser.pass) {
+      return res.status(400).send({ error: 'Acest cont foloseste autentificarea Google.' });
+    }
+
+    const resetData = foundUser.passwordReset || {};
+    if (!resetData.otpHash || !resetData.otpExpiresAt) {
+      return res.status(400).send({ error: 'Nu exista OTP activ pentru resetare. Solicita un cod nou.' });
+    }
+    if (new Date(resetData.otpExpiresAt).getTime() < Date.now()) {
+      foundUser.passwordReset = {
+        ...resetData,
+        otpHash: undefined,
+        otpExpiresAt: undefined,
+      };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Codul OTP a expirat. Solicita un cod nou.' });
+    }
+
+    const attempts = Number(resetData.verifyAttempts || 0);
+    if (attempts >= PASSWORD_RESET_OTP_MAX_ATTEMPTS) {
+      return res.status(429).send({
+        error: 'Ai depasit numarul maxim de incercari. Solicita un cod nou.',
+        code: 'OTP_MAX_ATTEMPTS',
+      });
+    }
+
+    const incomingHash = hashEmailOtp(user, otp);
+    if (incomingHash !== resetData.otpHash) {
+      foundUser.passwordReset = { ...resetData, verifyAttempts: attempts + 1 };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Cod OTP incorect.', code: 'OTP_INVALID' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    foundUser.pass = await bcrypt.hash(newPassword, salt);
+    foundUser.passwordReset = {
+      otpHash: undefined,
+      otpExpiresAt: undefined,
+      lastSentAt: undefined,
+      verifyAttempts: 0,
+      requestedAt: undefined,
+      lastResetAt: new Date(),
+    };
+    await foundUser.save();
+
+    await pushUserNotification(foundUser._id, {
+      title: 'Parola schimbata',
+      message: 'Parola contului a fost schimbata cu succes. Daca nu ai facut tu aceasta actiune, schimba parola imediat.',
+      priority: 'high',
+      createdBy: 'Sistem',
+      createdByRole: 'system',
+    });
+
+    try {
+      const requestIp = String(req.headers['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim() || req.socket?.remoteAddress || '';
+      const requestUserAgent = String(req.headers['user-agent'] || '');
+      await emailNotifications.sendPasswordChangedEmail({
+        email: foundUser.user,
+        name: getUserDisplayName(foundUser),
+        changedAt: new Date(),
+        ip: requestIp,
+        userAgent: requestUserAgent,
+      });
+    } catch (emailError) {
+      console.error('[EMAIL] Password changed email failed:', emailError);
+    }
+
+    return res.send({
+      success: true,
+      message: 'Parola a fost resetata cu succes. Te poti autentifica.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const currentPassword = String(req.body?.currentPassword || '');
+    const newPassword = String(req.body?.newPassword || '');
+
+    if (!currentPassword) {
+      return res.status(400).send({ error: 'Parola curenta este obligatorie.' });
+    }
+    if (!newPassword || newPassword.length < 6) {
+      return res.status(400).send({ error: 'Parola noua trebuie sa aiba minim 6 caractere.' });
+    }
+
+    const foundUser = await User.findById(req.user.userId);
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+
+    if (foundUser.authProvider === 'google' && !foundUser.pass) {
+      return res.status(400).send({
+        error: 'Acest cont foloseste autentificarea Google. Foloseste resetare prin email.',
+        code: 'GOOGLE_AUTH_ACCOUNT',
+      });
+    }
+
+    const passwordMatches = await bcrypt.compare(currentPassword, String(foundUser.pass || ''));
+    if (!passwordMatches) {
+      return res.status(400).send({ error: 'Parola curenta este incorecta.' });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    foundUser.pass = await bcrypt.hash(newPassword, salt);
+    foundUser.passwordReset = {
+      otpHash: undefined,
+      otpExpiresAt: undefined,
+      lastSentAt: undefined,
+      verifyAttempts: 0,
+      requestedAt: undefined,
+      lastResetAt: new Date(),
+    };
+    await foundUser.save();
+
+    await pushUserNotification(foundUser._id, {
+      title: 'Parola schimbata',
+      message: 'Parola contului a fost schimbata din panoul Account. Daca nu ai facut tu aceasta actiune, schimba parola imediat.',
+      priority: 'high',
+      createdBy: 'Sistem',
+      createdByRole: 'system',
+    });
+
+    try {
+      const requestIp = String(req.headers['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim() || req.socket?.remoteAddress || '';
+      const requestUserAgent = String(req.headers['user-agent'] || '');
+      await emailNotifications.sendPasswordChangedEmail({
+        email: foundUser.user,
+        name: getUserDisplayName(foundUser),
+        changedAt: new Date(),
+        ip: requestIp,
+        userAgent: requestUserAgent,
+      });
+    } catch (emailError) {
+      console.error('[EMAIL] Account change-password email failed:', emailError);
+    }
+
+    return res.send({
+      success: true,
+      message: 'Parola a fost schimbata cu succes.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/request-email-change', authenticateToken, async (req, res) => {
+  try {
+    const newEmail = normalizeEmail(req.body?.newEmail);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!newEmail || !emailRegex.test(newEmail)) {
+      return res.status(400).send({ error: 'Adresa de email noua este invalida.' });
+    }
+
+    const foundUser = await User.findById(req.user.userId);
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+
+    const currentEmail = normalizeEmail(foundUser.user || foundUser.profile?.email || '');
+    if (newEmail === currentEmail) {
+      return res.status(400).send({ error: 'Noul email este identic cu emailul actual.' });
+    }
+
+    const existingEmailOwner = await User.findOne({
+      user: newEmail,
+      _id: { $ne: foundUser._id },
+    });
+    if (existingEmailOwner) {
+      return res.status(400).send({ error: 'Exista deja un cont cu acest email.' });
+    }
+
+    const changeData = foundUser.emailChange || {};
+    const lastSentMs = changeData.lastSentAt ? new Date(changeData.lastSentAt).getTime() : 0;
+    const cooldownMs = EMAIL_OTP_COOLDOWN_SECONDS * 1000;
+    if (lastSentMs && Date.now() - lastSentMs < cooldownMs) {
+      const retryInSeconds = Math.max(1, Math.ceil((cooldownMs - (Date.now() - lastSentMs)) / 1000));
+      return res.status(429).send({
+        error: `Te rugam sa astepti ${retryInSeconds} secunde inainte sa ceri un cod nou.`,
+        code: 'OTP_COOLDOWN',
+        retryInSeconds,
+      });
+    }
+
+    const otp = generateEmailOtp();
+    foundUser.emailChange = {
+      pendingEmail: newEmail,
+      otpHash: hashEmailOtp(newEmail, otp),
+      otpExpiresAt: new Date(Date.now() + EMAIL_OTP_TTL_MINUTES * 60 * 1000),
+      lastSentAt: new Date(),
+      verifyAttempts: 0,
+      requestedAt: new Date(),
+      confirmedAt: changeData.confirmedAt,
+    };
+    await foundUser.save();
+
+    const sent = await sendEmailVerificationOtp(newEmail, otp);
+    if (!sent) {
+      return res.status(500).send({ error: 'Nu am putut trimite codul OTP pe noul email.' });
+    }
+
+    return res.send({
+      success: true,
+      pendingEmail: newEmail,
+      message: 'Am trimis codul OTP pe noua adresa de email.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/confirm-email-change', authenticateToken, async (req, res) => {
+  try {
+    const otp = String(req.body?.otp || '').trim();
+    if (!/^\d{6}$/.test(otp)) {
+      return res.status(400).send({ error: 'Cod OTP invalid.' });
+    }
+
+    const foundUser = await User.findById(req.user.userId);
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+
+    const changeData = foundUser.emailChange || {};
+    const pendingEmail = normalizeEmail(changeData.pendingEmail || '');
+    if (!pendingEmail || !changeData.otpHash || !changeData.otpExpiresAt) {
+      return res.status(400).send({ error: 'Nu exista o schimbare de email in asteptare.' });
+    }
+
+    if (new Date(changeData.otpExpiresAt).getTime() < Date.now()) {
+      foundUser.emailChange = {
+        ...changeData,
+        otpHash: undefined,
+        otpExpiresAt: undefined,
+      };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Codul OTP a expirat. Solicita un cod nou.' });
+    }
+
+    const attempts = Number(changeData.verifyAttempts || 0);
+    if (attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
+      return res.status(429).send({
+        error: 'Ai depasit numarul maxim de incercari. Solicita un cod nou.',
+        code: 'OTP_MAX_ATTEMPTS',
+      });
+    }
+
+    const incomingHash = hashEmailOtp(pendingEmail, otp);
+    if (incomingHash !== changeData.otpHash) {
+      foundUser.emailChange = { ...changeData, verifyAttempts: attempts + 1 };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Cod OTP incorect.', code: 'OTP_INVALID' });
+    }
+
+    const existingEmailOwner = await User.findOne({
+      user: pendingEmail,
+      _id: { $ne: foundUser._id },
+    });
+    if (existingEmailOwner) {
+      return res.status(400).send({ error: 'Emailul a fost deja folosit de alt cont.' });
+    }
+
+    const oldEmail = normalizeEmail(foundUser.user || '');
+    foundUser.user = pendingEmail;
+    foundUser.emailVerified = true;
+    foundUser.profile = {
+      ...(foundUser.profile?.toObject ? foundUser.profile.toObject() : foundUser.profile || {}),
+      email: pendingEmail,
+    };
+    foundUser.emailChange = {
+      pendingEmail: undefined,
+      otpHash: undefined,
+      otpExpiresAt: undefined,
+      lastSentAt: undefined,
+      verifyAttempts: 0,
+      requestedAt: undefined,
+      confirmedAt: new Date(),
+    };
+    await foundUser.save();
+
+    await pushUserNotification(foundUser._id, {
+      title: 'Email actualizat',
+      message: `Emailul contului a fost schimbat din ${oldEmail || 'email vechi'} in ${pendingEmail}.`,
+      priority: 'high',
+      createdBy: 'Sistem',
+      createdByRole: 'system',
+    });
+
+    if (EMAIL_WELCOME_ENABLED) {
+      try {
+        await emailNotifications.sendVerificationSuccessEmail({
+          email: pendingEmail,
+          name: getUserDisplayName(foundUser),
+        });
+      } catch (emailError) {
+        console.error('[EMAIL] Email-change verification email failed:', emailError);
+      }
+    }
+
+    return res.send({
+      success: true,
+      email: pendingEmail,
+      message: 'Emailul contului a fost actualizat cu succes.',
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/verify-email-otp', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    const otp = String(req.body?.otp || '').trim();
+    if (!user || !/^\d{6}$/.test(otp)) {
+      return res.status(400).send({ error: 'Cod OTP invalid.' });
+    }
+
+    const foundUser = await User.findOne({ user });
+    if (!foundUser) return res.status(404).send({ error: 'Contul nu a fost gasit.' });
+    if (foundUser.authProvider !== 'local') {
+      return res.status(400).send({ error: 'Acest cont nu foloseste verificare OTP pe email.' });
+    }
+    if (foundUser.emailVerified === true) {
+      return res.send({ success: true, alreadyVerified: true });
+    }
+
+    const verification = foundUser.emailVerification || {};
+    if (!verification.otpHash || !verification.otpExpiresAt) {
+      return res.status(400).send({ error: 'Nu exista OTP activ. Solicita un cod nou.' });
+    }
+    if (new Date(verification.otpExpiresAt).getTime() < Date.now()) {
+      foundUser.emailVerification = { ...verification, otpHash: undefined, otpExpiresAt: undefined };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Codul OTP a expirat. Solicita un cod nou.' });
+    }
+
+    const attempts = Number(verification.verifyAttempts || 0);
+    if (attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
+      return res.status(429).send({
+        error: 'Ai depasit numarul maxim de incercari. Solicita un cod nou.',
+        code: 'OTP_MAX_ATTEMPTS',
+      });
+    }
+
+    const incomingHash = hashEmailOtp(user, otp);
+    if (incomingHash !== verification.otpHash) {
+      foundUser.emailVerification = { ...verification, verifyAttempts: attempts + 1 };
+      await foundUser.save();
+      return res.status(400).send({ error: 'Cod OTP incorect.', code: 'OTP_INVALID' });
+    }
+
+    foundUser.emailVerified = true;
+    foundUser.emailVerification = {
+      otpHash: undefined,
+      otpExpiresAt: undefined,
+      lastSentAt: undefined,
+      verifyAttempts: 0,
+    };
+    await foundUser.save();
+
+    if (EMAIL_WELCOME_ENABLED) {
+      try {
+        await emailNotifications.sendVerificationSuccessEmail({
+          email: foundUser.user,
+          name: getUserDisplayName(foundUser),
+        });
+      } catch (emailError) {
+        console.error('[EMAIL] Verification success email failed:', emailError);
+      }
+    }
+
+    const config = await getConfig();
+    const limits = config.limits[foundUser.plan || 'free'];
+    const price = config.pricing.premiumPrice;
+    const isCompleted = isEventCompleted(foundUser.profile.weddingDate);
+    const token = jwt.sign(
+      { userId: foundUser._id, plan: foundUser.plan || 'free' },
+      JWT_SECRET,
+      { expiresIn: '7d' },
+    );
+
+    if (EMAIL_LOGIN_ALERT_ENABLED) {
+      const requestIp = String(req.headers['x-forwarded-for'] || '')
+        .split(',')[0]
+        .trim() || req.socket?.remoteAddress || '';
+      const requestUserAgent = String(req.headers['user-agent'] || '');
+      const nowMs = Date.now();
+      const cooldownMs = EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES * 60 * 1000;
+      const lastSentMs = foundUser.loginAlerts?.lastSentAt
+        ? new Date(foundUser.loginAlerts.lastSentAt).getTime()
+        : 0;
+      const accountAgeGraceMs = EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES * 60 * 1000;
+      const createdAtMs = foundUser.createdAt ? new Date(foundUser.createdAt).getTime() : 0;
+      const isFreshAccount = !!createdAtMs && nowMs - createdAtMs < accountAgeGraceMs;
+      const hasPreviousAlert = Boolean(foundUser.loginAlerts?.lastSentAt);
+      const ipChanged = requestIp && requestIp !== String(foundUser.loginAlerts?.lastIp || '');
+      const uaChanged = requestUserAgent && requestUserAgent !== String(foundUser.loginAlerts?.lastUserAgent || '');
+      const cooldownPassed = !lastSentMs || nowMs - lastSentMs >= cooldownMs;
+      const skipBecauseNewAccount = isFreshAccount && !hasPreviousAlert;
+      const shouldSendAlert = !skipBecauseNewAccount && (cooldownPassed || ipChanged || uaChanged);
+
+      if (shouldSendAlert) {
+        try {
+          const sent = await emailNotifications.sendLoginAlertEmail({
+            email: foundUser.user,
+            ip: requestIp,
+            userAgent: requestUserAgent,
+            loginAt: new Date(nowMs),
+          });
+
+          if (sent) {
+            await User.findByIdAndUpdate(foundUser._id, {
+              $set: {
+                loginAlerts: {
+                  lastSentAt: new Date(nowMs),
+                  lastIp: requestIp,
+                  lastUserAgent: requestUserAgent,
+                },
+              },
+            });
+          }
+        } catch (emailError) {
+          console.error('[EMAIL] Login alert failed:', emailError);
+        }
+      }
+    }
+
+    const loginAt = new Date();
+    await User.findByIdAndUpdate(foundUser._id, {
+      $set: {
+        'activity.lastLoginAt': loginAt,
+        'activity.lastActionAt': loginAt,
+        'activity.lastActionLabel': 'Autentificare in aplicatie',
+      },
+    });
+
+    return res.send({
+      success: true,
+      user: foundUser.user,
+      userId: foundUser._id,
+      plan: foundUser.plan || 'free',
+      isAdmin: foundUser.isAdmin,
+      profile: foundUser.profile,
+      payments: foundUser.payments || [],
+      archivedEvents: foundUser.archivedEvents || [],
+      limits,
+      premiumPrice: price,
+      pricing: config.pricing,
+      isEventCompleted: isCompleted,
+      token,
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    const { pass } = req.body || {};
+    const foundUser = await User.findOne({ user });
+    if (!foundUser) return res.status(401).send({ error: 'Datele de autentificare sunt incorecte.' });
+
+    if (foundUser.authProvider === 'google' && !foundUser.pass) {
+      return res.status(401).send({ error: 'Acest cont foloseste autentificarea Google.' });
+    }
+    if (foundUser.authProvider === 'local' && foundUser.emailVerified === false) {
+      return res.status(403).send({
+        error: 'Emailul nu este verificat. Introdu codul OTP trimis pe email.',
+        code: 'EMAIL_NOT_VERIFIED',
+        email: foundUser.user,
+      });
+    }
+
+    const isMatch = await bcrypt.compare(pass, foundUser.pass);
+    if (!isMatch) return res.status(401).send({ error: 'Datele de autentificare sunt incorecte.' });
+
+    const config = await getConfig();
+    const limits = config.limits[foundUser.plan || 'free'];
+    const price = config.pricing.premiumPrice;
+    const isCompleted = isEventCompleted(foundUser.profile.weddingDate);
+    const token = jwt.sign(
+      { userId: foundUser._id, plan: foundUser.plan || 'free' },
+      JWT_SECRET,
+      { expiresIn: '7d' },
+    );
+
+    const loginAt = new Date();
+    await User.findByIdAndUpdate(foundUser._id, {
+      $set: {
+        'activity.lastLoginAt': loginAt,
+        'activity.lastActionAt': loginAt,
+        'activity.lastActionLabel': 'Autentificare in aplicatie',
+      },
+    });
+
+    return res.send({
+      success: true,
+      user: foundUser.user,
+      userId: foundUser._id,
+      plan: foundUser.plan || 'free',
+      isAdmin: foundUser.isAdmin,
+      profile: foundUser.profile,
+      payments: foundUser.payments || [],
+      archivedEvents: foundUser.archivedEvents || [],
+      limits,
+      premiumPrice: price,
+      pricing: config.pricing,
+      isEventCompleted: isCompleted,
+      token,
+    });
+  } catch (error) {
+    return res.status(500).send({ error: 'Server error' });
+  }
+});
+
+app.post('/api/_legacy/register-disabled', async (req, res) => {
+  try {
+    const user = normalizeEmail(req.body?.user);
+    const { pass } = req.body; 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!user || !emailRegex.test(user)) {
         return res.status(400).send({ error: 'Adresa de email este obligatorie și trebuie să fie validă.' });
@@ -741,7 +1699,7 @@ app.post('/api/register', async (req, res) => {
   } catch (error) { res.status(500).send({ error: 'Server error' }); }
 });
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/_legacy/login-disabled', async (req, res) => {
   try {
     const { user, pass } = req.body;
     const foundUser = await User.findOne({ user });
@@ -838,6 +1796,15 @@ app.post('/api/google-auth', async (req, res) => {
         const isCompleted = isEventCompleted(user.profile.weddingDate);
 
         const sessionToken = jwt.sign({ userId: user._id, plan: user.plan || 'free' }, JWT_SECRET, { expiresIn: '7d' });
+
+        const loginAt = new Date();
+        await User.findByIdAndUpdate(user._id, {
+            $set: {
+                'activity.lastLoginAt': loginAt,
+                'activity.lastActionAt': loginAt,
+                'activity.lastActionLabel': 'Autentificare in aplicatie',
+            },
+        });
         
         res.send({ 
             success: true, 
@@ -930,14 +1897,90 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
   }
 });
 
+app.get('/api/notifications', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId, 'notifications activity');
+    if (!user) return res.status(404).send({ error: 'User not found' });
+
+    const notifications = Array.isArray(user.notifications) ? [...user.notifications] : [];
+    notifications.sort((a, b) => new Date(b?.createdAt || 0).getTime() - new Date(a?.createdAt || 0).getTime());
+
+    const unreadCount = notifications.filter((n) => n?.isRead !== true).length;
+    res.send({
+      success: true,
+      notifications,
+      unreadCount,
+      activity: user.activity || {},
+    });
+  } catch (e) {
+    res.status(500).send({ error: e.message });
+  }
+});
+
+app.post('/api/notifications/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const notificationId = String(req.params.id || '').trim();
+    if (!notificationId) return res.status(400).send({ error: 'Notification id lipsa.' });
+
+    await User.findOneAndUpdate(
+      { _id: req.user.userId, 'notifications._id': notificationId },
+      {
+        $set: {
+          'notifications.$.isRead': true,
+          'notifications.$.readAt': new Date(),
+        },
+      }
+    );
+    res.send({ success: true });
+  } catch (e) {
+    res.status(500).send({ error: e.message });
+  }
+});
+
+app.post('/api/notifications/read-all', authenticateToken, async (req, res) => {
+  try {
+    const now = new Date();
+    await User.findByIdAndUpdate(req.user.userId, {
+      $set: {
+        'notifications.$[n].isRead': true,
+        'notifications.$[n].readAt': now,
+      },
+    }, {
+      arrayFilters: [{ 'n.isRead': { $ne: true } }],
+    });
+    res.send({ success: true });
+  } catch (e) {
+    res.status(500).send({ error: e.message });
+  }
+});
+
 // --- NEW ROUTE: SETUP EVENT (ONBOARDING) ---
 app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
     try {
-        const { eventType, weddingDate, eventName } = req.body;
+        const {
+            eventType,
+            weddingDate,
+            eventName,
+            eventRole,
+            contactName,
+            phone,
+            address,
+            firstName,
+            lastName,
+        } = req.body || {};
         
         if (!eventType || !weddingDate) {
             return res.status(400).send({ error: 'Tipul și data evenimentului sunt obligatorii.' });
         }
+
+        if (!eventRole || !contactName || !phone || !address) {
+            return res.status(400).send({ error: 'Rolul, numele, telefonul si adresa sunt obligatorii.' });
+        }
+
+        const contactNameNorm = normalizeText(contactName);
+        const [firstNameFromContact, ...lastNameFromContactParts] = contactNameNorm.split(/\s+/);
+        const finalFirstName = normalizeText(firstName) || firstNameFromContact || '';
+        const finalLastName = normalizeText(lastName) || lastNameFromContactParts.join(' ');
 
         // Default blocks & data per event type
         const defaultData = {};
@@ -966,18 +2009,40 @@ app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
             defaultData["profile.customSections"] = WEDDING_DEFAULT_BLOCKS;
         }
 
-        await User.findByIdAndUpdate
-        await User.findByIdAndUpdate(req.user.userId, {
+        const now = new Date();
+        const updatedUser = await User.findByIdAndUpdate(req.user.userId, {
             $set: {
                 "profile.eventName": eventName || `Eveniment ${eventType}`,
                 "profile.eventType": eventType,
                 "profile.weddingDate": new Date(weddingDate),
                 "profile.isSetupComplete": true,
+                "profile.eventRole": normalizeText(eventRole),
+                "profile.firstName": finalFirstName,
+                "profile.lastName": finalLastName,
+                "profile.phone": normalizeText(phone),
+                "profile.address": normalizeText(address),
+                "activity.lastProfileUpdateAt": now,
+                "activity.lastActionAt": now,
+                "activity.lastActionLabel": "Onboarding completat",
                 ...defaultData
             }
-        });
+        }, { new: true });
 
-        res.send({ success: true });
+        if (EMAIL_WELCOME_ENABLED && updatedUser) {
+            try {
+                await emailNotifications.sendWelcomeEmail({
+                    email: updatedUser.user,
+                    name: getUserDisplayName(updatedUser),
+                    eventType: updatedUser.profile?.eventType || eventType,
+                    eventName: updatedUser.profile?.eventName || eventName || '',
+                    eventDate: updatedUser.profile?.weddingDate || new Date(weddingDate),
+                });
+            } catch (emailError) {
+                console.error('[EMAIL] Event setup welcome email failed:', emailError);
+            }
+        }
+
+        res.send({ success: true, profile: updatedUser?.profile || null });
     } catch (e) {
         console.error(e);
         res.status(500).send({ error: 'Setup failed.' });
@@ -1262,6 +2327,10 @@ app.post('/api/profile', authenticateToken, ensureActiveEvent, async (req, res) 
         for (const [key, val] of Object.entries(profile)) {
             $setPayload[`profile.${key}`] = val;
         }
+        const now = new Date();
+        $setPayload['activity.lastProfileUpdateAt'] = now;
+        $setPayload['activity.lastActionAt'] = now;
+        $setPayload['activity.lastActionLabel'] = 'Setari profil actualizate';
 
         await User.findOneAndUpdate(
             { _id: req.user.userId },
@@ -1276,8 +2345,16 @@ app.post('/api/profile', authenticateToken, ensureActiveEvent, async (req, res) 
 
 app.post('/api/project', authenticateToken, ensureActiveEvent, async (req, res) => {
     const { elements, tasks, budget, totalBudget, selectedTemplate } = req.body;
-    const updateData = { updatedAt: new Date(), elements, tasks, budget, totalBudget, selectedTemplate };
+    const now = new Date();
+    const updateData = { updatedAt: now, elements, tasks, budget, totalBudget, selectedTemplate };
     await Project.findOneAndUpdate({ ownerId: req.user.userId }, updateData, { new: true, upsert: true });
+    await User.findByIdAndUpdate(req.user.userId, {
+      $set: {
+        'activity.lastProjectUpdateAt': now,
+        'activity.lastActionAt': now,
+        'activity.lastActionLabel': 'Proiect actualizat',
+      },
+    });
     res.send({ success: true });
 });
 
@@ -1303,6 +2380,14 @@ app.post('/api/guests', authenticateToken, ensureActiveEvent, async (req, res) =
         source: 'manual'
     });
     await newGuest.save();
+    const now = new Date();
+    await User.findByIdAndUpdate(req.user.userId, {
+      $set: {
+        'activity.lastGuestsUpdateAt': now,
+        'activity.lastActionAt': now,
+        'activity.lastActionLabel': 'Lista invitati actualizata',
+      },
+    });
     res.send(newGuest);
 });
 
@@ -1314,6 +2399,14 @@ app.put('/api/guests/:id/sent', authenticateToken, ensureActiveEvent, async (req
             { isSent: isSent },
             { new: true }
         );
+        const now = new Date();
+        await User.findByIdAndUpdate(req.user.userId, {
+          $set: {
+            'activity.lastGuestsUpdateAt': now,
+            'activity.lastActionAt': now,
+            'activity.lastActionLabel': 'Status invitat actualizat',
+          },
+        });
         res.send(guest);
     } catch (e) {
         res.status(500).send({ error: e.message });
@@ -1322,6 +2415,14 @@ app.put('/api/guests/:id/sent', authenticateToken, ensureActiveEvent, async (req
 
 app.delete('/api/guests/:id', authenticateToken, ensureActiveEvent, async (req, res) => {
     await Guest.findByIdAndDelete(req.params.id);
+    const now = new Date();
+    await User.findByIdAndUpdate(req.user.userId, {
+      $set: {
+        'activity.lastGuestsUpdateAt': now,
+        'activity.lastActionAt': now,
+        'activity.lastActionLabel': 'Invitat sters',
+      },
+    });
     res.send({ success: true });
 });
 
@@ -1386,6 +2487,57 @@ app.get('/api/admin/users', authenticateAdmin, async (req, res) => {
     }
 });
 
+app.post('/api/admin/users/:id/notify', authenticateAdmin, async (req, res) => {
+    try {
+        const targetUserId = String(req.params.id || '').trim();
+        const title = String(req.body?.title || '').trim();
+        const message = String(req.body?.message || '').trim();
+        const priority = String(req.body?.priority || '').toLowerCase() === 'high' ? 'high' : 'normal';
+
+        if (!targetUserId) return res.status(400).send({ error: 'User id lipsa.' });
+        if (!title || !message) {
+            return res.status(400).send({ error: 'Titlul si mesajul sunt obligatorii.' });
+        }
+
+        const [targetUser, adminUser] = await Promise.all([
+            User.findById(targetUserId),
+            User.findById(req.user.userId),
+        ]);
+        if (!targetUser) return res.status(404).send({ error: 'Utilizatorul tinta nu exista.' });
+
+        const adminName = adminUser
+            ? `${adminUser.profile?.firstName || ''} ${adminUser.profile?.lastName || ''}`.trim() || adminUser.user
+            : 'Admin';
+
+        await pushUserNotification(targetUser._id, {
+            title,
+            message,
+            priority,
+            createdBy: adminName,
+            createdByRole: 'admin',
+        });
+
+        let emailSent = false;
+        if (priority === 'high' && targetUser.user) {
+            try {
+                emailSent = await emailNotifications.sendAdminNotificationEmail({
+                    email: targetUser.user,
+                    name: getUserDisplayName(targetUser),
+                    title,
+                    message,
+                    priority,
+                });
+            } catch (emailError) {
+                console.error('[EMAIL] Admin notification failed:', emailError);
+            }
+        }
+
+        res.send({ success: true, emailSent });
+    } catch (e) {
+        res.status(500).send({ error: e.message });
+    }
+});
+
 // --- ADMIN TEMPLATE ROUTES ---
 app.get('/api/admin/templates', authenticateAdmin, async (req, res) => {
     try {
@@ -1437,8 +2589,23 @@ app.get('/api/templates', async (req, res) => {
 
 app.put('/api/admin/users/:id', authenticateAdmin, async (req, res) => {
     try {
-        const { plan, user, profile } = req.body;
-        await User.findByIdAndUpdate(req.params.id, { plan, user, profile });
+        const { plan, user, profile, emailVerified } = req.body || {};
+        const updatePayload = {};
+
+        if (typeof plan === 'string') updatePayload.plan = plan;
+        if (typeof user === 'string') updatePayload.user = user.trim().toLowerCase();
+        if (typeof emailVerified === 'boolean') updatePayload.emailVerified = emailVerified;
+
+        if (profile && typeof profile === 'object') {
+            const nextProfile = { ...profile };
+            if (typeof nextProfile.weddingDate === 'string') {
+                const rawDate = nextProfile.weddingDate.trim();
+                nextProfile.weddingDate = rawDate ? new Date(rawDate) : undefined;
+            }
+            updatePayload.profile = nextProfile;
+        }
+
+        await User.findByIdAndUpdate(req.params.id, { $set: updatePayload });
         res.send({ success: true });
     } catch (e) {
         res.status(500).send({ error: e.message });
@@ -1454,6 +2621,128 @@ app.delete('/api/admin/users/:id', authenticateAdmin, async (req, res) => {
         res.send({ success: true });
     } catch (e) {
         res.status(500).send({ error: e.message });
+    }
+});
+
+app.get('/api/admin/email/status', authenticateAdmin, async (req, res) => {
+    res.send({
+        success: true,
+        enabled: emailNotifications.isEnabled,
+        provider: 'resend',
+        from: RESEND_FROM,
+        loginAlertsEnabled: EMAIL_LOGIN_ALERT_ENABLED,
+        loginAlertCooldownMinutes: EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES,
+        loginAlertSkipNewAccountMinutes: EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES,
+        welcomeEnabled: EMAIL_WELCOME_ENABLED,
+    });
+});
+
+app.post('/api/admin/email/send-test', authenticateAdmin, async (req, res) => {
+    try {
+        const { userId, type } = req.body || {};
+        if (!userId || !type) {
+            return res.status(400).send({ error: 'userId si type sunt obligatorii.' });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).send({ error: 'Utilizator inexistent.' });
+        const email = normalizeEmail(user.user);
+        if (!email) return res.status(400).send({ error: 'Utilizator fara email valid.' });
+
+        let sent = false;
+        if (type === 'welcome') {
+            sent = await emailNotifications.sendWelcomeEmail({
+                email,
+                name: getUserDisplayName(user),
+                eventType: user.profile?.eventType || 'wedding',
+                eventName: user.profile?.eventName || '',
+                eventDate: user.profile?.weddingDate,
+            });
+        } else if (type === 'login_alert') {
+            sent = await emailNotifications.sendLoginAlertEmail({
+                email,
+                ip: req.socket?.remoteAddress || 'admin-trigger',
+                userAgent: req.headers['user-agent'] || 'admin-panel',
+                loginAt: new Date(),
+            });
+        } else if (type === 'reminder') {
+            sent = await emailNotifications.sendEventReminderEmail({
+                email,
+                name: getUserDisplayName(user),
+                eventType: user.profile?.eventType || 'wedding',
+                eventName: user.profile?.eventName || '',
+                eventDate: user.profile?.weddingDate,
+                daysLeft: computeDaysUntilDate(user.profile?.weddingDate),
+            });
+        } else {
+            return res.status(400).send({ error: 'Tip email invalid. Foloseste welcome, login_alert sau reminder.' });
+        }
+
+        if (!sent) {
+            return res.status(500).send({ error: 'Emailul nu a putut fi trimis.' });
+        }
+
+        return res.send({ success: true });
+    } catch (e) {
+        return res.status(500).send({ error: e.message });
+    }
+});
+
+app.post('/api/admin/email/send-reminders', authenticateAdmin, async (req, res) => {
+    try {
+        const daysAhead = Math.max(0, Math.min(30, Number(req.body?.daysAhead ?? 3)));
+        const onlyVerified = req.body?.onlyVerified !== false;
+        const limit = Math.max(1, Math.min(500, Number(req.body?.limit ?? 200)));
+
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+        const maxDate = new Date(now);
+        maxDate.setDate(maxDate.getDate() + daysAhead);
+        maxDate.setHours(23, 59, 59, 999);
+
+        const query = {
+            'profile.weddingDate': { $gte: now, $lte: maxDate },
+        };
+        if (onlyVerified) query.emailVerified = { $ne: false };
+
+        const users = await User.find(query, 'user profile emailVerified').limit(limit);
+
+        let sentCount = 0;
+        let failedCount = 0;
+        const skipped = [];
+
+        for (const user of users) {
+            const email = normalizeEmail(user.user);
+            const eventDate = user.profile?.weddingDate;
+            const daysLeft = computeDaysUntilDate(eventDate);
+
+            if (!email || !eventDate || daysLeft === null || daysLeft < 0) {
+                skipped.push(email || String(user._id));
+                continue;
+            }
+
+            const sent = await emailNotifications.sendEventReminderEmail({
+                email,
+                name: getUserDisplayName(user),
+                eventType: user.profile?.eventType || 'wedding',
+                eventName: user.profile?.eventName || '',
+                eventDate,
+                daysLeft,
+            });
+
+            if (sent) sentCount += 1;
+            else failedCount += 1;
+        }
+
+        return res.send({
+            success: true,
+            scanned: users.length,
+            sent: sentCount,
+            failed: failedCount,
+            skipped: skipped.length,
+        });
+    } catch (e) {
+        return res.status(500).send({ error: e.message });
     }
 });
 
@@ -1779,25 +3068,85 @@ app.put('/api/admin/service-requests/:id', authenticateAdmin, async (req, res) =
 app.post('/api/upgrade', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { email } = req.body; 
+    const { email, billing = {} } = req.body || {};
     
     const user = await User.findById(userId);
     if (!user) return res.status(404).send({ error: "Utilizator inexistent." });
+    const clean = (value, max = 180) => String(value ?? '').trim().slice(0, max);
 
-    let billingEmail = email; 
-    if (!billingEmail && user.profile?.email) billingEmail = user.profile.email;
-    if (!billingEmail && user.user && user.user.includes('@')) billingEmail = user.user;
+    let billingEmail = clean(billing.email || email);
+    if (!billingEmail && user.profile?.billingEmail) billingEmail = clean(user.profile.billingEmail);
+    if (!billingEmail && user.profile?.email) billingEmail = clean(user.profile.email);
+    if (!billingEmail && user.user && user.user.includes('@')) billingEmail = clean(user.user);
+
+    const billingType = clean(billing.type, 20) === 'company' ? 'company' : 'individual';
+    const fallbackBillingName = clean(
+      user.profile?.billingName ||
+      [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') ||
+      user.profile?.partner1Name ||
+      'Client',
+      120
+    );
+    const billingName = clean(billing.name || fallbackBillingName, 120);
+    const billingCompany = clean(billing.company || user.profile?.billingCompany, 160);
+    const billingVatCode = clean(billing.vatCode || user.profile?.billingVatCode, 64);
+    const billingRegNo = clean(billing.regNo || user.profile?.billingRegNo, 64);
+    const billingAddress = clean(billing.address || user.profile?.billingAddress || user.profile?.address, 240);
+    const billingCity = clean(billing.city || user.profile?.billingCity || user.profile?.city, 120);
+    const billingCounty = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
+    const billingCountry = clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120);
+    const billingPhone = clean(billing.phone || user.profile?.billingPhone || user.profile?.phone, 40);
 
     if (!billingEmail || !billingEmail.includes('@')) {
-        return res.status(400).send({ error: "Email-ul de facturare este obligatorie." });
+        return res.status(400).send({ error: "Email-ul de facturare este obligatoriu." });
+    }
+    if (!billingName) {
+        return res.status(400).send({ error: "Numele de facturare este obligatoriu." });
+    }
+    if (billingType === 'company' && !billingCompany) {
+        return res.status(400).send({ error: "Numele companiei este obligatoriu pentru facturare pe firma." });
+    }
+    if (!billingAddress || !billingCity || !billingCountry) {
+        return res.status(400).send({ error: "Completeaza adresa, orasul si tara pentru facturare." });
     }
 
-    if (billingEmail !== user.profile?.email) {
-        await User.findByIdAndUpdate(userId, { "profile.email": billingEmail });
-    }
+    await User.findByIdAndUpdate(userId, {
+      $set: {
+        'profile.email': billingEmail,
+        'profile.billingType': billingType,
+        'profile.billingName': billingName,
+        'profile.billingCompany': billingCompany,
+        'profile.billingVatCode': billingVatCode,
+        'profile.billingRegNo': billingRegNo,
+        'profile.billingAddress': billingAddress,
+        'profile.billingCity': billingCity,
+        'profile.billingCounty': billingCounty,
+        'profile.billingCountry': billingCountry,
+        'profile.billingEmail': billingEmail,
+        'profile.billingPhone': billingPhone,
+      },
+    });
 
     const config = await getConfig();
-    const priceAmount = config.pricing.premiumPrice; 
+    const priceAmount = config.pricing.premiumPrice;
+    const metadataRaw = {
+      billingType,
+      billingName,
+      billingCompany,
+      billingVatCode,
+      billingRegNo,
+      billingAddress,
+      billingCity,
+      billingCounty,
+      billingCountry,
+      billingEmail,
+      billingPhone,
+    };
+    const stripeMetadata = Object.fromEntries(
+      Object.entries(metadataRaw)
+        .filter(([, value]) => !!value)
+        .map(([key, value]) => [key, String(value).slice(0, 500)])
+    );
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -1814,8 +3163,13 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
           quantity: 1,
         },
       ],
-      mode: 'payment', 
-      customer_email: billingEmail, 
+      mode: 'payment',
+      customer_email: billingEmail,
+      billing_address_collection: 'required',
+      metadata: stripeMetadata,
+      payment_intent_data: {
+        metadata: stripeMetadata,
+      },
       client_reference_id: userId,
       invoice_creation: { enabled: true },
       success_url: `${CLIENT_URL}/dashboard?payment=success`,
@@ -1889,16 +3243,53 @@ app.get('/api/public-invite-data/:slug', async (req, res) => {
 });
 
 app.post('/api/guest/rsvp', async (req, res) => {
-    const { token, status, rsvpData } = req.body;
-    await Guest.findOneAndUpdate({ token: token }, { status: status, rsvp: rsvpData });
-    res.send({ success: true });
+    try {
+        const { token, status, rsvpData } = req.body || {};
+        if (!token) return res.status(400).send({ error: 'Token lipsa.' });
+
+        const guest = await Guest.findOne({ token: String(token).trim() });
+        if (!guest) return res.status(404).send({ error: 'Invitat inexistent.' });
+
+        const nextStatusRaw = String(status || '').trim().toLowerCase();
+        const allowedStatuses = new Set(['pending', 'opened', 'confirmed', 'declined']);
+        const nextStatus = allowedStatuses.has(nextStatusRaw) ? nextStatusRaw : guest.status;
+
+        guest.status = nextStatus;
+        if (rsvpData && typeof rsvpData === 'object') guest.rsvp = rsvpData;
+        await guest.save();
+
+        if ((nextStatus === 'confirmed' || nextStatus === 'declined') && guest.ownerId) {
+            try {
+                const owner = await User.findById(guest.ownerId);
+                if (owner?.user) {
+                    await emailNotifications.sendGuestRsvpEmail({
+                        email: owner.user,
+                        ownerName: getUserDisplayName(owner),
+                        guestName: guest.name,
+                        status: nextStatus,
+                        rsvpData: guest.rsvp || {},
+                        eventType: owner?.profile?.eventType || 'wedding',
+                        eventName: owner?.profile?.eventName || '',
+                        eventDate: owner?.profile?.weddingDate,
+                    });
+                }
+            } catch (emailError) {
+                console.error('[EMAIL] guest/rsvp notification failed:', emailError);
+            }
+        }
+
+        res.send({ success: true });
+    } catch (e) {
+        res.status(500).send({ error: e.message });
+    }
 });
 
 app.post('/api/guest/public-rsvp', async (req, res) => {
-    const { ownerId, name, rsvpData } = req.body;
+    const { ownerId, name, status, rsvpData } = req.body;
     if (!ownerId || !name) return res.status(400).send({ error: 'Date incomplete.' });
     
     const owner = await User.findById(ownerId);
+    if (!owner) return res.status(404).send({ error: 'Eveniment inexistent.' });
     
     // Check if event is active before allowing new public RSVPs
     if (isEventCompleted(owner.profile.weddingDate)) {
@@ -1911,12 +3302,515 @@ app.post('/api/guest/public-rsvp', async (req, res) => {
     
     if (currentCount >= limits.maxGuests) return res.status(403).send({ error: 'Limita atinsă.' });
     
+    const nextStatus = String(status || '').toLowerCase() === 'declined' ? 'declined' : 'confirmed';
+
     const newGuest = new Guest({
         ownerId, name, type: 'adult', token: generateToken(),
-        status: 'confirmed', isSent: true, source: 'public', rsvp: rsvpData
+        status: nextStatus, isSent: true, source: 'public', rsvp: rsvpData
     });
     await newGuest.save();
+
+    try {
+        if (owner?.user) {
+            await emailNotifications.sendGuestRsvpEmail({
+                email: owner.user,
+                ownerName: getUserDisplayName(owner),
+                guestName: newGuest.name,
+                status: nextStatus,
+                rsvpData: newGuest.rsvp || {},
+                eventType: owner?.profile?.eventType || 'wedding',
+                eventName: owner?.profile?.eventName || '',
+                eventDate: owner?.profile?.weddingDate,
+            });
+        }
+    } catch (emailError) {
+        console.error('[EMAIL] guest/public-rsvp notification failed:', emailError);
+    }
+
     res.send({ success: true, guest: newGuest });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVOICE HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function generateInvoiceNumber() {
+    const year = new Date().getFullYear();
+    const cfg  = await SystemConfig.findOneAndUpdate(
+        { key: 'global_config' },
+        { $inc: { invoiceCounter: 1 } },
+        { new: true, upsert: true }
+    );
+    return `FACT-${year}-${String(cfg.invoiceCounter).padStart(4, '0')}`;
+}
+
+function generateInvoicePDF(data) {
+    return new Promise((resolve, reject) => {
+        const {
+            invoiceNumber, date, amount, currency = 'RON',
+            description, billingEmail, billingFirstName, billingLastName,
+            billingAddress, paymentMethod = 'Netopia / Card Bancar', orderId,
+        } = data;
+
+        // Helvetica uses WinAnsiEncoding (U+0000–U+00FF). Romanian chars like Ă, Ș, Ț
+        // are U+0100+ and render as invisible glyphs. Strip diacritics via NFD normalization.
+        const t = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f\u0326-\u0329]/g, '').replace(/[^\x00-\x7F]/g, '');
+
+        const doc    = new PDFDocument({ margin: 50, size: 'A4' });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        doc.on('end',  () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const dateStr = new Date(date).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+        const W = 595 - 100; // pagina A4 minus margini
+
+        // ── Header ──────────────────────────────────────────────────────────
+        doc.fontSize(22).font('Helvetica-Bold').text('FACTURA FISCALA', 50, 50);
+        doc.fontSize(10).font('Helvetica').fillColor('#666')
+           .text('Wedding Planner Pro', 50, 80)
+           .text('contact@weddingplanner.ro', 50, 93);
+
+        // Numar + data (dreapta)
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000')
+           .text(`Nr: ${invoiceNumber}`, 400, 50, { width: 145, align: 'right' });
+        doc.fontSize(10).font('Helvetica').fillColor('#333')
+           .text(`Data: ${dateStr}`, 400, 65, { width: 145, align: 'right' });
+
+        // Linie separator
+        doc.moveTo(50, 115).lineTo(545, 115).strokeColor('#e0e0e0').lineWidth(1).stroke();
+
+        // ── Bill To ─────────────────────────────────────────────────────────
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#888').text('FACTURAT CATRE', 50, 130);
+        const clientName = t([billingFirstName, billingLastName].filter(Boolean).join(' ') || 'Client');
+        doc.fontSize(11).font('Helvetica-Bold').fillColor('#000').text(clientName, 50, 145);
+        doc.fontSize(10).font('Helvetica').fillColor('#333');
+        if (billingEmail) doc.text(billingEmail, 50, 160);
+        if (billingAddress) doc.text(t(billingAddress), 50, 173);
+
+        // ── Tabel produse ────────────────────────────────────────────────────
+        const tableTop = 220;
+        doc.fontSize(9).font('Helvetica-Bold').fillColor('#fff')
+           .rect(50, tableTop, W, 24).fill('#2d3748').stroke();
+        doc.fillColor('#fff')
+           .text('Descriere', 60, tableTop + 7)
+           .text('Cant.', 380, tableTop + 7, { width: 50, align: 'center' })
+           .text('Pret', 440, tableTop + 7, { width: 50, align: 'right' })
+           .text('Total', 500, tableTop + 7, { width: 45, align: 'right' });
+
+        const rowTop = tableTop + 24;
+        doc.rect(50, rowTop, W, 28).fill('#f9f9f9').stroke();
+        doc.fontSize(10).font('Helvetica').fillColor('#000')
+           .text(t(description || 'Wedding Planner Premium'), 60, rowTop + 8)
+           .text('1', 380, rowTop + 8, { width: 50, align: 'center' })
+           .text(`${Number(amount).toFixed(2)} ${currency}`, 440, rowTop + 8, { width: 50, align: 'right' })
+           .text(`${Number(amount).toFixed(2)} ${currency}`, 500, rowTop + 8, { width: 45, align: 'right' });
+
+        // ── Total ────────────────────────────────────────────────────────────
+        const totalTop = rowTop + 40;
+        doc.moveTo(50, totalTop).lineTo(545, totalTop).strokeColor('#e0e0e0').lineWidth(1).stroke();
+        doc.fontSize(12).font('Helvetica-Bold').fillColor('#000')
+           .text('TOTAL DE PLATA:', 350, totalTop + 10)
+           .text(`${Number(amount).toFixed(2)} ${currency}`, 460, totalTop + 10, { width: 85, align: 'right' });
+
+        // ── Detalii plata ────────────────────────────────────────────────────
+        doc.fontSize(9).font('Helvetica').fillColor('#888')
+           .text(`Metoda de plata: ${t(paymentMethod)}`, 50, totalTop + 45)
+           .text(`Referinta comanda: ${orderId}`, 50, totalTop + 58)
+           .text('Status: ACHITAT', 50, totalTop + 71);
+
+        // ── Footer ───────────────────────────────────────────────────────────
+        doc.moveTo(50, 750).lineTo(545, 750).strokeColor('#e0e0e0').lineWidth(1).stroke();
+        doc.fontSize(8).fillColor('#aaa')
+           .text('Va multumim pentru incredere! Aceasta factura este generata automat.', 50, 760, { align: 'center', width: W });
+
+        doc.end();
+    });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NETOPIA PAYMENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function encryptNetopia(orderData) {
+    const builder = new Builder({ headless: false, renderOpts: { pretty: false } });
+    const xml = builder.buildObject(orderData);
+
+    const aesKey = crypto.randomBytes(32);
+    const iv     = crypto.randomBytes(16);
+
+    const cipher    = crypto.createCipheriv('aes-256-cbc', aesKey, iv);
+    const encrypted = Buffer.concat([cipher.update(xml, 'utf8'), cipher.final()]);
+
+    const certPath = path.join(process.cwd(), 'sandbox.3BX6-JMJU-8QP0-ACQC-PNHL.public.cer');
+    if (!fs.existsSync(certPath)) throw new Error('Netopia public.cer not found in project root.');
+
+    const publicKey      = crypto.createPublicKey(fs.readFileSync(certPath));
+    const encryptedKey   = crypto.publicEncrypt({ key: publicKey, padding: crypto.constants.RSA_PKCS1_PADDING }, aesKey);
+
+    return {
+        iv:      iv.toString('base64'),
+        env_key: encryptedKey.toString('base64'),
+        data:    encrypted.toString('base64'),
+        cipher:  'aes-256-cbc',
+    };
+}
+
+// 1. Initiate — authenticated
+app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
+    try {
+        if (!NETOPIA_SIGNATURE) return res.status(400).json({ error: 'NETOPIA_SIGNATURE lipsește din env.' });
+
+        const userId  = req.user.userId;
+        const user    = await User.findById(userId);
+        if (!user) return res.status(404).json({ error: 'User inexistent.' });
+
+        const config    = await getConfig();
+        const amount    = (config.pricing.premiumPrice / 100).toFixed(2); // cents → RON
+        const orderId   = `ORD_${Date.now()}`;
+        const timestamp = Date.now().toString();
+
+        const billingEmail = user.profile?.email || user.user || 'client@example.com';
+        const firstName    = user.profile?.firstName || user.profile?.partner1Name || 'Client';
+        const lastName     = user.profile?.lastName  || '';
+        const phone        = user.profile?.phone     || '0700000000';
+
+        const orderXml = {
+            order: {
+                $: { id: orderId, timestamp, type: 'card' },
+                signature: NETOPIA_SIGNATURE,
+                url: {
+                    return:  `${APP_URL}/api/netopia/return`,
+                    confirm: `${APP_URL}/api/netopia/confirm`,
+                },
+                invoice: {
+                    $: { currency: 'RON', amount },
+                    details: 'Wedding Planner Premium — acces pe viata',
+                    contact_info: {
+                        billing: {
+                            $: { type: 'person' },
+                            first_name:   firstName,
+                            last_name:    lastName,
+                            address:      user.profile?.address || 'Romania',
+                            email:        billingEmail,
+                            mobile_phone: phone,
+                        },
+                    },
+                },
+                ipn_cipher: 'aes-256-cbc',
+            },
+        };
+
+        const encrypted = encryptNetopia(orderXml);
+
+        // Salvăm comanda în profilul userului (status PENDING)
+        await User.findByIdAndUpdate(userId, {
+            $push: {
+                payments: {
+                    date:             new Date(),
+                    amount:           parseFloat(amount),
+                    invoiceId:        orderId,
+                    billingEmail,
+                    paymentMethod:    'netopia_card',
+                    status:           'Pending',
+                    relatedEventName: user.profile?.eventName || 'Wedding Planner Premium',
+                },
+            },
+        });
+
+        res.json({
+            success:    true,
+            iv:         encrypted.iv,
+            env_key:    encrypted.env_key,
+            data:       encrypted.data,
+            cipher:     encrypted.cipher,
+            paymentUrl: NETOPIA_SANDBOX
+                ? 'https://sandboxsecure.mobilpay.ro'
+                : 'https://secure.mobilpay.ro',
+            orderId,
+        });
+    } catch (err) {
+        console.error('Netopia initiate error:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 2. IPN (notifyUrl) — Netopia trimite JSON, la fel ca Stripe webhook
+app.post('/api/netopia/confirm', async (req, res) => {
+    console.log('=== NETOPIA IPN RECEIVED ===');
+    const crcOk = '<?xml version="1.0" encoding="utf-8"?><crc>OK</crc>';
+    res.set('Content-Type', 'text/xml');
+
+    const { env_key, data, iv, cipher } = req.body;
+
+    if (!env_key || !data) {
+        console.warn('Netopia IPN: lipsesc env_key sau data în body');
+        return res.send(crcOk);
+    }
+
+    try {
+        // 1. Citim cheia privată
+        const keyRelPath = (process.env.NETOPIA_PRIVATE_KEY_PATH || './sandbox.3BX6-JMJU-8QP0-ACQC-PNHLprivate.key').replace(/^\.\//, '');
+        const keyPath = path.join(process.cwd(), keyRelPath);
+        console.log('Netopia IPN: cheia privată la', keyPath, '| există:', fs.existsSync(keyPath));
+        if (!fs.existsSync(keyPath)) throw new Error(`Cheia privată nu există: ${keyPath}`);
+
+        // 2. Decriptăm cheia AES cu RSA (node-forge evită restricția din OpenSSL 3)
+        const privateKeyPem   = fs.readFileSync(keyPath, 'utf8');
+        const forgePrivateKey = forge.pki.privateKeyFromPem(privateKeyPem);
+        const aesKeyBinary    = forgePrivateKey.decrypt(forge.util.decode64(env_key), 'RSAES-PKCS1-V1_5');
+        const aesKey          = Buffer.from(aesKeyBinary, 'binary');
+
+        // 3. Decriptăm payload-ul cu AES-256-CBC
+        const ivBuf    = iv ? Buffer.from(iv, 'base64') : Buffer.alloc(16, 0);
+        const decipher = crypto.createDecipheriv(cipher || 'aes-256-cbc', aesKey, ivBuf);
+        const xmlStr   = Buffer.concat([
+            decipher.update(Buffer.from(data, 'base64')),
+            decipher.final(),
+        ]).toString('utf8');
+        console.log('Netopia IPN XML decriptat:', xmlStr);
+
+        // 4. Parsăm XML-ul
+        const parser  = new Parser({ explicitArray: false });
+        const parsed  = await parser.parseStringPromise(xmlStr);
+        const order   = parsed?.order;
+        const orderId = order?.$?.id;
+        const mobilpay = order?.mobilpay;
+
+        // errorCode "0" = aprobat
+        const errorCode = String(mobilpay?.error?.$?.code ?? mobilpay?.error?.code ?? '-1').trim();
+        const action    = mobilpay?.action ?? 'unknown';
+        console.log(`Netopia IPN: orderId=${orderId} | action=${action} | errorCode=${errorCode}`);
+
+        if (!orderId) {
+            console.warn('Netopia IPN: orderId lipsește din XML decriptat');
+            return res.send(crcOk);
+        }
+
+        if (errorCode === '0') {
+            // Plată aprobată — la fel ca Stripe checkout.session.completed
+            const user = await User.findOne({ 'payments.invoiceId': orderId });
+            console.log(`Netopia IPN: user găsit pentru orderId=${orderId}:`, !!user);
+
+            if (user) {
+                const invoiceNum = await generateInvoiceNumber();
+                const invoiceUrl = `/invoice/${invoiceNum}`;
+
+                const updated = await User.findOneAndUpdate(
+                    { _id: user._id, 'payments.invoiceId': orderId },
+                    { $set: {
+                        plan: 'premium',
+                        'payments.$.status': 'Paid',
+                        'payments.$.invoiceNumber': invoiceNum,
+                        'payments.$.invoicePdfUrl': invoiceUrl,
+                    }},
+                    { new: true }
+                );
+                console.log(`✅ Netopia IPN: user ${user._id} → plan=${updated?.plan} | factură=${invoiceNum} (order ${orderId})`);
+            } else {
+                console.warn(`Netopia IPN: ordinul ${orderId} nu există în DB`);
+            }
+        } else {
+            await User.findOneAndUpdate(
+                { 'payments.invoiceId': orderId },
+                { $set: { 'payments.$.status': 'Failed' } }
+            );
+            console.log(`❌ Netopia: order ${orderId} FAILED (errorCode=${errorCode})`);
+        }
+
+        return res.send(crcOk);
+    } catch (err) {
+        console.error('Netopia IPN error:', err.message);
+        return res.send(crcOk); // întotdeauna ack-uim ca să oprим retrimiterea
+    }
+});
+
+// TEST MANUAL — apelează din browser: GET /api/netopia/test-upgrade/:userId
+// Șterge după ce testezi!
+app.get('/api/netopia/test-upgrade/:userId', async (req, res) => {
+    try {
+        const result = await User.findByIdAndUpdate(
+            req.params.userId,
+            { plan: 'premium' },
+            { new: true }
+        );
+        res.json({ ok: true, plan: result?.plan });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// 3. Return URL (redirectUrl) — userul ajunge aici după plată (browser redirect).
+//    Facem upgrade și aici ca fallback, în cazul în care IPN-ul nu a ajuns (ex. tunel Cloudflare schimbat).
+app.get('/api/netopia/return', async (req, res) => {
+    try {
+        // Netopia poate trimite orderId ca string sau array dacă îl punem și noi în URL — luăm primul
+        const rawId = req.query.orderId;
+        const orderId = Array.isArray(rawId) ? rawId[0] : (typeof rawId === 'string' ? rawId.split(',')[0] : null);
+
+        if (orderId) {
+            const user = await User.findOne({ 'payments.invoiceId': orderId });
+            if (user) {
+                const payment = user.payments.find(p => p.invoiceId === orderId);
+                // Facem upgrade doar dacă e încă Pending (IPN-ul poate fi deja procesat)
+                if (payment && payment.status === 'Pending') {
+                    const invoiceNum = await generateInvoiceNumber();
+                    const invoiceUrl = `/invoice/${invoiceNum}`;
+
+                    await User.findOneAndUpdate(
+                        { _id: user._id, 'payments.invoiceId': orderId },
+                        { $set: {
+                            plan: 'premium',
+                            'payments.$.status': 'Paid',
+                            'payments.$.invoiceNumber': invoiceNum,
+                            'payments.$.invoicePdfUrl': invoiceUrl,
+                        }}
+                    );
+                    console.log(`✅ Netopia return: user ${user._id} → premium | factură=${invoiceNum} (order ${orderId})`);
+                }
+            }
+        }
+    } catch (err) {
+        console.error('Netopia return handler error:', err.message);
+    }
+    res.redirect(`${CLIENT_URL}/dashboard?payment=success`);
+});
+
+// ── HTML Invoice Page ─────────────────────────────────────────────────────────
+app.get('/invoice/:invoiceNumber', async (req, res) => {
+    const { invoiceNumber } = req.params;
+    try {
+        const user = await User.findOne({ 'payments.invoiceNumber': invoiceNumber });
+        if (!user) return res.status(404).send('<h2>Factura nu a fost gasita.</h2>');
+        const p = user.payments.find(x => x.invoiceNumber === invoiceNumber);
+        if (!p) return res.status(404).send('<h2>Factura nu a fost gasita.</h2>');
+
+        const date = new Date(p.date).toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
+        const amount = Number(p.amount || 0).toFixed(2);
+        const clientName = [p.billingFirstName, p.billingLastName].filter(Boolean).join(' ') || 'Client';
+
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.send(`<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Factură ${invoiceNumber}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #f4f6f9; color: #222; }
+  .page { max-width: 800px; margin: 40px auto; background: #fff; border-radius: 12px; box-shadow: 0 4px 32px rgba(0,0,0,.10); overflow: hidden; }
+  .header { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); color: #fff; padding: 40px 48px 36px; display: flex; justify-content: space-between; align-items: flex-start; }
+  .brand { font-size: 22px; font-weight: 700; letter-spacing: .5px; }
+  .brand-sub { font-size: 12px; color: rgba(255,255,255,.6); margin-top: 4px; }
+  .invoice-meta { text-align: right; }
+  .invoice-title { font-size: 28px; font-weight: 300; letter-spacing: 2px; text-transform: uppercase; opacity: .9; }
+  .invoice-num { font-size: 14px; color: rgba(255,255,255,.7); margin-top: 6px; }
+  .badge { display: inline-block; background: #10b981; color: #fff; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; margin-top: 8px; letter-spacing: .5px; }
+  .body { padding: 40px 48px; }
+  .info-row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; margin-bottom: 36px; }
+  .info-block label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #888; display: block; margin-bottom: 8px; }
+  .info-block .val { font-size: 15px; color: #111; font-weight: 600; }
+  .info-block .sub { font-size: 13px; color: #555; margin-top: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+  thead tr { background: #1a1a2e; color: #fff; }
+  thead th { padding: 12px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .8px; text-align: left; }
+  thead th:last-child { text-align: right; }
+  tbody tr { border-bottom: 1px solid #f0f0f0; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody td { padding: 16px; font-size: 14px; color: #333; }
+  tbody td:last-child { text-align: right; font-weight: 600; }
+  .total-section { background: #f8f9fc; border-radius: 8px; padding: 20px 24px; text-align: right; }
+  .total-section .total-label { font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: #888; }
+  .total-section .total-val { font-size: 32px; font-weight: 700; color: #1a1a2e; margin-top: 4px; }
+  .total-section .total-currency { font-size: 16px; font-weight: 400; color: #666; margin-left: 4px; }
+  .meta-section { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #eee; }
+  .meta-block label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #aaa; display: block; margin-bottom: 4px; }
+  .meta-block .val { font-size: 13px; color: #444; font-weight: 500; word-break: break-all; }
+  .footer { background: #f8f9fc; padding: 20px 48px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #eee; }
+  .footer-text { font-size: 12px; color: #aaa; }
+  .print-btn { background: #1a1a2e; color: #fff; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: background .2s; }
+  .print-btn:hover { background: #0f3460; }
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; max-width: 100%; }
+    .print-btn { display: none; }
+    .footer { border-top: none; background: none; padding: 16px 48px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="header">
+    <div>
+      <div class="brand">Wedding Planner Pro</div>
+      <div class="brand-sub">contact@weddingplanner.ro</div>
+    </div>
+    <div class="invoice-meta">
+      <div class="invoice-title">Factură</div>
+      <div class="invoice-num">${invoiceNumber}</div>
+      <div><span class="badge">ACHITAT</span></div>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="info-row">
+      <div class="info-block">
+        <label>Facturat către</label>
+        <div class="val">${clientName}</div>
+        <div class="sub">${p.billingEmail || ''}</div>
+        ${p.billingAddress ? `<div class="sub">${p.billingAddress}</div>` : ''}
+      </div>
+      <div class="info-block">
+        <label>Detalii factură</label>
+        <div class="val">${invoiceNumber}</div>
+        <div class="sub">Data: ${date}</div>
+        <div class="sub">Metodă: ${p.billingFirstName ? 'Netopia / Card Bancar' : 'Card (Stripe)'}</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Descriere</th>
+          <th style="text-align:center">Cantitate</th>
+          <th style="text-align:right">Preț unitar</th>
+          <th>Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Wedding Planner Pro — Licență Premium</td>
+          <td style="text-align:center">1</td>
+          <td style="text-align:right">${amount} RON</td>
+          <td>${amount} RON</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="total-section">
+      <div class="total-label">Total de plată</div>
+      <div class="total-val">${amount}<span class="total-currency">RON</span></div>
+    </div>
+
+    <div class="meta-section">
+      <div class="meta-block"><label>Referință comandă</label><div class="val">${p.invoiceId || '-'}</div></div>
+      <div class="meta-block"><label>Status plată</label><div class="val" style="color:#10b981;font-weight:700">Achitat</div></div>
+      <div class="meta-block"><label>Data emiterii</label><div class="val">${date}</div></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-text">Vă mulțumim pentru încredere! Această factură a fost generată automat.</div>
+    <button class="print-btn" onclick="window.print()">⬇ Descarcă / Printează</button>
+  </div>
+</div>
+</body>
+</html>`);
+    } catch (err) {
+        console.error('Invoice page error:', err.message);
+        res.status(500).send('<h2>Eroare la generarea facturii.</h2>');
+    }
 });
 
 app.use(express.static(path.join(__dirname, 'dist')));
