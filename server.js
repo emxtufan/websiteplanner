@@ -20,6 +20,11 @@ import { Builder, Parser } from 'xml2js';
 import forge from 'node-forge';
 import PDFDocument from 'pdfkit';
 import { createEmailNotifications } from './emailNotifications.js';
+import {
+  createSmartbillInvoiceFlow,
+  isSmartbillConfigured,
+  normalizeBillingTaxCode,
+} from './services/smartbillService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +50,8 @@ const EMAIL_WELCOME_ENABLED = process.env.EMAIL_WELCOME_ENABLED !== 'false';
 const EMAIL_LOGIN_ALERT_ENABLED = process.env.EMAIL_LOGIN_ALERT_ENABLED !== 'false';
 const EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES = Number(process.env.EMAIL_LOGIN_ALERT_COOLDOWN_MINUTES || 180);
 const EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES = Number(process.env.EMAIL_LOGIN_ALERT_SKIP_NEW_ACCOUNT_MINUTES || 180);
+const STRIPE_SMARTBILL_DEBUG =
+  process.env.STRIPE_SMARTBILL_DEBUG === 'true' || process.env.SMARTBILL_DEBUG === 'true';
 
 // --- NETOPIA ---
 const NETOPIA_SIGNATURE = process.env.NETOPIA_SIGNATURE || '';
@@ -185,6 +192,10 @@ const PaymentSchema = new mongoose.Schema({
     billingFirstName: String,
     billingLastName: String,
     billingAddress: String,
+    billingCity: String,
+    billingSector: String,
+    billingCounty: String,
+    billingCountry: String,
 });
 
 const ArchivedSnapshotSchema = new mongoose.Schema({
@@ -283,6 +294,7 @@ const UserSchema = new mongoose.Schema({
     billingRegNo: String,
     billingAddress: String,
     billingCity: String,
+    billingSector: String,
     billingCounty: String,
     billingCountry: String,
     billingEmail: String,
@@ -471,6 +483,16 @@ const isEventCompleted = (weddingDate) => {
     return new Date() > oneDayAfter;
 };
 
+const isPastOrInvalidEventDate = (value) => {
+    if (value === null || typeof value === 'undefined' || value === '') return false;
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return true;
+    parsed.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return parsed < today;
+};
+
 // --- MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -513,6 +535,200 @@ const ensureActiveEvent = async (req, res, next) => {
     }
 };
 
+function splitDisplayName(fullName = '') {
+  const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+  return {
+    firstName: tokens[0] || '',
+    lastName: tokens.slice(1).join(' '),
+  };
+}
+
+function logStripeSmartbill(label, payload) {
+  if (!STRIPE_SMARTBILL_DEBUG) return;
+  if (typeof payload === 'undefined') {
+    console.log(`[STRIPE->SMARTBILL][DEBUG] ${label}`);
+    return;
+  }
+  console.log(`[STRIPE->SMARTBILL][DEBUG] ${label}`, payload);
+}
+
+function normalizeCountryName(country = '') {
+  const raw = String(country || '').trim();
+  if (!raw) return '';
+  if (raw.toUpperCase() === 'RO') return 'Romania';
+  return raw;
+}
+
+function normalizeLocationKey(value = '') {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isBucharestCity(city = '') {
+  const key = normalizeLocationKey(city);
+  return ['bucuresti', 'bucharest', 'municipiul bucuresti', 'mun bucuresti'].includes(key);
+}
+
+function normalizeSectorName(sector = '') {
+  const raw = String(sector || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/([1-6])/);
+  if (!m) return '';
+  return `Sector ${m[1]}`;
+}
+
+function toSmartbillLocality({
+  billingType = 'individual',
+  city = '',
+  sector = '',
+  country = '',
+}) {
+  const normalizedCountry = normalizeCountryName(country || '');
+  const normalizedCity = String(city || '').trim();
+  const normalizedSector = normalizeSectorName(sector || '');
+  const isRomania = ['romania', 'ro'].includes(String(normalizedCountry || '').toLowerCase());
+  if (billingType === 'company' && isRomania && isBucharestCity(normalizedCity)) {
+    return normalizedSector || '';
+  }
+  return normalizedCity;
+}
+
+function normalizeCountyName(county = '', country = '') {
+  const raw = String(county || '').trim();
+  if (!raw) return '';
+  const isRomania = ['romania', 'ro'].includes(String(country || '').trim().toLowerCase());
+  if (!isRomania) return raw;
+
+  const key = raw
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const countyMap = {
+    'mun bucuresti': 'Bucuresti',
+    'municipiul bucuresti': 'Bucuresti',
+    bucuresti: 'Bucuresti',
+    bucharest: 'Bucuresti',
+    ilfov: 'Ilfov',
+    timis: 'Timis',
+    cluj: 'Cluj',
+    iasi: 'Iasi',
+    constanta: 'Constanta',
+    brasov: 'Brasov',
+    sibiu: 'Sibiu',
+    bihor: 'Bihor',
+    dolj: 'Dolj',
+    prahova: 'Prahova',
+    galati: 'Galati',
+    braila: 'Braila',
+    mures: 'Mures',
+    maramures: 'Maramures',
+    suceava: 'Suceava',
+    arges: 'Arges',
+  };
+
+  if (countyMap[key]) return countyMap[key];
+
+  return raw
+    .split(/\s+/)
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1).toLowerCase() : ''))
+    .join(' ');
+}
+
+function inferRomanianCounty(city = '', country = '') {
+  const isRomania = ['romania', 'ro'].includes(String(country || '').trim().toLowerCase());
+  if (!isRomania) return '';
+  const key = String(city || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const cityToCounty = {
+    bucuresti: 'Bucuresti',
+    bucharest: 'Bucuresti',
+    'cluj-napoca': 'Cluj',
+    'cluj napoca': 'Cluj',
+    cluj: 'Cluj',
+    iasi: 'Iasi',
+    timisoara: 'Timis',
+    constanta: 'Constanta',
+    brasov: 'Brasov',
+    sibiu: 'Sibiu',
+    oradea: 'Bihor',
+    craiova: 'Dolj',
+    ploiesti: 'Prahova',
+    galati: 'Galati',
+    braila: 'Braila',
+    'targu mures': 'Mures',
+    'targu-mures': 'Mures',
+    'baia mare': 'Maramures',
+    'baia-mare': 'Maramures',
+    suceava: 'Suceava',
+    pitesti: 'Arges',
+  };
+  return cityToCounty[key] || '';
+}
+
+function getSmartbillBillingFromProfile(profile = {}, emailFallback = '') {
+  const billingType = String(profile?.billingType || '').trim() === 'company' ? 'company' : 'individual';
+  const billingName = String(profile?.billingName || '').trim();
+  const billingCompany = String(profile?.billingCompany || '').trim();
+  const city = String(profile?.billingCity || profile?.city || '').trim();
+  const sector = normalizeSectorName(profile?.billingSector || '');
+  const country = normalizeCountryName(profile?.billingCountry || profile?.country || 'Romania');
+  const countyRaw = String(profile?.billingCounty || profile?.county || '').trim();
+  const county = normalizeCountyName(countyRaw, country) || inferRomanianCounty(city, country);
+  const address = String(profile?.billingAddress || profile?.address || '').trim();
+  const smartbillCity = toSmartbillLocality({
+    billingType,
+    city,
+    sector,
+    country,
+  });
+  const normalizedTaxCode = normalizeBillingTaxCode({
+    billingType,
+    vatCode: profile?.billingVatCode || '',
+  });
+  return {
+    type: billingType,
+    name: billingName || [profile?.firstName, profile?.lastName].filter(Boolean).join(' ').trim() || 'Client',
+    company: billingCompany,
+    vatCode: normalizedTaxCode,
+    regNo: String(profile?.billingRegNo || '').trim(),
+    address,
+    city: smartbillCity || city,
+    sector,
+    county,
+    country,
+    email: String(profile?.billingEmail || profile?.email || emailFallback || '').trim(),
+    phone: String(profile?.billingPhone || profile?.phone || '').trim(),
+  };
+}
+
+function buildEmailAttachmentFromFile(filePath, filename = 'factura.pdf') {
+  if (!filePath) return null;
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const fileBuffer = fs.readFileSync(filePath);
+    return {
+      filename,
+      content: fileBuffer.toString('base64'),
+    };
+  } catch (error) {
+    console.error('[EMAIL] Failed preparing invoice attachment:', error.message);
+    return null;
+  }
+}
+
 // --- STRIPE WEBHOOK ---
 app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -531,10 +747,33 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const customerEmail = session.customer_details?.email;
     const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
     const meta = session.metadata || {};
+    const invoiceRef = session.invoice || session.id;
+    logStripeSmartbill('Checkout session completed', {
+      eventId: event.id,
+      sessionId: session.id,
+      userId,
+      amountTotal,
+      customerEmail,
+      stripeInvoiceId: session.invoice || null,
+      paymentStatus: session.payment_status,
+      metadataKeys: Object.keys(meta || {}),
+      smartbillConfigured: isSmartbillConfigured(),
+    });
+
+    if (session.payment_status !== 'paid') {
+      logStripeSmartbill('Skipping webhook update because payment is not paid yet', {
+        sessionId: session.id,
+        invoiceRef,
+        paymentStatus: session.payment_status,
+      });
+      return res.json({ received: true, skipped: 'payment_not_paid' });
+    }
 
     try {
         let invoicePdfUrl = null;
         let hostedInvoiceUrl = null;
+        let invoiceNumber = '';
+        let invoiceEmailData = null;
 
         if (session.invoice) {
             try {
@@ -547,30 +786,124 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         }
 
         const user = await User.findById(userId);
+        const alreadyPaid = await User.exists({
+          _id: userId,
+          'payments.invoiceId': invoiceRef,
+          'payments.status': 'Paid',
+        });
+        if (alreadyPaid) {
+          logStripeSmartbill('Skipping duplicate paid webhook', { userId, invoiceRef });
+          return res.json({ received: true, duplicate: true });
+        }
+
+        const stripeAddress = session.customer_details?.address || {};
+        const stripeStreet = [stripeAddress.line1, stripeAddress.line2].filter(Boolean).join(', ').trim();
         const relatedEventDate = user?.profile?.weddingDate;
         const relatedEventName = user?.profile?.eventName || 'Eveniment Nedenumit';
         const billingEmail = (meta.billingEmail || customerEmail || '').trim();
-        const billingType = (meta.billingType || '').trim();
+        const billingType = (meta.billingType || '').trim() === 'company' ? 'company' : 'individual';
         const billingName = (meta.billingName || '').trim();
         const billingCompany = (meta.billingCompany || '').trim();
-        const billingCity = (meta.billingCity || '').trim();
-        const billingCounty = (meta.billingCounty || '').trim();
-        const billingCountry = (meta.billingCountry || '').trim();
-        const baseAddress = (meta.billingAddress || '').trim();
+        const billingVatCode = normalizeBillingTaxCode({
+          billingType,
+          vatCode: (meta.billingVatCode || '').trim(),
+        });
+        const billingCountry = normalizeCountryName(
+          meta.billingCountry || stripeAddress.country || user?.profile?.billingCountry || user?.profile?.country || 'Romania',
+        );
+        const billingCity = (meta.billingCity || stripeAddress.city || user?.profile?.billingCity || user?.profile?.city || '').trim();
+        const billingSector = normalizeSectorName(meta.billingSector || user?.profile?.billingSector || '');
+        const billingCountyRaw = (meta.billingCounty || stripeAddress.state || user?.profile?.billingCounty || user?.profile?.county || '').trim();
+        const billingCounty = isBucharestCity(billingCity)
+          ? 'Bucuresti'
+          : (normalizeCountyName(billingCountyRaw, billingCountry) || inferRomanianCounty(billingCity, billingCountry));
+        const billingRegNo = (meta.billingRegNo || user?.profile?.billingRegNo || '').trim();
+        const smartbillCity = toSmartbillLocality({
+          billingType,
+          city: billingCity,
+          sector: billingSector,
+          country: billingCountry,
+        }) || billingCity;
+        const baseAddress = (meta.billingAddress || stripeStreet || user?.profile?.billingAddress || user?.profile?.address || '').trim();
         const billingAddress = [baseAddress, billingCity, billingCounty, billingCountry].filter(Boolean).join(', ');
         const displayName = billingCompany || billingName;
-        const nameParts = displayName.split(/\s+/).filter(Boolean);
-        const billingFirstName = nameParts[0] || '';
-        const billingLastName = nameParts.slice(1).join(' ');
+        const { firstName: billingFirstName, lastName: billingLastName } = splitDisplayName(displayName);
+
+        if (isSmartbillConfigured()) {
+          try {
+            logStripeSmartbill('SmartBill flow input', {
+              billingType,
+              billingName: billingName || displayName || 'Client',
+              billingCompany,
+              billingVatCode: billingVatCode ? `${billingVatCode.slice(0, 3)}***` : '',
+              baseAddress,
+              billingCity,
+              billingSector,
+              billingCounty,
+              billingRegNo,
+              billingCountry: billingCountry || 'Romania',
+              billingEmail,
+              amount: amountTotal,
+            });
+            const smartbillResult = await createSmartbillInvoiceFlow({
+              billing: {
+                type: billingType,
+                name: billingName || displayName || 'Client',
+                company: billingCompany,
+                vatCode: billingVatCode,
+                regNo: billingRegNo,
+                address: baseAddress,
+                city: smartbillCity,
+                sector: billingSector,
+                county: billingCounty,
+                country: billingCountry || 'Romania',
+                email: billingEmail,
+                phone: (meta.billingPhone || '').trim(),
+              },
+              amount: amountTotal,
+              currency: 'RON',
+              description: 'Wedding Planner Premium',
+              sendEmail: false,
+            });
+            if (smartbillResult?.enabled) {
+              invoiceNumber = smartbillResult.invoiceNumber || '';
+              if (smartbillResult.pdfPublicUrl) {
+                invoicePdfUrl = smartbillResult.pdfPublicUrl;
+              }
+              invoiceEmailData = {
+                pdfFilePath: smartbillResult.pdfFilePath || '',
+                pdfFileName: smartbillResult.pdfFileName || '',
+              };
+              logStripeSmartbill('SmartBill flow success', {
+                invoiceNumber,
+                pdfPublicUrl: smartbillResult.pdfPublicUrl || null,
+                clientTaxCode: billingVatCode ? `${billingVatCode.slice(0, 3)}***` : '',
+              });
+            }
+          } catch (smartbillErr) {
+            console.error('[SMARTBILL] Stripe checkout invoice failed:', smartbillErr.message);
+            logStripeSmartbill('SmartBill flow error', {
+              message: smartbillErr.message,
+              stack: smartbillErr.stack,
+            });
+          }
+        } else {
+          logStripeSmartbill('SmartBill skipped (missing env config)');
+        }
 
         const newPayment = {
             date: new Date(),
             amount: amountTotal,
-            invoiceId: session.invoice || session.id,
+            invoiceId: invoiceRef,
+            invoiceNumber,
             billingEmail,
             billingFirstName,
             billingLastName,
             billingAddress,
+            billingCity,
+            billingSector,
+            billingCounty,
+            billingCountry,
             invoicePdfUrl: invoicePdfUrl,
             hostedInvoiceUrl: hostedInvoiceUrl,
             paymentMethod: 'stripe_card',
@@ -580,15 +913,16 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         };
 
         const profileBillingSet = {};
-        if (billingType) profileBillingSet['profile.billingType'] = billingType;
+        profileBillingSet['profile.billingType'] = billingType;
         if (billingName) profileBillingSet['profile.billingName'] = billingName;
         if (billingCompany) profileBillingSet['profile.billingCompany'] = billingCompany;
-        if (meta.billingVatCode) profileBillingSet['profile.billingVatCode'] = meta.billingVatCode;
+        if (billingVatCode) profileBillingSet['profile.billingVatCode'] = billingVatCode;
         if (meta.billingRegNo) profileBillingSet['profile.billingRegNo'] = meta.billingRegNo;
-        if (meta.billingAddress) profileBillingSet['profile.billingAddress'] = meta.billingAddress;
-        if (meta.billingCity) profileBillingSet['profile.billingCity'] = meta.billingCity;
-        if (meta.billingCounty) profileBillingSet['profile.billingCounty'] = meta.billingCounty;
-        if (meta.billingCountry) profileBillingSet['profile.billingCountry'] = meta.billingCountry;
+        if (baseAddress) profileBillingSet['profile.billingAddress'] = baseAddress;
+        if (billingCity) profileBillingSet['profile.billingCity'] = billingCity;
+        if (billingSector) profileBillingSet['profile.billingSector'] = billingSector;
+        if (billingCounty) profileBillingSet['profile.billingCounty'] = billingCounty;
+        if (billingCountry) profileBillingSet['profile.billingCountry'] = billingCountry;
         if (billingEmail) {
             profileBillingSet['profile.billingEmail'] = billingEmail;
             profileBillingSet['profile.email'] = billingEmail;
@@ -602,8 +936,50 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             },
             $push: { payments: newPayment },
         });
+        logStripeSmartbill('DB update done', {
+          userId,
+          invoiceNumber,
+          invoicePdfUrl,
+          paymentMethod: newPayment.paymentMethod,
+        });
+
+        if (billingEmail && invoiceNumber) {
+          const attachment = buildEmailAttachmentFromFile(
+            invoiceEmailData?.pdfFilePath,
+            invoiceEmailData?.pdfFileName || `${invoiceNumber}.pdf`,
+          );
+          const invoicePublicUrl = invoicePdfUrl
+            ? (String(invoicePdfUrl).startsWith('http') ? invoicePdfUrl : `${CLIENT_URL}${invoicePdfUrl}`)
+            : '';
+          const sent = await emailNotifications.sendBillingInvoiceEmail({
+            email: billingEmail,
+            name: displayName || [user?.profile?.firstName, user?.profile?.lastName].filter(Boolean).join(' ').trim(),
+            invoiceNumber,
+            amount: amountTotal,
+            currency: 'RON',
+            issueDate: new Date(),
+            eventName: relatedEventName || '',
+            invoiceUrl: invoicePublicUrl,
+            attachments: attachment ? [attachment] : [],
+          });
+          logStripeSmartbill('Invoice email sent via emailNotifications', {
+            sent,
+            hasAttachment: Boolean(attachment),
+            invoiceNumber,
+            billingEmail,
+          });
+        } else {
+          logStripeSmartbill('Invoice email skipped (missing email or invoice number)', {
+            billingEmail,
+            invoiceNumber,
+          });
+        }
     } catch (dbError) {
         console.error('❌ Database Update Failed:', dbError);
+        logStripeSmartbill('DB update error', {
+          message: dbError.message,
+          stack: dbError.stack,
+        });
     }
   }
 
@@ -1973,6 +2349,10 @@ app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
             return res.status(400).send({ error: 'Tipul și data evenimentului sunt obligatorii.' });
         }
 
+        if (isPastOrInvalidEventDate(weddingDate)) {
+            return res.status(400).send({ error: 'Data evenimentului nu poate fi in trecut.' });
+        }
+
         if (!eventRole || !contactName || !phone || !address) {
             return res.status(400).send({ error: 'Rolul, numele, telefonul si adresa sunt obligatorii.' });
         }
@@ -2305,6 +2685,31 @@ app.delete('/api/upload/all/:userId', authenticateToken, (req, res) => {
 app.post('/api/profile', authenticateToken, ensureActiveEvent, async (req, res) => {
     try {
         const { profile } = req.body;
+        if (profile && typeof profile === 'object') {
+            if (Object.prototype.hasOwnProperty.call(profile, 'weddingDate')) {
+                const rawWeddingDate =
+                    typeof profile.weddingDate === 'string'
+                        ? profile.weddingDate.trim()
+                        : profile.weddingDate;
+                if (isPastOrInvalidEventDate(rawWeddingDate)) {
+                    return res.status(400).send({ error: 'Data evenimentului nu poate fi in trecut.' });
+                }
+            }
+
+            const billingCity = String(profile.billingCity || '').trim();
+            const billingCountry = normalizeCountryName(profile.billingCountry || 'Romania');
+            const billingType = String(profile.billingType || '').trim() === 'company' ? 'company' : 'individual';
+            const normalizedSector = normalizeSectorName(profile.billingSector || '');
+            if (isBucharestCity(billingCity)) {
+                profile.billingCounty = 'Bucuresti';
+                if (billingType === 'company') {
+                    profile.billingSector = normalizedSector;
+                }
+            } else if (profile.billingSector) {
+                profile.billingSector = normalizedSector;
+            }
+            profile.billingCountry = billingCountry;
+        }
 
         // Safety: strip any leftover base64 imageData from blocks
         if (profile?.customSections) {
@@ -2601,6 +3006,9 @@ app.put('/api/admin/users/:id', authenticateAdmin, async (req, res) => {
             if (typeof nextProfile.weddingDate === 'string') {
                 const rawDate = nextProfile.weddingDate.trim();
                 nextProfile.weddingDate = rawDate ? new Date(rawDate) : undefined;
+            }
+            if (isPastOrInvalidEventDate(nextProfile.weddingDate)) {
+                return res.status(400).send({ error: 'Data evenimentului nu poate fi in trecut.' });
             }
             updatePayload.profile = nextProfile;
         }
@@ -3089,12 +3497,22 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
     );
     const billingName = clean(billing.name || fallbackBillingName, 120);
     const billingCompany = clean(billing.company || user.profile?.billingCompany, 160);
-    const billingVatCode = clean(billing.vatCode || user.profile?.billingVatCode, 64);
+    const billingVatCodeInput = clean(billing.vatCode || user.profile?.billingVatCode, 64);
+    const billingVatCode = normalizeBillingTaxCode({
+      billingType,
+      vatCode: billingVatCodeInput,
+    });
     const billingRegNo = clean(billing.regNo || user.profile?.billingRegNo, 64);
     const billingAddress = clean(billing.address || user.profile?.billingAddress || user.profile?.address, 240);
     const billingCity = clean(billing.city || user.profile?.billingCity || user.profile?.city, 120);
-    const billingCounty = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
-    const billingCountry = clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120);
+    const billingSector = normalizeSectorName(clean(billing.sector || user.profile?.billingSector, 32));
+    const billingCountry = normalizeCountryName(
+      clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120)
+    );
+    const billingCountyRaw = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
+    const billingCounty = isBucharestCity(billingCity)
+      ? 'Bucuresti'
+      : (normalizeCountyName(billingCountyRaw, billingCountry) || inferRomanianCounty(billingCity, billingCountry));
     const billingPhone = clean(billing.phone || user.profile?.billingPhone || user.profile?.phone, 40);
 
     if (!billingEmail || !billingEmail.includes('@')) {
@@ -3106,8 +3524,11 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
     if (billingType === 'company' && !billingCompany) {
         return res.status(400).send({ error: "Numele companiei este obligatoriu pentru facturare pe firma." });
     }
-    if (!billingAddress || !billingCity || !billingCountry) {
-        return res.status(400).send({ error: "Completeaza adresa, orasul si tara pentru facturare." });
+    if (billingType === 'company' && isBucharestCity(billingCity) && !billingSector) {
+        return res.status(400).send({ error: "Pentru firme din Bucuresti, selecteaza sectorul." });
+    }
+    if (!billingAddress || !billingCity || !billingCountry || !billingCounty) {
+        return res.status(400).send({ error: "Completeaza adresa, orasul, judetul si tara pentru facturare." });
     }
 
     await User.findByIdAndUpdate(userId, {
@@ -3120,6 +3541,7 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
         'profile.billingRegNo': billingRegNo,
         'profile.billingAddress': billingAddress,
         'profile.billingCity': billingCity,
+        'profile.billingSector': billingSector,
         'profile.billingCounty': billingCounty,
         'profile.billingCountry': billingCountry,
         'profile.billingEmail': billingEmail,
@@ -3137,6 +3559,7 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
       billingRegNo,
       billingAddress,
       billingCity,
+      billingSector,
       billingCounty,
       billingCountry,
       billingEmail,
@@ -3464,16 +3887,78 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
         const userId  = req.user.userId;
         const user    = await User.findById(userId);
         if (!user) return res.status(404).json({ error: 'User inexistent.' });
+        const { billing = {} } = req.body || {};
+        const clean = (value, max = 180) => String(value ?? '').trim().slice(0, max);
 
         const config    = await getConfig();
         const amount    = (config.pricing.premiumPrice / 100).toFixed(2); // cents → RON
         const orderId   = `ORD_${Date.now()}`;
         const timestamp = Date.now().toString();
 
-        const billingEmail = user.profile?.email || user.user || 'client@example.com';
-        const firstName    = user.profile?.firstName || user.profile?.partner1Name || 'Client';
-        const lastName     = user.profile?.lastName  || '';
-        const phone        = user.profile?.phone     || '0700000000';
+        const billingType = clean(billing.type, 20) === 'company' ? 'company' : 'individual';
+        const fallbackBillingName = clean(
+          user.profile?.billingName ||
+          [user.profile?.firstName, user.profile?.lastName].filter(Boolean).join(' ') ||
+          user.profile?.partner1Name ||
+          'Client',
+          120
+        );
+        const billingName = clean(billing.name || fallbackBillingName, 120);
+        const billingCompany = clean(billing.company || user.profile?.billingCompany, 160);
+        const billingVatCode = normalizeBillingTaxCode({
+          billingType,
+          vatCode: clean(billing.vatCode || user.profile?.billingVatCode, 64),
+        });
+        const billingRegNo = clean(billing.regNo || user.profile?.billingRegNo, 64);
+        const billingAddress = clean(billing.address || user.profile?.billingAddress || user.profile?.address, 240);
+        const billingCity = clean(billing.city || user.profile?.billingCity || user.profile?.city, 120);
+        const billingSector = normalizeSectorName(clean(billing.sector || user.profile?.billingSector, 32));
+        const billingCountry = normalizeCountryName(
+          clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120)
+        );
+        const billingCountyRaw = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
+        const billingCounty = isBucharestCity(billingCity)
+          ? 'Bucuresti'
+          : (normalizeCountyName(billingCountyRaw, billingCountry) || inferRomanianCounty(billingCity, billingCountry));
+        const billingPhone = clean(billing.phone || user.profile?.billingPhone || user.profile?.phone || '0700000000', 40);
+        let billingEmail = clean(billing.email || user.profile?.billingEmail || user.profile?.email || user.user);
+
+        if (!billingEmail || !billingEmail.includes('@')) {
+          return res.status(400).json({ error: 'Email-ul de facturare este obligatoriu.' });
+        }
+        if (!billingName) {
+          return res.status(400).json({ error: 'Numele de facturare este obligatoriu.' });
+        }
+        if (billingType === 'company' && !billingCompany) {
+          return res.status(400).json({ error: 'Numele companiei este obligatoriu pentru facturare pe firma.' });
+        }
+        if (billingType === 'company' && isBucharestCity(billingCity) && !billingSector) {
+          return res.status(400).json({ error: 'Pentru firme din Bucuresti, selecteaza sectorul.' });
+        }
+        if (!billingAddress || !billingCity || !billingCountry || !billingCounty) {
+          return res.status(400).json({ error: 'Completeaza adresa, orasul, judetul si tara pentru facturare.' });
+        }
+
+        await User.findByIdAndUpdate(userId, {
+          $set: {
+            'profile.email': billingEmail,
+            'profile.billingType': billingType,
+            'profile.billingName': billingName,
+            'profile.billingCompany': billingCompany,
+            'profile.billingVatCode': billingVatCode,
+            'profile.billingRegNo': billingRegNo,
+            'profile.billingAddress': billingAddress,
+            'profile.billingCity': billingCity,
+            'profile.billingSector': billingSector,
+            'profile.billingCounty': billingCounty,
+            'profile.billingCountry': billingCountry,
+            'profile.billingEmail': billingEmail,
+            'profile.billingPhone': billingPhone,
+          },
+        });
+
+        const displayName = billingCompany || billingName;
+        const { firstName, lastName } = splitDisplayName(displayName);
 
         const orderXml = {
             order: {
@@ -3488,12 +3973,12 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
                     details: 'Wedding Planner Premium — acces pe viata',
                     contact_info: {
                         billing: {
-                            $: { type: 'person' },
+                            $: { type: billingType === 'company' ? 'company' : 'person' },
                             first_name:   firstName,
                             last_name:    lastName,
-                            address:      user.profile?.address || 'Romania',
+                            address:      billingAddress,
                             email:        billingEmail,
-                            mobile_phone: phone,
+                            mobile_phone: billingPhone,
                         },
                     },
                 },
@@ -3511,8 +3996,16 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
                     amount:           parseFloat(amount),
                     invoiceId:        orderId,
                     billingEmail,
+                    billingFirstName: firstName,
+                    billingLastName: lastName,
+                    billingAddress: [billingAddress, billingCity, billingCounty, billingCountry].filter(Boolean).join(', '),
+                    billingCity,
+                    billingSector,
+                    billingCounty,
+                    billingCountry,
                     paymentMethod:    'netopia_card',
                     status:           'Pending',
+                    relatedEventDate: user.profile?.weddingDate,
                     relatedEventName: user.profile?.eventName || 'Wedding Planner Premium',
                 },
             },
@@ -3534,6 +4027,61 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+async function finalizeNetopiaPaymentAsPaid(orderId) {
+  const user = await User.findOne({ 'payments.invoiceId': orderId });
+  if (!user) return null;
+
+  const payment = user.payments.find((p) => p.invoiceId === orderId);
+  if (!payment) return null;
+
+  const billing = getSmartbillBillingFromProfile(user.profile || {}, payment.billingEmail || user.user);
+
+  let invoiceNum = payment.invoiceNumber || '';
+  let invoiceUrl = payment.invoicePdfUrl || '';
+  if (!invoiceNum || !invoiceUrl) {
+    if (isSmartbillConfigured()) {
+      try {
+        const smartbillResult = await createSmartbillInvoiceFlow({
+          billing,
+          amount: Number(payment.amount || 0),
+          currency: 'RON',
+          description: 'Wedding Planner Premium',
+          sendEmail: true,
+        });
+        if (smartbillResult?.enabled) {
+          invoiceNum = smartbillResult.invoiceNumber || invoiceNum;
+          invoiceUrl = smartbillResult.pdfPublicUrl || invoiceUrl;
+        }
+      } catch (smartbillErr) {
+        console.error(`[SMARTBILL] Netopia order ${orderId} invoice failed:`, smartbillErr.message);
+      }
+    }
+
+    if (!invoiceNum) {
+      invoiceNum = await generateInvoiceNumber();
+    }
+    if (!invoiceUrl) {
+      invoiceUrl = `/invoice/${invoiceNum}`;
+    }
+  }
+
+  const updated = await User.findOneAndUpdate(
+    { _id: user._id, 'payments.invoiceId': orderId },
+    {
+      $set: {
+        plan: 'premium',
+        'profile.billingVatCode': billing.vatCode,
+        'payments.$.status': 'Paid',
+        'payments.$.invoiceNumber': invoiceNum,
+        'payments.$.invoicePdfUrl': invoiceUrl,
+      },
+    },
+    { new: true }
+  );
+
+  return { user, updated, invoiceNum, invoiceUrl };
+}
 
 // 2. IPN (notifyUrl) — Netopia trimite JSON, la fel ca Stripe webhook
 app.post('/api/netopia/confirm', async (req, res) => {
@@ -3589,24 +4137,11 @@ app.post('/api/netopia/confirm', async (req, res) => {
 
         if (errorCode === '0') {
             // Plată aprobată — la fel ca Stripe checkout.session.completed
-            const user = await User.findOne({ 'payments.invoiceId': orderId });
-            console.log(`Netopia IPN: user găsit pentru orderId=${orderId}:`, !!user);
+            const result = await finalizeNetopiaPaymentAsPaid(orderId);
+            console.log(`Netopia IPN: user găsit pentru orderId=${orderId}:`, !!result?.user);
 
-            if (user) {
-                const invoiceNum = await generateInvoiceNumber();
-                const invoiceUrl = `/invoice/${invoiceNum}`;
-
-                const updated = await User.findOneAndUpdate(
-                    { _id: user._id, 'payments.invoiceId': orderId },
-                    { $set: {
-                        plan: 'premium',
-                        'payments.$.status': 'Paid',
-                        'payments.$.invoiceNumber': invoiceNum,
-                        'payments.$.invoicePdfUrl': invoiceUrl,
-                    }},
-                    { new: true }
-                );
-                console.log(`✅ Netopia IPN: user ${user._id} → plan=${updated?.plan} | factură=${invoiceNum} (order ${orderId})`);
+            if (result?.user) {
+                console.log(`✅ Netopia IPN: user ${result.user._id} → plan=${result.updated?.plan} | factură=${result.invoiceNum} (order ${orderId})`);
             } else {
                 console.warn(`Netopia IPN: ordinul ${orderId} nu există în DB`);
             }
@@ -3654,19 +4189,8 @@ app.get('/api/netopia/return', async (req, res) => {
                 const payment = user.payments.find(p => p.invoiceId === orderId);
                 // Facem upgrade doar dacă e încă Pending (IPN-ul poate fi deja procesat)
                 if (payment && payment.status === 'Pending') {
-                    const invoiceNum = await generateInvoiceNumber();
-                    const invoiceUrl = `/invoice/${invoiceNum}`;
-
-                    await User.findOneAndUpdate(
-                        { _id: user._id, 'payments.invoiceId': orderId },
-                        { $set: {
-                            plan: 'premium',
-                            'payments.$.status': 'Paid',
-                            'payments.$.invoiceNumber': invoiceNum,
-                            'payments.$.invoicePdfUrl': invoiceUrl,
-                        }}
-                    );
-                    console.log(`✅ Netopia return: user ${user._id} → premium | factură=${invoiceNum} (order ${orderId})`);
+                    const result = await finalizeNetopiaPaymentAsPaid(orderId);
+                    console.log(`✅ Netopia return: user ${user._id} → premium | factură=${result?.invoiceNum || '-'} (order ${orderId})`);
                 }
             }
         }
@@ -3688,6 +4212,10 @@ app.get('/invoice/:invoiceNumber', async (req, res) => {
         const date = new Date(p.date).toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
         const amount = Number(p.amount || 0).toFixed(2);
         const clientName = [p.billingFirstName, p.billingLastName].filter(Boolean).join(' ') || 'Client';
+        const invoiceCity = p.billingCity || user?.profile?.billingCity || user?.profile?.city || '';
+        const invoiceSector = p.billingSector || user?.profile?.billingSector || '';
+        const invoiceCounty = p.billingCounty || user?.profile?.billingCounty || user?.profile?.county || '';
+        const invoiceCountry = p.billingCountry || user?.profile?.billingCountry || user?.profile?.country || '';
 
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(`<!DOCTYPE html>
@@ -3760,6 +4288,10 @@ app.get('/invoice/:invoiceNumber', async (req, res) => {
         <div class="val">${clientName}</div>
         <div class="sub">${p.billingEmail || ''}</div>
         ${p.billingAddress ? `<div class="sub">${p.billingAddress}</div>` : ''}
+        <div class="sub">Oras: ${invoiceCity || '-'}</div>
+        ${invoiceSector ? `<div class="sub">Sector: ${invoiceSector}</div>` : ''}
+        <div class="sub">Judet: ${invoiceCounty || '-'}</div>
+        <div class="sub">Tara: ${invoiceCountry || '-'}</div>
       </div>
       <div class="info-block">
         <label>Detalii factură</label>

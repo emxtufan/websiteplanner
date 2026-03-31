@@ -31,6 +31,28 @@ const CartIcon = () => (
   </svg>
 );
 
+const BUCHAREST_KEYS = new Set(['bucuresti', 'bucharest', 'municipiul bucuresti', 'mun bucuresti']);
+const SECTOR_OPTIONS = ['Sector 1', 'Sector 2', 'Sector 3', 'Sector 4', 'Sector 5', 'Sector 6'];
+
+const normalizeText = (value: string) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isBucharestCity = (city: string) => BUCHAREST_KEYS.has(normalizeText(city));
+
+const normalizeSector = (value: string) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/([1-6])/);
+  if (!m) return '';
+  return `Sector ${m[1]}`;
+};
+
 const UpgradeModal: React.FC<UpgradeModalProps> = ({
   isOpen,
   onClose,
@@ -51,13 +73,20 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   const [billingRegNo, setBillingRegNo] = useState('');
   const [billingAddress, setBillingAddress] = useState('');
   const [billingCity, setBillingCity] = useState('');
+  const [billingSector, setBillingSector] = useState('');
   const [billingCounty, setBillingCounty] = useState('');
   const [billingCountry, setBillingCountry] = useState('Romania');
   const [billingPhone, setBillingPhone] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const bucharestSelected = isBucharestCity(billingCity);
 
   const displayPrice = premiumPrice ? (premiumPrice / 100).toFixed(0) : '49';
   const displayOldPrice = oldPrice ? (oldPrice / 100).toFixed(0) : null;
+  const taxCodeLabel = billingType === 'company' ? 'CUI / CIF' : 'CNP (optional)';
+  const taxCodePlaceholder =
+    billingType === 'company'
+      ? 'RO12345678'
+      : '13 cifre (daca il lasi gol, se genereaza automat)';
 
   useEffect(() => {
     if (!isOpen) return;
@@ -73,6 +102,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     setBillingRegNo(profile.billingRegNo || '');
     setBillingAddress(profile.billingAddress || profile.address || '');
     setBillingCity(profile.billingCity || profile.city || '');
+    setBillingSector(normalizeSector(profile.billingSector || ''));
     setBillingCounty(profile.billingCounty || profile.county || '');
     setBillingCountry(profile.billingCountry || profile.country || 'Romania');
     setBillingPhone(profile.billingPhone || profile.phone || '');
@@ -83,6 +113,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
   const getBillingPayload = () => {
     const email = (billingEmail || userEmail || '').trim();
+    const normalizedSector = normalizeSector(billingSector);
     return {
       type: billingType,
       name: billingName.trim(),
@@ -91,7 +122,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
       regNo: billingRegNo.trim(),
       address: billingAddress.trim(),
       city: billingCity.trim(),
-      county: billingCounty.trim(),
+      sector: normalizedSector,
+      county: (bucharestSelected ? 'Bucuresti' : billingCounty).trim(),
       country: billingCountry.trim(),
       email,
       phone: billingPhone.trim(),
@@ -114,6 +146,12 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     }
     if (!payload.city) {
       return 'Completeaza orasul de facturare.';
+    }
+    if (payload.type === 'company' && isBucharestCity(payload.city) && !payload.sector) {
+      return 'Pentru firme din Bucuresti, selecteaza sectorul.';
+    }
+    if (!payload.county) {
+      return 'Completeaza judetul de facturare.';
     }
     if (!payload.country) {
       return 'Completeaza tara de facturare.';
@@ -286,15 +324,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                 <Input value={billingPhone} onChange={(e) => setBillingPhone(e.target.value)} placeholder="07xxxxxxxx" />
               </div>
 
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-muted-foreground">{taxCodeLabel}</label>
+                <Input value={billingVatCode} onChange={(e) => setBillingVatCode(e.target.value)} placeholder={taxCodePlaceholder} />
+              </div>
+
               {billingType === 'company' && (
                 <>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Companie</label>
                     <Input value={billingCompany} onChange={(e) => setBillingCompany(e.target.value)} placeholder="SC Exemplu SRL" />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">CUI</label>
-                    <Input value={billingVatCode} onChange={(e) => setBillingVatCode(e.target.value)} placeholder="RO12345678" />
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-xs font-semibold text-muted-foreground">Nr. Reg. Comertului</label>
@@ -314,12 +353,50 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground">Oras</label>
-                <Input value={billingCity} onChange={(e) => setBillingCity(e.target.value)} placeholder="Bucuresti" />
+                <Input
+                  value={billingCity}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setBillingCity(value);
+                    if (isBucharestCity(value)) {
+                      setBillingCounty('Bucuresti');
+                    } else if (billingCounty === 'Bucuresti') {
+                      setBillingCounty('');
+                    }
+                  }}
+                  placeholder="Bucuresti"
+                />
               </div>
+
+              {billingType === 'company' && bucharestSelected && (
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Sector (obligatoriu pentru SmartBill)</label>
+                  <select
+                    value={normalizeSector(billingSector)}
+                    onChange={(e) => setBillingSector(e.target.value)}
+                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">Alege sectorul</option>
+                    {SECTOR_OPTIONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground">
+                    Pentru firme din Bucuresti, localitatea pe factura SmartBill va fi sectorul selectat.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground">Judet</label>
-                <Input value={billingCounty} onChange={(e) => setBillingCounty(e.target.value)} placeholder="Ilfov" />
+                <Input
+                  value={bucharestSelected ? 'Bucuresti' : billingCounty}
+                  onChange={(e) => setBillingCounty(e.target.value)}
+                  placeholder="Ilfov"
+                  disabled={bucharestSelected}
+                />
               </div>
 
               <div className="space-y-1 md:col-span-2">

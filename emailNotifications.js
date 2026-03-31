@@ -221,18 +221,22 @@ export function createEmailNotifications({
 }) {
   const resend = apiKey ? new Resend(apiKey) : null;
 
-  const send = async ({ to, subject, html }) => {
+  const send = async ({ to, subject, html, attachments = [] }) => {
     if (!resend) {
       logger.warn("[EMAIL] RESEND_API_KEY missing. Email not sent:", subject, "=>", to);
       return false;
     }
     try {
-      await resend.emails.send({
+      const payload = {
         from,
         to: [to],
         subject,
         html,
-      });
+      };
+      if (Array.isArray(attachments) && attachments.length) {
+        payload.attachments = attachments;
+      }
+      await resend.emails.send(payload);
       return true;
     } catch (error) {
       logger.error("[EMAIL] Failed send:", subject, "=>", to, error);
@@ -654,6 +658,56 @@ export function createEmailNotifications({
     });
   };
 
+  const sendBillingInvoiceEmail = async ({
+    email,
+    name = "",
+    invoiceNumber = "",
+    amount = 0,
+    currency = "RON",
+    issueDate = new Date(),
+    eventName = "",
+    invoiceUrl = "",
+    attachments = [],
+  }) => {
+    const safeName = escapeHtml(name || "client");
+    const safeInvoice = escapeHtml(invoiceNumber || "-");
+    const safeAmount = `${Number(amount || 0).toFixed(2)} ${escapeHtml(currency || "RON")}`;
+    const safeDate = formatDate(issueDate);
+
+    const contentHtml = `
+      <p style="margin:0 0 12px;font-size:14px;color:#3f3f46">
+        Salut, <b style="color:#09090b">${safeName}</b>! Factura dumneavoastra este emisa si atasata acestui email.
+      </p>
+      ${renderInfoCard([
+        { label: "Numar factura", value: safeInvoice },
+        { label: "Data emiterii", value: safeDate },
+        { label: "Valoare", value: safeAmount },
+        { label: "Eveniment", value: String(eventName || "").trim() || "-" },
+      ], "indigo")}
+      <p style="margin:12px 0 0;font-size:13px;color:#52525b">
+        Daca aveti nevoie de asistenta, raspundeti direct la acest email.
+      </p>
+    `;
+
+    const html = renderEmailLayout({
+      appName,
+      headerLabel: "Facturare",
+      title: "Factura dumneavoastra",
+      intro: "Document fiscal emis dupa confirmarea platii.",
+      contentHtml,
+      ctaLabel: invoiceUrl ? "Deschide factura online" : "",
+      ctaUrl: invoiceUrl || "",
+      theme: "indigo",
+    });
+
+    return send({
+      to: email,
+      subject: sanitizeSubject(`Factura ${invoiceNumber || ""} - ${appName}`),
+      html,
+      attachments,
+    });
+  };
+
   return {
     isEnabled: Boolean(resend),
     sendVerificationOtp,
@@ -665,5 +719,6 @@ export function createEmailNotifications({
     sendEventReminderEmail,
     sendAdminNotificationEmail,
     sendGuestRsvpEmail,
+    sendBillingInvoiceEmail,
   };
 }

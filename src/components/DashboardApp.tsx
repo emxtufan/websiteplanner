@@ -233,8 +233,31 @@ type AccountDraft = {
   billingPhone: string;
   billingAddress: string;
   billingCity: string;
+  billingSector: string;
   billingCounty: string;
   billingCountry: string;
+};
+
+const BUCHAREST_KEYS = new Set(['bucuresti', 'bucharest', 'municipiul bucuresti', 'mun bucuresti']);
+const SECTOR_OPTIONS = ['Sector 1', 'Sector 2', 'Sector 3', 'Sector 4', 'Sector 5', 'Sector 6'];
+
+const normalizeLocationValue = (value: string) =>
+  String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const isBucharestCity = (city: string) => BUCHAREST_KEYS.has(normalizeLocationValue(city));
+
+const normalizeSector = (value: string) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const m = raw.match(/([1-6])/);
+  if (!m) return '';
+  return `Sector ${m[1]}`;
 };
 
 const formatDateTime = (value?: string | Date) => {
@@ -255,6 +278,17 @@ const toDateInputValue = (value?: string | Date) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString().slice(0, 10);
+};
+
+const getTodayDateInput = () => {
+  const d = new Date();
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+  return d.toISOString().slice(0, 10);
+};
+
+const isPastDateInput = (value?: string) => {
+  if (!value) return false;
+  return value < getTodayDateInput();
 };
 
 const buildAccountDraft = (session: UserSession | null): AccountDraft => {
@@ -285,6 +319,7 @@ const buildAccountDraft = (session: UserSession | null): AccountDraft => {
     billingPhone: String(profile?.billingPhone || ""),
     billingAddress: String(profile?.billingAddress || ""),
     billingCity: String(profile?.billingCity || ""),
+    billingSector: String(profile?.billingSector || ""),
     billingCounty: String(profile?.billingCounty || ""),
     billingCountry: String(profile?.billingCountry || ""),
   };
@@ -632,6 +667,7 @@ const DashboardApp = () => {
   const [setupPhone, setSetupPhone] = useState("");
   const [setupAddress, setSetupAddress] = useState("");
   const [isSettingUp, setIsSettingUp] = useState(false);
+  const minEventDate = getTodayDateInput();
 
   // --- ARCHIVED VIEW STATE ---
   const [viewingSnapshotId, setViewingSnapshotId] = useState<string | null>(
@@ -799,6 +835,13 @@ const DashboardApp = () => {
       });
       return;
     }
+    if (accountDraft.weddingDate && isPastDateInput(accountDraft.weddingDate)) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Data evenimentului nu poate fi in trecut.",
+      });
+      return;
+    }
 
     const guestEstimateNum = Number(accountDraft.guestEstimate || 0);
     const profilePayload: Partial<UserProfile> = {
@@ -826,6 +869,7 @@ const DashboardApp = () => {
       billingPhone: accountDraft.billingPhone.trim(),
       billingAddress: accountDraft.billingAddress.trim(),
       billingCity: accountDraft.billingCity.trim(),
+      billingSector: normalizeSector(accountDraft.billingSector),
       billingCounty: accountDraft.billingCounty.trim(),
       billingCountry: accountDraft.billingCountry.trim(),
     };
@@ -1085,6 +1129,14 @@ const DashboardApp = () => {
       toast({
         title: "Dată lipsă",
         description: "Te rugăm să alegi data evenimentului.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (isPastDateInput(setupDate)) {
+      toast({
+        title: "Data invalida",
+        description: "Data evenimentului nu poate fi in trecut.",
         variant: "destructive",
       });
       return;
@@ -1472,6 +1524,10 @@ const DashboardApp = () => {
       const res = await fetch(`${API_URL}/user/me`, {
         headers: { Authorization: `Bearer ${tokenToUse}` },
       });
+      if (res.status === 401 || res.status === 403 || res.status === 404) {
+        handleLogout();
+        return null;
+      }
       if (res.ok) {
         const data = await res.json();
         // If user hasn't customized blocks yet, ignore server-injected defaults
@@ -1523,6 +1579,14 @@ const DashboardApp = () => {
     }
     return null;
   };
+
+  useEffect(() => {
+    if (!session?.token || viewingSnapshotId) return;
+    const intervalId = window.setInterval(() => {
+      refreshSession(session.token);
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
+  }, [session?.token, viewingSnapshotId]);
 
   // ... (Effects same as before, simplified) ...
   useEffect(() => {
@@ -2324,6 +2388,7 @@ const DashboardApp = () => {
                 <Input
                   type="date"
                   className="h-11"
+                  min={minEventDate}
                   value={setupDate}
                   onChange={(e) => setSetupDate(e.target.value)}
                 />
@@ -2997,7 +3062,12 @@ const DashboardApp = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Data eveniment</label>
-                    <Input type="date" value={accountDraft.weddingDate} onChange={(e: any) => updateAccountDraft("weddingDate", e.target.value)} />
+                    <Input
+                      type="date"
+                      min={minEventDate}
+                      value={accountDraft.weddingDate}
+                      onChange={(e: any) => updateAccountDraft("weddingDate", e.target.value)}
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Estimare invitati</label>
@@ -3090,11 +3160,46 @@ const DashboardApp = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Oras facturare</label>
-                    <Input value={accountDraft.billingCity} onChange={(e: any) => updateAccountDraft("billingCity", e.target.value)} />
+                    <Input
+                      value={accountDraft.billingCity}
+                      onChange={(e: any) => {
+                        const value = e.target.value;
+                        updateAccountDraft("billingCity", value);
+                        if (isBucharestCity(value)) {
+                          updateAccountDraft("billingCounty", "Bucuresti");
+                        } else if ((accountDraft.billingCounty || "").trim().toLowerCase() === "bucuresti") {
+                          updateAccountDraft("billingCounty", "");
+                        }
+                      }}
+                    />
                   </div>
+                  {accountDraft.billingType === "company" && isBucharestCity(accountDraft.billingCity) && (
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Sector facturare</label>
+                      <select
+                        value={normalizeSector(accountDraft.billingSector)}
+                        onChange={(e) => updateAccountDraft("billingSector", e.target.value)}
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        <option value="">Selecteaza sector</option>
+                        {SECTOR_OPTIONS.map((sector) => (
+                          <option key={sector} value={sector}>
+                            {sector}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-muted-foreground">
+                        Pentru firme din Bucuresti, localitatea SmartBill va fi sectorul selectat.
+                      </p>
+                    </div>
+                  )}
                   <div className="space-y-1">
                     <label className="text-xs text-muted-foreground">Judet facturare</label>
-                    <Input value={accountDraft.billingCounty} onChange={(e: any) => updateAccountDraft("billingCounty", e.target.value)} />
+                    <Input
+                      value={isBucharestCity(accountDraft.billingCity) ? "Bucuresti" : accountDraft.billingCounty}
+                      onChange={(e: any) => updateAccountDraft("billingCounty", e.target.value)}
+                      disabled={isBucharestCity(accountDraft.billingCity)}
+                    />
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-xs text-muted-foreground">Tara facturare</label>

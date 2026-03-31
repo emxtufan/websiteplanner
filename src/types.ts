@@ -194,6 +194,7 @@ export interface UserProfile {
   billingRegNo?: string;
   billingAddress?: string;
   billingCity?: string;
+  billingSector?: string;
   billingCounty?: string;
   billingCountry?: string;
   billingEmail?: string;

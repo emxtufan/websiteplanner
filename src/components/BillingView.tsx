@@ -20,6 +20,7 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
   const { toast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<PaymentRecord | null>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -34,6 +35,54 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
         month: 'long', 
         day: 'numeric' 
     });
+  };
+
+  const resolveInvoiceUrl = (payment: PaymentRecord) => {
+    if (payment.invoicePdfUrl) {
+      return payment.invoicePdfUrl.startsWith('/')
+        ? `${API_URL.replace('/api', '')}${payment.invoicePdfUrl}`
+        : payment.invoicePdfUrl;
+    }
+    if (payment.hostedInvoiceUrl) return payment.hostedInvoiceUrl;
+    return '';
+  };
+
+  const handleDownloadReceipt = async (payment: PaymentRecord) => {
+    const fileUrl = resolveInvoiceUrl(payment);
+    if (!fileUrl) {
+      toast({
+        title: 'Lipsa document',
+        description: 'Nu exista URL pentru factura acestui payment.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      const response = await fetch(fileUrl, { method: 'GET' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `${payment.invoiceNumber || payment.invoiceId || 'factura'}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Invoice download failed:', error);
+      window.open(fileUrl, '_blank', 'noopener,noreferrer');
+      toast({
+        title: 'Download fallback',
+        description: 'Am deschis factura intr-un tab nou pentru descarcare.',
+      });
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   return (
@@ -132,7 +181,12 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                                         <td className="p-4 align-middle">
                                             <div className="flex flex-col">
                                                 <span className="font-medium text-foreground">{payment.relatedEventName || 'Eveniment Necunoscut'}</span>
-                                                <span className="text-[10px] text-muted-foreground font-mono">ID: {payment.invoiceId ? payment.invoiceId.slice(-8) : "N/A"}</span>
+                                                <span
+                                                  className="text-[10px] text-muted-foreground font-mono break-all"
+                                                  title={payment.invoiceId || "N/A"}
+                                                >
+                                                  ID: {payment.invoiceId || "N/A"}
+                                                </span>
                                             </div>
                                         </td>
                                         <td className="p-4 align-middle">{formatDate(payment.date)}</td>
@@ -216,11 +270,15 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                             <div className="flex justify-between items-center text-sm">
                                 <span className="text-zinc-500 dark:text-zinc-400">Invoice number</span>
                                 <span className="font-medium text-zinc-900 dark:text-zinc-200 font-mono">
-                                    {selectedPayment.invoiceNumber
-                                        ? selectedPayment.invoiceNumber
-                                        : selectedPayment.invoiceId
-                                            ? selectedPayment.invoiceId.split('_')[1]?.toUpperCase() || selectedPayment.invoiceId.slice(-8).toUpperCase()
-                                            : 'N/A'}
+                                    {selectedPayment.invoiceNumber || 'N/A'}
+                                </span>
+                            </div>
+                            <div className="h-px bg-zinc-200 dark:bg-zinc-800 w-full" />
+
+                            <div className="flex justify-between items-center text-sm gap-3">
+                                <span className="text-zinc-500 dark:text-zinc-400">Processor ID</span>
+                                <span className="font-medium text-zinc-900 dark:text-zinc-200 font-mono break-all text-right">
+                                    {selectedPayment.invoiceId || 'N/A'}
                                 </span>
                             </div>
                             <div className="h-px bg-zinc-200 dark:bg-zinc-800 w-full" />
@@ -246,11 +304,11 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                                 {/* View / Print Invoice */}
                                 <Button
                                     className="w-full h-11 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20 transition-all"
-                                    onClick={() => { if (selectedPayment.invoicePdfUrl) { const url = selectedPayment.invoicePdfUrl.startsWith('/') ? API_URL.replace('/api', '') + selectedPayment.invoicePdfUrl : selectedPayment.invoicePdfUrl; window.open(url, '_blank'); } }}
-                                    disabled={!selectedPayment.invoicePdfUrl}
+                                    onClick={() => handleDownloadReceipt(selectedPayment)}
+                                    disabled={(!selectedPayment.invoicePdfUrl && !selectedPayment.hostedInvoiceUrl) || isDownloading}
                                 >
                                     <Receipt className="w-4 h-4 mr-2" />
-                                    Download receipt
+                                    {isDownloading ? 'Se descarca...' : 'Download receipt'}
                                 </Button>
                             </div>
                         </div>
