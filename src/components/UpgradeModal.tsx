@@ -10,9 +10,11 @@ interface UpgradeModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  currentPlan?: 'free' | 'basic' | 'premium';
   userEmail?: string;
   userProfile?: Partial<UserProfile>;
   onUpgradeSuccess: (payments?: any[]) => void;
+  basicPrice?: number;
   premiumPrice?: number;
   oldPrice?: number;
 }
@@ -57,9 +59,11 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   isOpen,
   onClose,
   userId,
+  currentPlan,
   userEmail,
   userProfile,
   onUpgradeSuccess,
+  basicPrice,
   premiumPrice,
   oldPrice,
 }) => {
@@ -77,11 +81,32 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   const [billingCounty, setBillingCounty] = useState('');
   const [billingCountry, setBillingCountry] = useState('Romania');
   const [billingPhone, setBillingPhone] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<'basic' | 'premium'>('premium');
   const [error, setError] = useState<string | null>(null);
   const bucharestSelected = isBucharestCity(billingCity);
+  const normalizedCurrentPlan: 'free' | 'basic' | 'premium' =
+    currentPlan === 'basic' || currentPlan === 'premium' ? currentPlan : 'free';
+  const planRank: Record<'free' | 'basic' | 'premium', number> = { free: 0, basic: 1, premium: 2 };
+  const priceMapCents: Record<'free' | 'basic' | 'premium', number> = {
+    free: 0,
+    basic: Number.isFinite(Number(basicPrice)) ? Number(basicPrice) : 1900,
+    premium: Number.isFinite(Number(premiumPrice)) ? Number(premiumPrice) : 4900,
+  };
+  const selectedPlanPriceCents = priceMapCents[selectedPlan];
+  const currentPlanPriceCents = priceMapCents[normalizedCurrentPlan];
+  const payableCents = Math.max(0, selectedPlanPriceCents - currentPlanPriceCents);
+  const isCurrentSelection = selectedPlan === normalizedCurrentPlan;
+  const isDowngradeSelection = planRank[selectedPlan] < planRank[normalizedCurrentPlan];
+  const canProceedToPayment = payableCents > 0 && !isCurrentSelection && !isDowngradeSelection;
 
-  const displayPrice = premiumPrice ? (premiumPrice / 100).toFixed(0) : '49';
-  const displayOldPrice = oldPrice ? (oldPrice / 100).toFixed(0) : null;
+  const displayBasicPrice = (priceMapCents.basic / 100).toFixed(0);
+  const displayPremiumPrice = (priceMapCents.premium / 100).toFixed(0);
+  const displayCurrentPlanPrice = (currentPlanPriceCents / 100).toFixed(0);
+  const displayOldPrice =
+    normalizedCurrentPlan === 'free' && selectedPlan === 'premium' && oldPrice
+      ? (oldPrice / 100).toFixed(0)
+      : null;
+  const displayPrice = (payableCents / 100).toFixed(0);
   const taxCodeLabel = billingType === 'company' ? 'CUI / CIF' : 'CNP (optional)';
   const taxCodePlaceholder =
     billingType === 'company'
@@ -91,6 +116,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setError(null);
+    setSelectedPlan('premium');
 
     const profile = userProfile || {};
     const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
@@ -161,6 +187,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
   const handlePayment = async () => {
     setError(null);
+    if (!canProceedToPayment) {
+      if (isCurrentSelection) {
+        setError('Acesta este deja planul tau curent.');
+      } else if (isDowngradeSelection) {
+        setError('Ai deja un plan superior activ.');
+      } else {
+        setError('Nu exista diferenta de plata pentru acest plan.');
+      }
+      return;
+    }
     const validationError = validateBilling();
     if (validationError) {
       setError(validationError);
@@ -182,6 +218,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           userId,
           email: billing.email,
           billing,
+          targetPlan: selectedPlan,
         }),
       });
 
@@ -201,6 +238,16 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
   const handleNetopiaPayment = async () => {
     setError(null);
+    if (!canProceedToPayment) {
+      if (isCurrentSelection) {
+        setError('Acesta este deja planul tau curent.');
+      } else if (isDowngradeSelection) {
+        setError('Ai deja un plan superior activ.');
+      } else {
+        setError('Nu exista diferenta de plata pentru acest plan.');
+      }
+      return;
+    }
     const validationError = validateBilling();
     if (validationError) {
       setError(validationError);
@@ -220,6 +267,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
         body: JSON.stringify({
           email: billing.email,
           billing,
+          targetPlan: selectedPlan,
         }),
       });
       const data = await res.json();
@@ -247,13 +295,20 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     }
   };
 
-  const features = [
-    'Invitatii Nelimitate',
-    'Planificator Mese Nelimitat',
-    'Acces la Tema Modern Dark & Floral',
-    'Calculator Buget Automat',
-    'Export PDF (In curand)',
-  ];
+  const features =
+    selectedPlan === 'basic'
+      ? [
+          'Editor invitatie complet',
+          'Link public de invitatie',
+          'RSVP (cine vine / cine nu vine)',
+          'Gestionare lista invitati',
+        ]
+      : [
+          'Toate functiile din Basic',
+          'Planificator mese & seating',
+          'Calendar, task-uri, buget complet',
+          'Servicii, istoric, tool-uri premium',
+        ];
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -262,13 +317,60 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           <div className="mb-4 p-3 bg-white dark:bg-neutral-800 rounded-xl shadow-sm border border-neutral-200 dark:border-neutral-700">
             <CartIcon />
           </div>
-          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 tracking-tight">Upgrade la Premium</h2>
+          <h2 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 tracking-tight">Alege planul potrivit</h2>
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-2 text-center max-w-[360px] leading-relaxed">
-            Deblocheaza toate functionalitatile.
+            Basic pentru invitatii si RSVP, Premium pentru acces complet.
           </p>
         </div>
 
         <div className="p-6 max-h-[75vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+            <button
+              type="button"
+              onClick={() => {
+                if (planRank.basic < planRank[normalizedCurrentPlan]) return;
+                setSelectedPlan('basic');
+              }}
+              disabled={planRank.basic < planRank[normalizedCurrentPlan]}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                selectedPlan === 'basic'
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 ring-2 ring-indigo-300/70'
+                  : 'border-neutral-200 dark:border-neutral-800 hover:border-indigo-300'
+              } ${planRank.basic < planRank[normalizedCurrentPlan] ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Plan</p>
+              <p className="text-base font-semibold flex items-center gap-2">
+                Basic
+                {normalizedCurrentPlan === 'basic' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    Plan curent
+                  </span>
+                )}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{displayBasicPrice} LEI</p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedPlan('premium')}
+              className={`rounded-xl border p-4 text-left transition-all ${
+                selectedPlan === 'premium'
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/30 ring-2 ring-indigo-300/70'
+                  : 'border-neutral-200 dark:border-neutral-800 hover:border-indigo-300'
+              }`}
+            >
+              <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Plan</p>
+              <p className="text-base font-semibold flex items-center gap-2">
+                Premium
+                {normalizedCurrentPlan === 'premium' && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                    Plan curent
+                  </span>
+                )}
+              </p>
+              <p className="text-sm text-muted-foreground mt-1">{displayPremiumPrice} LEI</p>
+            </button>
+          </div>
+
           <div className="space-y-3 mb-6">
             {features.map((feature, idx) => (
               <div key={idx} className="flex items-center gap-3 group">
@@ -415,12 +517,17 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
           <div className="flex items-center justify-between mb-6 p-4 rounded-lg bg-neutral-50 dark:bg-neutral-900 border border-neutral-100 dark:border-neutral-800">
             <div className="flex flex-col">
-              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">Pret unic</span>
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wider">
+                {normalizedCurrentPlan === 'basic' && selectedPlan === 'premium' ? 'De plata (diferenta)' : 'Pret de plata'}
+              </span>
               <div className="flex items-baseline gap-1.5">
                 {displayOldPrice && (
                   <span className="text-sm text-neutral-400 line-through decoration-neutral-400/50">{displayOldPrice} LEI</span>
                 )}
               </div>
+              <span className="text-[11px] text-neutral-500 mt-1">
+                Plan curent: {normalizedCurrentPlan === 'free' ? 'Free' : normalizedCurrentPlan === 'basic' ? 'Basic' : 'Premium'} ({displayCurrentPlanPrice} LEI)
+              </span>
             </div>
             <div className="text-right">
               <span className="text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">{displayPrice} LEI</span>
@@ -431,7 +538,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
             type="button"
             className="w-full h-11 text-base font-medium shadow-lg hover:shadow-xl transition-all duration-300 bg-[#635BFF] hover:bg-[#5851E3] text-white"
             onClick={handlePayment}
-            disabled={isProcessing || isProcessingNetopia}
+            disabled={isProcessing || isProcessingNetopia || !canProceedToPayment}
           >
             {isProcessing ? (
               <>
@@ -439,7 +546,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
               </>
             ) : (
               <>
-                <ExternalLink className="w-4 h-4 mr-2" /> Plateste cu Stripe
+                <ExternalLink className="w-4 h-4 mr-2" /> {canProceedToPayment ? `Plateste upgrade la planul ${selectedPlan === 'basic' ? 'Basic' : 'Premium'} cu Stripe` : 'Plan deja activ'}
               </>
             )}
           </Button>
@@ -455,7 +562,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
             variant="outline"
             className="w-full h-11 text-sm font-medium border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-all"
             onClick={handleNetopiaPayment}
-            disabled={isProcessing || isProcessingNetopia}
+            disabled={isProcessing || isProcessingNetopia || !canProceedToPayment}
           >
             {isProcessingNetopia ? (
               <>
@@ -463,7 +570,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
               </>
             ) : (
               <>
-                <CreditCard className="w-4 h-4 mr-2" /> Plateste cu Netopia
+                <CreditCard className="w-4 h-4 mr-2" /> {canProceedToPayment ? `Plateste upgrade la planul ${selectedPlan === 'basic' ? 'Basic' : 'Premium'} cu Netopia` : 'Plan deja activ'}
               </>
             )}
           </Button>

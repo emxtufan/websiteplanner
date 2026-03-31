@@ -135,6 +135,13 @@ const SystemConfigSchema = new mongoose.Schema({
             maxBudgetItems: { type: Number, default: 6 },
             maxCalculatorBudget: { type: Number, default: 500 }
         },
+        basic: {
+            maxGuests: { type: Number, default: 9999 },
+            maxElements: { type: Number, default: 0 },
+            maxCustomTasks: { type: Number, default: 0 },
+            maxBudgetItems: { type: Number, default: 0 },
+            maxCalculatorBudget: { type: Number, default: 0 }
+        },
         premium: {
             maxGuests: { type: Number, default: 9999 },
             maxElements: { type: Number, default: 9999 },
@@ -144,6 +151,7 @@ const SystemConfigSchema = new mongoose.Schema({
         }
     },
     pricing: {
+        basicPrice: { type: Number, default: 1900 },
         premiumPrice: { type: Number, default: 4900 },
         oldPrice: { type: Number, default: 10000 },
         currency: { type: String, default: 'ron' }
@@ -186,6 +194,7 @@ const PaymentSchema = new mongoose.Schema({
     invoicePdfUrl: String,
     hostedInvoiceUrl: String,
     paymentMethod: String,
+    planTarget: { type: String, enum: ['free', 'basic', 'premium'], default: 'premium' },
     status: { type: String, default: 'Paid' },
     relatedEventDate: Date,
     relatedEventName: String,
@@ -256,7 +265,7 @@ const UserSchema = new mongoose.Schema({
     lastActionAt: Date,
     lastActionLabel: String,
   },
-  plan: { type: String, default: 'free', enum: ['free', 'premium'] },
+  plan: { type: String, default: 'free', enum: ['free', 'basic', 'premium'] },
   isAdmin: { type: Boolean, default: false }, 
   createdAt: { type: Date, default: Date.now }, 
   payments: [PaymentSchema],
@@ -461,6 +470,60 @@ const ServiceRequestSchema = new mongoose.Schema({
 });
 const ServiceRequest = mongoose.model('ServiceRequest', ServiceRequestSchema);
 
+const PLAN_RANK = { free: 0, basic: 1, premium: 2 };
+
+function normalizePlan(value) {
+  const plan = String(value || '').trim().toLowerCase();
+  return plan === 'premium' || plan === 'basic' ? plan : 'free';
+}
+
+function planAtLeast(currentPlan, requestedPlan) {
+  const current = normalizePlan(currentPlan);
+  const target = normalizePlan(requestedPlan);
+  return (PLAN_RANK[current] || 0) >= (PLAN_RANK[target] || 0) ? current : target;
+}
+
+function getUpgradeCharge(planPriceMap, currentPlanRaw, targetPlanRaw) {
+  const currentPlan = normalizePlan(currentPlanRaw);
+  const targetPlan = normalizePlan(targetPlanRaw);
+  const currentRank = PLAN_RANK[currentPlan] || 0;
+  const targetRank = PLAN_RANK[targetPlan] || 0;
+
+  if (targetPlan === 'free') {
+    return { ok: false, reason: 'invalid_target', message: 'Planul ales este invalid.' };
+  }
+  if (targetRank === currentRank) {
+    return { ok: false, reason: 'same_plan', message: `Ai deja planul ${targetPlan} activ.` };
+  }
+  if (targetRank < currentRank) {
+    return { ok: false, reason: 'downgrade_not_allowed', message: 'Ai deja un plan superior activ.' };
+  }
+
+  const safeNumber = (value) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  const currentPrice = currentPlan === 'free' ? 0 : safeNumber(planPriceMap[currentPlan]);
+  const targetPrice = safeNumber(planPriceMap[targetPlan]);
+  const payableAmount = targetPrice - currentPrice;
+
+  if (targetPrice <= 0) {
+    return { ok: false, reason: 'target_price_invalid', message: 'Pretul planului selectat nu este configurat.' };
+  }
+  if (payableAmount <= 0) {
+    return { ok: false, reason: 'no_difference', message: 'Nu exista diferenta de plata pentru planul selectat.' };
+  }
+
+  return {
+    ok: true,
+    currentPlan,
+    targetPlan,
+    currentPrice,
+    targetPrice,
+    payableAmount,
+  };
+}
 
 
 
@@ -469,6 +532,23 @@ const getConfig = async () => {
     if (!config) {
         config = new SystemConfig();
         await config.save();
+    } else {
+        let changed = false;
+        if (!config.limits?.basic) {
+            config.limits.basic = {
+                maxGuests: 9999,
+                maxElements: 0,
+                maxCustomTasks: 0,
+                maxBudgetItems: 0,
+                maxCalculatorBudget: 0,
+            };
+            changed = true;
+        }
+        if (typeof config.pricing?.basicPrice !== 'number') {
+            config.pricing.basicPrice = 1900;
+            changed = true;
+        }
+        if (changed) await config.save();
     }
     return config;
 };
@@ -747,11 +827,13 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
     const customerEmail = session.customer_details?.email;
     const amountTotal = session.amount_total ? session.amount_total / 100 : 0;
     const meta = session.metadata || {};
+    const targetPlan = normalizePlan(meta.targetPlan || 'premium');
     const invoiceRef = session.invoice || session.id;
     logStripeSmartbill('Checkout session completed', {
       eventId: event.id,
       sessionId: session.id,
       userId,
+      targetPlan,
       amountTotal,
       customerEmail,
       stripeInvoiceId: session.invoice || null,
@@ -862,7 +944,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
               },
               amount: amountTotal,
               currency: 'RON',
-              description: 'Wedding Planner Premium',
+              description: targetPlan === 'basic' ? 'Wedding Planner Basic' : 'Wedding Planner Premium',
               sendEmail: false,
             });
             if (smartbillResult?.enabled) {
@@ -907,6 +989,7 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             invoicePdfUrl: invoicePdfUrl,
             hostedInvoiceUrl: hostedInvoiceUrl,
             paymentMethod: 'stripe_card',
+            planTarget: targetPlan,
             status: 'Paid',
             relatedEventDate: relatedEventDate,
             relatedEventName: relatedEventName // Store the name for history
@@ -929,15 +1012,17 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         }
         if (meta.billingPhone) profileBillingSet['profile.billingPhone'] = meta.billingPhone;
 
+        const nextPlan = planAtLeast(user?.plan || 'free', targetPlan);
         await User.findByIdAndUpdate(userId, {
             $set: {
-                plan: 'premium',
+                plan: nextPlan,
                 ...profileBillingSet,
             },
             $push: { payments: newPayment },
         });
         logStripeSmartbill('DB update done', {
           userId,
+          nextPlan,
           invoiceNumber,
           invoicePdfUrl,
           paymentMethod: newPayment.paymentMethod,
@@ -1891,7 +1976,8 @@ app.post('/api/auth/verify-email-otp', async (req, res) => {
 
     const config = await getConfig();
     const limits = config.limits[foundUser.plan || 'free'];
-    const price = config.pricing.premiumPrice;
+    const premiumPrice = config.pricing.premiumPrice;
+    const basicPrice = config.pricing.basicPrice;
     const isCompleted = isEventCompleted(foundUser.profile.weddingDate);
     const token = jwt.sign(
       { userId: foundUser._id, plan: foundUser.plan || 'free' },
@@ -1964,7 +2050,8 @@ app.post('/api/auth/verify-email-otp', async (req, res) => {
       payments: foundUser.payments || [],
       archivedEvents: foundUser.archivedEvents || [],
       limits,
-      premiumPrice: price,
+      basicPrice,
+      premiumPrice,
       pricing: config.pricing,
       isEventCompleted: isCompleted,
       token,
@@ -1997,7 +2084,8 @@ app.post('/api/login', async (req, res) => {
 
     const config = await getConfig();
     const limits = config.limits[foundUser.plan || 'free'];
-    const price = config.pricing.premiumPrice;
+    const premiumPrice = config.pricing.premiumPrice;
+    const basicPrice = config.pricing.basicPrice;
     const isCompleted = isEventCompleted(foundUser.profile.weddingDate);
     const token = jwt.sign(
       { userId: foundUser._id, plan: foundUser.plan || 'free' },
@@ -2024,7 +2112,8 @@ app.post('/api/login', async (req, res) => {
       payments: foundUser.payments || [],
       archivedEvents: foundUser.archivedEvents || [],
       limits,
-      premiumPrice: price,
+      basicPrice,
+      premiumPrice,
       pricing: config.pricing,
       isEventCompleted: isCompleted,
       token,
@@ -2089,7 +2178,8 @@ app.post('/api/_legacy/login-disabled', async (req, res) => {
     if (isMatch) {
       const config = await getConfig();
       const limits = config.limits[foundUser.plan || 'free'];
-      const price = config.pricing.premiumPrice;
+      const premiumPrice = config.pricing.premiumPrice;
+      const basicPrice = config.pricing.basicPrice;
       const isCompleted = isEventCompleted(foundUser.profile.weddingDate);
 
       const token = jwt.sign({ userId: foundUser._id, plan: foundUser.plan || 'free' }, JWT_SECRET, { expiresIn: '7d' });
@@ -2101,7 +2191,8 @@ app.post('/api/_legacy/login-disabled', async (req, res) => {
         payments: foundUser.payments || [],
         archivedEvents: foundUser.archivedEvents || [], 
         limits: limits, 
-        premiumPrice: price,
+        basicPrice,
+        premiumPrice,
         pricing: config.pricing, 
         isEventCompleted: isCompleted, 
         token: token 
@@ -2168,7 +2259,8 @@ app.post('/api/google-auth', async (req, res) => {
 
         const config = await getConfig();
         const limits = config.limits[user.plan || 'free'];
-        const price = config.pricing.premiumPrice;
+        const premiumPrice = config.pricing.premiumPrice;
+        const basicPrice = config.pricing.basicPrice;
         const isCompleted = isEventCompleted(user.profile.weddingDate);
 
         const sessionToken = jwt.sign({ userId: user._id, plan: user.plan || 'free' }, JWT_SECRET, { expiresIn: '7d' });
@@ -2192,7 +2284,8 @@ app.post('/api/google-auth', async (req, res) => {
             payments: user.payments || [],
             archivedEvents: user.archivedEvents || [],
             limits: limits, 
-            premiumPrice: price,
+            basicPrice,
+            premiumPrice,
             pricing: config.pricing, 
             isEventCompleted: isCompleted,
             token: sessionToken 
@@ -2234,7 +2327,8 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
     
     const config = await getConfig();
     const limits = config.limits[user.plan || 'free'];
-    const price = config.pricing.premiumPrice;
+    const premiumPrice = config.pricing.premiumPrice;
+    const basicPrice = config.pricing.basicPrice;
     const isCompleted = isEventCompleted(user.profile.weddingDate);
 
     // ── Merge template defaults < user profile ────────────────────────────
@@ -2264,7 +2358,8 @@ app.get('/api/user/me', authenticateToken, async (req, res) => {
         payments: user.payments || [],
         archivedEvents: user.archivedEvents || [],
         limits: limits, 
-        premiumPrice: price,
+        basicPrice,
+        premiumPrice,
         pricing: config.pricing,
         isEventCompleted: isCompleted
     });
@@ -2849,7 +2944,10 @@ app.get('/api/guests/:userId', authenticateToken, async (req, res) => {
 app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
     try {
         const totalUsers = await User.countDocuments({});
+        const basicUsers = await User.countDocuments({ plan: 'basic' });
         const premiumUsers = await User.countDocuments({ plan: 'premium' });
+        const freeUsers = await User.countDocuments({ $or: [{ plan: 'free' }, { plan: { $exists: false } }] });
+        const paidUsers = basicUsers + premiumUsers;
         
         const usersWithPayments = await User.find({ "payments.0": { "$exists": true } });
         let totalRevenue = 0;
@@ -2873,8 +2971,10 @@ app.get('/api/admin/stats', authenticateAdmin, async (req, res) => {
 
         res.send({
             totalUsers,
+            basicUsers,
             premiumUsers,
-            freeUsers: totalUsers - premiumUsers,
+            paidUsers,
+            freeUsers,
             totalRevenue,
             recentPayments: recentPayments.slice(0, 10)
         });
@@ -3175,7 +3275,26 @@ app.get('/api/admin/config', authenticateAdmin, async (req, res) => {
 
 app.put('/api/admin/config', authenticateAdmin, async (req, res) => {
     try {
-        const { limits, pricing } = req.body;
+        const current = await getConfig();
+        const incomingLimits = req.body?.limits || {};
+        const incomingPricing = req.body?.pricing || {};
+        const limits = {
+          free: incomingLimits.free || current.limits.free,
+          basic: incomingLimits.basic || current.limits.basic,
+          premium: incomingLimits.premium || current.limits.premium,
+        };
+        const pricing = {
+          currency: incomingPricing.currency || current.pricing.currency || 'ron',
+          basicPrice: Number.isFinite(Number(incomingPricing.basicPrice))
+            ? Number(incomingPricing.basicPrice)
+            : Number(current.pricing.basicPrice || 1900),
+          premiumPrice: Number.isFinite(Number(incomingPricing.premiumPrice))
+            ? Number(incomingPricing.premiumPrice)
+            : Number(current.pricing.premiumPrice || 4900),
+          oldPrice: Number.isFinite(Number(incomingPricing.oldPrice))
+            ? Number(incomingPricing.oldPrice)
+            : Number(current.pricing.oldPrice || 0),
+        };
         await SystemConfig.findOneAndUpdate({ key: 'global_config' }, { limits, pricing }, { upsert: true });
         res.send({ success: true });
     } catch (e) {
@@ -3476,11 +3595,16 @@ app.put('/api/admin/service-requests/:id', authenticateAdmin, async (req, res) =
 app.post('/api/upgrade', authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { email, billing = {} } = req.body || {};
+    const { email, billing = {}, targetPlan: requestedPlanRaw } = req.body || {};
     
     const user = await User.findById(userId);
     if (!user) return res.status(404).send({ error: "Utilizator inexistent." });
     const clean = (value, max = 180) => String(value ?? '').trim().slice(0, max);
+    const requestedPlan = normalizePlan(requestedPlanRaw || 'premium');
+    if (requestedPlan === 'free') {
+      return res.status(400).send({ error: "Planul ales este invalid." });
+    }
+    const currentPlan = normalizePlan(user.plan || 'free');
 
     let billingEmail = clean(billing.email || email);
     if (!billingEmail && user.profile?.billingEmail) billingEmail = clean(user.profile.billingEmail);
@@ -3550,8 +3674,29 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
     });
 
     const config = await getConfig();
-    const priceAmount = config.pricing.premiumPrice;
+    const planPriceMap = {
+      basic: config.pricing.basicPrice,
+      premium: config.pricing.premiumPrice,
+    };
+    const charge = getUpgradeCharge(planPriceMap, currentPlan, requestedPlan);
+    if (!charge.ok) {
+      return res.status(400).send({ error: charge.message });
+    }
+    const priceAmount = charge.payableAmount;
+    const productName =
+      charge.currentPlan === 'free'
+        ? (requestedPlan === 'basic' ? 'Wedding Planner Basic' : 'Wedding Planner Premium')
+        : `Upgrade Wedding Planner ${charge.currentPlan} -> ${requestedPlan}`;
+    const productDescription =
+      charge.currentPlan === 'free'
+        ? 'Acces nelimitat la functii premium pe viata.'
+        : `Diferenta de pret pentru upgrade ${charge.currentPlan} -> ${requestedPlan}.`;
     const metadataRaw = {
+      currentPlan: charge.currentPlan,
+      targetPlan: requestedPlan,
+      currentPlanPrice: charge.currentPrice,
+      targetPlanPrice: charge.targetPrice,
+      payableAmount: charge.payableAmount,
       billingType,
       billingName,
       billingCompany,
@@ -3578,8 +3723,8 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
           price_data: {
             currency: 'ron',
             product_data: {
-              name: 'Wedding Planner Premium',
-              description: 'Acces nelimitat la funcții premium pe viață.',
+              name: productName,
+              description: productDescription,
             },
             unit_amount: priceAmount, 
           },
@@ -3887,11 +4032,30 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
         const userId  = req.user.userId;
         const user    = await User.findById(userId);
         if (!user) return res.status(404).json({ error: 'User inexistent.' });
-        const { billing = {} } = req.body || {};
+        const { billing = {}, targetPlan: requestedPlanRaw } = req.body || {};
         const clean = (value, max = 180) => String(value ?? '').trim().slice(0, max);
+        const requestedPlan = normalizePlan(requestedPlanRaw || 'premium');
+        if (requestedPlan === 'free') {
+          return res.status(400).json({ error: 'Planul ales este invalid.' });
+        }
+        const currentPlan = normalizePlan(user.plan || 'free');
 
         const config    = await getConfig();
-        const amount    = (config.pricing.premiumPrice / 100).toFixed(2); // cents → RON
+        const planPriceMap = {
+          basic: config.pricing.basicPrice,
+          premium: config.pricing.premiumPrice,
+        };
+        const charge = getUpgradeCharge(planPriceMap, currentPlan, requestedPlan);
+        if (!charge.ok) {
+          return res.status(400).json({ error: charge.message });
+        }
+        const priceAmount = charge.payableAmount;
+        const amount    = (priceAmount / 100).toFixed(2);
+        const planLabel = requestedPlan === 'basic' ? 'Basic' : 'Premium';
+        const planDetailsLabel =
+          charge.currentPlan === 'free'
+            ? `Wedding Planner ${planLabel}`
+            : `Upgrade ${charge.currentPlan} -> ${planLabel}`;
         const orderId   = `ORD_${Date.now()}`;
         const timestamp = Date.now().toString();
 
@@ -3970,7 +4134,7 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
                 },
                 invoice: {
                     $: { currency: 'RON', amount },
-                    details: 'Wedding Planner Premium — acces pe viata',
+                    details: `${planDetailsLabel} — acces pe viata`,
                     contact_info: {
                         billing: {
                             $: { type: billingType === 'company' ? 'company' : 'person' },
@@ -4004,9 +4168,10 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
                     billingCounty,
                     billingCountry,
                     paymentMethod:    'netopia_card',
+                    planTarget:       requestedPlan,
                     status:           'Pending',
                     relatedEventDate: user.profile?.weddingDate,
-                    relatedEventName: user.profile?.eventName || 'Wedding Planner Premium',
+                    relatedEventName: user.profile?.eventName || planDetailsLabel,
                 },
             },
         });
@@ -4034,6 +4199,7 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
 
   const payment = user.payments.find((p) => p.invoiceId === orderId);
   if (!payment) return null;
+  const targetPlan = normalizePlan(payment.planTarget || 'premium');
 
   const billing = getSmartbillBillingFromProfile(user.profile || {}, payment.billingEmail || user.user);
 
@@ -4046,7 +4212,7 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
           billing,
           amount: Number(payment.amount || 0),
           currency: 'RON',
-          description: 'Wedding Planner Premium',
+          description: targetPlan === 'basic' ? 'Wedding Planner Basic' : 'Wedding Planner Premium',
           sendEmail: true,
         });
         if (smartbillResult?.enabled) {
@@ -4070,7 +4236,7 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
     { _id: user._id, 'payments.invoiceId': orderId },
     {
       $set: {
-        plan: 'premium',
+        plan: planAtLeast(user.plan || 'free', targetPlan),
         'profile.billingVatCode': billing.vatCode,
         'payments.$.status': 'Paid',
         'payments.$.invoiceNumber': invoiceNum,

@@ -22,6 +22,13 @@ export const PLAN_LIMITS = {
         maxBudgetItems: 6,     // Maxim rânduri per categorie buget
         maxCalculatorBudget: 500 // Limit for budget calculator in free plan
     },
+    basic: {
+        maxGuests: 9999,
+        maxElements: 0,
+        maxCustomTasks: 0,
+        maxBudgetItems: 0,
+        maxCalculatorBudget: 0
+    },
     premium: {
         maxGuests: 9999,
         maxElements: 9999,

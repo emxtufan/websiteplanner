@@ -71,7 +71,7 @@ const AdminDashboard = ({ token }: { token: string }) => {
     return (
         <div className="space-y-6">
             {/* KPI CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                 <Card className="border-l-4 border-l-blue-500 shadow-sm">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
@@ -99,7 +99,7 @@ const AdminDashboard = ({ token }: { token: string }) => {
                 <Card className="border-l-4 border-l-amber-500 shadow-sm">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Premium Subs</p>
+                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Premium Users</p>
                             <h3 className="text-3xl font-bold mt-1">{stats.premiumUsers}</h3>
                         </div>
                         <div className="p-3 bg-amber-100 dark:bg-amber-900/30 rounded-full">
@@ -108,12 +108,24 @@ const AdminDashboard = ({ token }: { token: string }) => {
                     </CardContent>
                 </Card>
 
+                <Card className="border-l-4 border-l-violet-500 shadow-sm">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Basic Users</p>
+                            <h3 className="text-3xl font-bold mt-1">{stats.basicUsers || 0}</h3>
+                        </div>
+                        <div className="p-3 bg-violet-100 dark:bg-violet-900/30 rounded-full">
+                            <User className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+                        </div>
+                    </CardContent>
+                </Card>
+
                 <Card className="border-l-4 border-l-green-500 shadow-sm">
                     <CardContent className="p-6 flex items-center justify-between">
                         <div>
-                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Conversion Rate</p>
+                            <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Paid Conversion</p>
                             <h3 className="text-3xl font-bold mt-1">
-                                {stats.totalUsers > 0 ? ((stats.premiumUsers / stats.totalUsers) * 100).toFixed(1) : 0}%
+                                {stats.totalUsers > 0 ? (((stats.paidUsers || 0) / stats.totalUsers) * 100).toFixed(1) : 0}%
                             </h3>
                         </div>
                         <div className="p-3 bg-green-100 dark:bg-green-900/30 rounded-full">

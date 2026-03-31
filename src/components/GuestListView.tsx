@@ -348,13 +348,30 @@ const GuestListView: React.FC<GuestListViewProps> = ({
             </div>
           )}
 
-          <form onSubmit={handleAddGuest} className={cn("flex flex-col md:flex-row items-center p-3 gap-3", (isLocked || !isEventActive) && "opacity-20 pointer-events-none")}>
+          <form
+            onSubmit={handleAddGuest}
+            className={cn(
+              "flex flex-col md:flex-row items-center p-3 gap-3",
+              (isLocked || !isEventActive) && "opacity-20 pointer-events-none",
+            )}
+          >
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0"><UserPlus className="w-4 h-4" /></div>
             <div className="flex-1 w-full relative">
-              <Input placeholder="Nume Invitat Manual (ex: Familia Popescu)" value={newGuestName} onChange={(e: any) => setNewGuestName(e.target.value)} className="bg-transparent border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-9 font-medium placeholder:text-muted-foreground/50" disabled={isLocked || !isEventActive} />
+              <Input
+                placeholder="Nume Invitat Manual (ex: Familia Popescu)"
+                value={newGuestName}
+                onChange={(e: any) => setNewGuestName(e.target.value)}
+                className="bg-transparent border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-0 h-9 font-medium text-foreground placeholder:text-muted-foreground/60"
+                disabled={isLocked || !isEventActive}
+              />
             </div>
             <div className="w-full h-px bg-border md:w-px md:h-6 mx-2" />
-            <select className="w-full md:w-40 bg-transparent text-sm font-medium focus:outline-none cursor-pointer h-9" value={newGuestType} onChange={(e) => setNewGuestType(e.target.value)} disabled={isLocked || !isEventActive}>
+            <select
+              className="w-full md:w-44 h-9 rounded-md border border-input bg-background text-foreground text-sm font-medium px-2 shadow-sm focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              value={newGuestType}
+              onChange={(e) => setNewGuestType(e.target.value)}
+              disabled={isLocked || !isEventActive}
+            >
               <option value="adult">👤 Adult (Single)</option>
               <option value="couple">💑 Cuplu</option>
               <option value="family">👨‍👩‍👧‍👦 Familie</option>

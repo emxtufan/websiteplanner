@@ -276,9 +276,11 @@ export interface PlanLimits {
 export interface SystemConfig {
     limits: {
         free: PlanLimits;
+        basic: PlanLimits;
         premium: PlanLimits;
     };
     pricing: {
+        basicPrice: number;
         premiumPrice: number;
         oldPrice?: number;
         currency: string;
@@ -312,15 +314,16 @@ export interface ArchivedEvent {
 export interface UserSession {
   userId: string;
   user: string;
-  plan: 'free' | 'premium';
+  plan: 'free' | 'basic' | 'premium';
   profile: UserProfile;
   limits?: PlanLimits;
   token?: string;
   payments?: PaymentRecord[];
   archivedEvents?: ArchivedEvent[];
   isAdmin?: boolean;
+  basicPrice?: number;
   premiumPrice?: number;
-  pricing?: { premiumPrice: number, oldPrice?: number };
+  pricing?: { basicPrice: number, premiumPrice: number, oldPrice?: number };
   isEventCompleted?: boolean;
 }
 

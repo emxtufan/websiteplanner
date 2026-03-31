@@ -83,7 +83,7 @@ export default function InvitationMarketplace({
   const [previewTemplate, setPreviewTemplate] = useState<any | null>(null);
 
   const session = JSON.parse(localStorage.getItem('weddingPro_session') || '{}');
-  const isPremium = session.plan === 'premium';
+  const isPaidPlan = session.plan === 'premium' || session.plan === 'basic';
 
   const config = eventTypeConfig[eventType] || eventTypeConfig['wedding'];
   const Icon = config.icon;
@@ -127,7 +127,7 @@ export default function InvitationMarketplace({
   const handleSelect = (template: any) => {
       if (onCheckActive && !onCheckActive()) return;
       const isFreeTemplate = template.id === 'classic' || template.id === `classic-${eventType}`;
-      const isLocked = !isFreeTemplate && !isPremium;
+      const isLocked = !isFreeTemplate && !isPaidPlan;
       if (isLocked) {
           toast({ title: "Funcționalitate Premium", description: "Treci la planul Premium pentru a debloca această temă.", variant: "destructive" });
           return;
@@ -185,7 +185,7 @@ export default function InvitationMarketplace({
                 {filteredTemplates.map((template) => {
                     const isSelected = selectedTemplate === template.id;
                     const isFreeTemplate = template.id === 'classic' || template.id === `classic-${eventType}`;
-                    const isLocked = !isFreeTemplate && !isPremium;
+                    const isLocked = !isFreeTemplate && !isPaidPlan;
                     
                     return (
                         <Card 

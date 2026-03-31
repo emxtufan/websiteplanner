@@ -415,10 +415,13 @@ const UserManagement = ({ token }: { token: string }) => {
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold ${
                             expandedDraft.plan === "premium"
                               ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"
+                              : expandedDraft.plan === "basic"
+                                ? "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
                               : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
                           }`}
                         >
                           {expandedDraft.plan === "premium" && <Crown className="w-3 h-3" />}
+                          {expandedDraft.plan === "basic" && <UserIcon className="w-3 h-3" />}
                           {String(expandedDraft.plan || "free").toUpperCase()}
                         </span>
 
@@ -466,6 +469,7 @@ const UserManagement = ({ token }: { token: string }) => {
                               }
                             >
                               <option value="free">Free</option>
+                              <option value="basic">Basic</option>
                               <option value="premium">Premium</option>
                             </select>
                           </div>

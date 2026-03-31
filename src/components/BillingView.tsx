@@ -16,6 +16,9 @@ interface BillingViewProps {
 
 const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
   const isPremium = session.plan === 'premium';
+  const isBasic = session.plan === 'basic';
+  const isPaidPlan = isPremium || isBasic;
+  const planLabel = isPremium ? "Premium" : isBasic ? "Basic" : "Gratuit";
   const payments = session.payments || [];
   const { toast } = useToast();
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -103,8 +106,8 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
 
         {/* Plan Section */}
         <div className="grid gap-6 md:grid-cols-2">
-            <Card className={cn("relative overflow-hidden", isPremium ? "border-green-200 dark:border-green-900" : "border-zinc-200")}>
-                {isPremium && (
+            <Card className={cn("relative overflow-hidden", isPaidPlan ? "border-green-200 dark:border-green-900" : "border-zinc-200")}>
+                {isPaidPlan && (
                     <div className="absolute top-0 right-0 p-4">
                         <span className="inline-flex items-center rounded-full bg-green-50 px-2 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
                             Activ
@@ -114,18 +117,22 @@ const BillingView: React.FC<BillingViewProps> = ({ session, onUpgrade }) => {
                 <CardHeader>
                     <CardTitle>Planul Tău</CardTitle>
                     <CardDescription>
-                        {isPremium ? "Ai acces la toate funcționalitățile." : "Ești pe planul gratuit limitat."}
+                        {isPremium
+                          ? "Ai acces la toate funcționalitățile."
+                          : isBasic
+                            ? "Ai acces la invitații și RSVP. Restul modulelor sunt Premium."
+                            : "Ești pe planul gratuit limitat."}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="flex items-baseline gap-2">
-                        <span className="text-3xl font-bold">{isPremium ? "Premium" : "Gratuit"}</span>
-                        {isPremium && <span className="text-sm text-muted-foreground">/ Plată Unică</span>}
+                        <span className="text-3xl font-bold">{planLabel}</span>
+                        {isPaidPlan && <span className="text-sm text-muted-foreground">/ Plată Unică</span>}
                     </div>
                     
                     {!isPremium ? (
                         <Button onClick={onUpgrade} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white">
-                            Upgrade la Premium (49 LEI)
+                            {isBasic ? "Upgrade la Premium" : "Alege Basic sau Premium"}
                         </Button>
                     ) : (
                         <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">

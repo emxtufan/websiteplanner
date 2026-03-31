@@ -684,16 +684,43 @@ const DashboardApp = () => {
     available: number;
   } | null>(null);
 
-  const isPremium = session?.plan === "premium";
+  const currentPlan = session?.plan || "free";
+  const isPremium = currentPlan === "premium";
+  const isBasicPlan = currentPlan === "basic";
+  const basicAllowedViews = useMemo(
+    () =>
+      new Set([
+        "invitations",
+        "guests",
+        "settings",
+        "billing",
+        "history",
+        "services",
+        "service-requests",
+      ]),
+    [],
+  );
   // Event is active if NO active completion flag AND we are NOT viewing a read-only snapshot
   const isEventActive = !session?.isEventCompleted && !viewingSnapshotId;
   const activeLimits =
-    session?.limits || (isPremium ? PLAN_LIMITS.premium : PLAN_LIMITS.free);
+    session?.limits ||
+    (currentPlan === "premium"
+      ? PLAN_LIMITS.premium
+      : currentPlan === "basic"
+        ? PLAN_LIMITS.basic
+        : PLAN_LIMITS.free);
   const needsSetup =
     session && session.profile && !session.profile.isSetupComplete;
   const unreadNotifications = useMemo(
     () => notifications.filter((n) => n.isRead !== true).length,
     [notifications],
+  );
+  const canAccessView = useCallback(
+    (nextView: string) => {
+      if (currentPlan !== "basic") return true;
+      return basicAllowedViews.has(nextView);
+    },
+    [basicAllowedViews, currentPlan],
   );
 
   useEffect(() => {
@@ -729,6 +756,18 @@ const DashboardApp = () => {
   useEffect(() => {
     setAccountDraft(buildAccountDraft(session));
   }, [session?.user, session?.profile]);
+
+  useEffect(() => {
+    if (canAccessView(view)) return;
+    const fallbackView = currentPlan === "basic" ? "invitations" : "dashboard";
+    setView(fallbackView as any);
+    toast({
+      title: "Disponibil in Premium",
+      description: "Planul Basic include doar invitatii, RSVP si lista de invitati.",
+      variant: "warning",
+    });
+    setShowUpgradeModal(true);
+  }, [canAccessView, currentPlan, toast, view]);
 
   // --- GLOBAL MODIFICATION CHECK ---
   const handleActionAttempt = useCallback(() => {
@@ -2448,9 +2487,11 @@ const DashboardApp = () => {
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         userId={session.userId}
+        currentPlan={session.plan}
         userEmail={session.profile?.email || session.user}
         userProfile={session.profile}
         onUpgradeSuccess={handleUpgradeSuccess}
+        basicPrice={session.basicPrice || session.pricing?.basicPrice}
         premiumPrice={session.premiumPrice}
         oldPrice={session.pricing?.oldPrice}
       />
@@ -2711,35 +2752,53 @@ const DashboardApp = () => {
               )}
 
               {group.map((item) => (
-                <Button
-                  key={item.id}
-                  variant={view === item.id ? "secondary" : "ghost"}
-                  className={cn(
-                    "w-full mb-1 group overflow-hidden",
-                    isCollapsed
-                      ? "justify-center px-2"
-                      : "justify-start px-4 gap-3",
-                    view === item.id
-                      ? "bg-white dark:bg-zinc-800 font-semibold shadow-sm"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                  onClick={() => {
-                    setView(item.id as any);
-                    setIsMobileMenuOpen(false);
-                  }}
-                >
-                  <item.icon className="w-4 h-4 shrink-0" />
-                  <span
-                    className={cn(
-                      "whitespace-nowrap overflow-hidden",
-                      isCollapsed
-                        ? "max-w-0 opacity-0 translate-x-[-10px]"
-                        : "max-w-[200px] opacity-100 translate-x-0",
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                </Button>
+                (() => {
+                  const isLockedForBasic = isBasicPlan && !canAccessView(item.id);
+                  return (
+                    <Button
+                      key={item.id}
+                      variant={view === item.id ? "secondary" : "ghost"}
+                      className={cn(
+                        "w-full mb-1 group overflow-hidden",
+                        isCollapsed
+                          ? "justify-center px-2"
+                          : "justify-start px-4 gap-3",
+                        view === item.id
+                          ? "bg-white dark:bg-zinc-800 font-semibold shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                        isLockedForBasic && "opacity-60",
+                      )}
+                      onClick={() => {
+                        if (isLockedForBasic) {
+                          toast({
+                            title: "Disponibil in Premium",
+                            description: "Aceasta sectiune este blocata in planul Basic.",
+                            variant: "warning",
+                          });
+                          setShowUpgradeModal(true);
+                          return;
+                        }
+                        setView(item.id as any);
+                        setIsMobileMenuOpen(false);
+                      }}
+                    >
+                      <item.icon className="w-4 h-4 shrink-0" />
+                      <span
+                        className={cn(
+                          "whitespace-nowrap overflow-hidden",
+                          isCollapsed
+                            ? "max-w-0 opacity-0 translate-x-[-10px]"
+                            : "max-w-[200px] opacity-100 translate-x-0",
+                        )}
+                      >
+                        {item.label}
+                      </span>
+                      {!isCollapsed && isLockedForBasic && (
+                        <Lock className="w-3.5 h-3.5 ml-auto text-amber-500" />
+                      )}
+                    </Button>
+                  );
+                })()
               ))}
             </div>
           ))}
@@ -2809,7 +2868,7 @@ const DashboardApp = () => {
                       {session.user}
                     </span>
                     <span className="truncate text-xs text-muted-foreground flex items-center gap-2">
-                      {isPremium ? "Premium Plan" : "Free Plan"}
+                      {isPremium ? "Premium Plan" : isBasicPlan ? "Basic Plan" : "Free Plan"}
                       {unreadNotifications > 0 && (
                         <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
                           {unreadNotifications}
