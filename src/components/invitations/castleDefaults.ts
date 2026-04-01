@@ -188,7 +188,7 @@ export const LORD_MONO_THEMES: CastleColorTheme[] = [
 }
 ];
 export const getCastleTheme = (id?: string): CastleColorTheme =>
-  [...CASTLE_THEMES, ...GIRL_THEMES, ...ROMANTIC_THEMES, ...BOY_THEMES, ...LORD_MONO_THEMES, ...UNICORN_THEMES]
+  [...CASTLE_THEMES, ...GIRL_THEMES, ...ROMANTIC_THEMES, ...BOY_THEMES, ...LORD_MONO_THEMES, ...UNICORN_THEMES, ...ETERN_BOTANICA_THEMES]
     .find(t => t.id === id) ?? CASTLE_THEMES[0];
 
 export const getGirlTheme  = (id?: string): CastleColorTheme =>
@@ -211,16 +211,87 @@ export const getUnicornTheme = (id?: string): CastleColorTheme =>
   UNICORN_THEMES.find(t => t.id === id) ?? UNICORN_THEMES[0];
 
 export const ROYAL_ROSE_THEMES: CastleColorTheme[] = [
-  { id: 'rose',     emoji: '🌹', name: 'Royal Rose',     PINK_DARK: '#9f1239', PINK_D: '#e11d48', PINK_L: '#fda4af', PINK_XL: '#fff1f2', CREAM: '#fff0f5', TEXT: '#881337', MUTED: '#be7180', GOLD: '#fce7f3' },
-  { id: 'lavender', emoji: '💜', name: 'Lavender Dream',  PINK_DARK: '#5b21b6', PINK_D: '#7c3aed', PINK_L: '#c4b5fd', PINK_XL: '#f5f3ff', CREAM: '#f3f0ff', TEXT: '#4c1d95', MUTED: '#7c6f9d', GOLD: '#ede9fe' },
-  { id: 'sage',     emoji: '🌿', name: 'Sage Garden',     PINK_DARK: '#14532d', PINK_D: '#16a34a', PINK_L: '#86efac', PINK_XL: '#f0fdf4', CREAM: '#ecfdf5', TEXT: '#14532d', MUTED: '#5a8c6a', GOLD: '#dcfce7' },
-  { id: 'azure',    emoji: '💙', name: 'Azure Dream',     PINK_DARK: '#1e3a8a', PINK_D: '#2563eb', PINK_L: '#93c5fd', PINK_XL: '#eff6ff', CREAM: '#f0f5ff', TEXT: '#1e3a8a', MUTED: '#5a7abb', GOLD: '#dbeafe' },
-  { id: 'gold',     emoji: '✨', name: 'Golden Hour',     PINK_DARK: '#92400e', PINK_D: '#d97706', PINK_L: '#fcd34d', PINK_XL: '#fffbeb', CREAM: '#fefce8', TEXT: '#78350f', MUTED: '#9a7c3e', GOLD: '#fef3c7' },
-  { id: 'slate',    emoji: '🩶', name: 'Slate Elegant',   PINK_DARK: '#1e293b', PINK_D: '#475569', PINK_L: '#cbd5e1', PINK_XL: '#f1f5f9', CREAM: '#f8fafc', TEXT: '#1e293b', MUTED: '#64748b', GOLD: '#e2e8f0' },
-];
+  { id: 'ruby', emoji: '❤️', name: 'Ruby Elegance', PINK_DARK: '#7f1d1d', PINK_D: '#dc2626', PINK_L: '#fca5a5', PINK_XL: '#fef2f2', CREAM: '#fff5f5', TEXT: '#7f1d1d', MUTED: '#b45353', GOLD: '#fee2e2' },
 
+  { id: 'blush', emoji: '🌸', name: 'Blush Romance', PINK_DARK: '#9d174d', PINK_D: '#ec4899', PINK_L: '#f9a8d4', PINK_XL: '#fdf2f8', CREAM: '#fff1f6', TEXT: '#831843', MUTED: '#c08497', GOLD: '#fce7f3' },
+
+  { id: 'peony', emoji: '🌺', name: 'Peony Passion', PINK_DARK: '#be123c', PINK_D: '#f43f5e', PINK_L: '#fda4af', PINK_XL: '#fff1f2', CREAM: '#fff0f3', TEXT: '#881337', MUTED: '#c06c84', GOLD: '#ffe4e6' },
+
+  { id: 'wine', emoji: '🍷', name: 'Wine Velvet', PINK_DARK: '#4c0519', PINK_D: '#9f1239', PINK_L: '#fb7185', PINK_XL: '#fff1f2', CREAM: '#fdf2f2', TEXT: '#4c0519', MUTED: '#9f5f6b', GOLD: '#ffe4e6' },
+
+  { id: 'orchid', emoji: '🌷', name: 'Orchid Luxe', PINK_DARK: '#6b21a8', PINK_D: '#a855f7', PINK_L: '#d8b4fe', PINK_XL: '#faf5ff', CREAM: '#f5f3ff', TEXT: '#581c87', MUTED: '#9d7bb0', GOLD: '#ede9fe' },
+
+  { id: 'amethyst', emoji: '💎', name: 'Amethyst Glow', PINK_DARK: '#4c1d95', PINK_D: '#7c3aed', PINK_L: '#c4b5fd', PINK_XL: '#f5f3ff', CREAM: '#f3f0ff', TEXT: '#4c1d95', MUTED: '#8b7bb8', GOLD: '#ddd6fe' },
+
+  { id: 'emerald', emoji: '💚', name: 'Emerald Royal', PINK_DARK: '#064e3b', PINK_D: '#059669', PINK_L: '#6ee7b7', PINK_XL: '#ecfdf5', CREAM: '#f0fdf4', TEXT: '#065f46', MUTED: '#4d8c7a', GOLD: '#d1fae5' },
+
+  { id: 'mint', emoji: '🍃', name: 'Mint Fresh', PINK_DARK: '#065f46', PINK_D: '#10b981', PINK_L: '#a7f3d0', PINK_XL: '#ecfdf5', CREAM: '#f0fdfa', TEXT: '#065f46', MUTED: '#6aa89c', GOLD: '#d1fae5' },
+
+  { id: 'teal', emoji: '🦚', name: 'Teal Luxury', PINK_DARK: '#134e4a', PINK_D: '#0d9488', PINK_L: '#5eead4', PINK_XL: '#f0fdfa', CREAM: '#ecfeff', TEXT: '#134e4a', MUTED: '#5f9ea0', GOLD: '#ccfbf1' },
+
+  { id: 'navy', emoji: '🌌', name: 'Navy Prestige', PINK_DARK: '#0f172a', PINK_D: '#1e3a8a', PINK_L: '#93c5fd', PINK_XL: '#eff6ff', CREAM: '#f0f5ff', TEXT: '#0f172a', MUTED: '#5b6b8a', GOLD: '#dbeafe' },
+
+  { id: 'midnight', emoji: '🌙', name: 'Midnight Blue', PINK_DARK: '#020617', PINK_D: '#1e293b', PINK_L: '#94a3b8', PINK_XL: '#f1f5f9', CREAM: '#f8fafc', TEXT: '#020617', MUTED: '#64748b', GOLD: '#e2e8f0' },
+
+  { id: 'champagne', emoji: '🥂', name: 'Champagne Glow', PINK_DARK: '#78350f', PINK_D: '#d4a373', PINK_L: '#fcd5ce', PINK_XL: '#fff7ed', CREAM: '#fefae0', TEXT: '#78350f', MUTED: '#c2a27c', GOLD: '#faedcd' },
+
+  { id: 'ivory', emoji: '🤍', name: 'Ivory Classic', PINK_DARK: '#78716c', PINK_D: '#a8a29e', PINK_L: '#e7e5e4', PINK_XL: '#fafaf9', CREAM: '#fefefe', TEXT: '#44403c', MUTED: '#a8a29e', GOLD: '#f5f5f4' },
+
+  { id: 'peach', emoji: '🍑', name: 'Peach Soft', PINK_DARK: '#9a3412', PINK_D: '#fb923c', PINK_L: '#fed7aa', PINK_XL: '#fff7ed', CREAM: '#ffedd5', TEXT: '#7c2d12', MUTED: '#d4a373', GOLD: '#ffedd5' },
+
+  { id: 'coral', emoji: '🪸', name: 'Coral Sunset', PINK_DARK: '#9f1239', PINK_D: '#fb7185', PINK_L: '#fecdd3', PINK_XL: '#fff1f2', CREAM: '#ffe4e6', TEXT: '#881337', MUTED: '#e5989b', GOLD: '#ffe4e6' },
+
+  { id: 'bronze', emoji: '🥉', name: 'Bronze Chic', PINK_DARK: '#451a03', PINK_D: '#b45309', PINK_L: '#fbbf24', PINK_XL: '#fffbeb', CREAM: '#fef3c7', TEXT: '#78350f', MUTED: '#b08968', GOLD: '#fde68a' },
+
+  { id: 'golden_rose', emoji: '🌹✨', name: 'Golden Rose', PINK_DARK: '#881337', PINK_D: '#e11d48', PINK_L: '#fda4af', PINK_XL: '#fff1f2', CREAM: '#fff0f5', TEXT: '#881337', MUTED: '#be7180', GOLD: '#fcd34d' },
+
+  { id: 'dusty_blue', emoji: '💍', name: 'Dusty Blue', PINK_DARK: '#1e3a8a', PINK_D: '#3b82f6', PINK_L: '#bfdbfe', PINK_XL: '#eff6ff', CREAM: '#f8fbff', TEXT: '#1e3a8a', MUTED: '#7c93c3', GOLD: '#dbeafe' },
+
+  { id: 'forest', emoji: '🌲', name: 'Forest Elegance', PINK_DARK: '#022c22', PINK_D: '#166534', PINK_L: '#86efac', PINK_XL: '#ecfdf5', CREAM: '#f0fdf4', TEXT: '#022c22', MUTED: '#4d7c6f', GOLD: '#dcfce7' },
+
+  { id: 'charcoal', emoji: '🖤', name: 'Charcoal Luxe', PINK_DARK: '#111827', PINK_D: '#374151', PINK_L: '#d1d5db', PINK_XL: '#f9fafb', CREAM: '#ffffff', TEXT: '#111827', MUTED: '#6b7280', GOLD: '#e5e7eb' },
+];
 export const getRoyalRoseTheme = (id?: string): CastleColorTheme =>
   ROYAL_ROSE_THEMES.find(t => t.id === id) ?? ROYAL_ROSE_THEMES[0];
+
+// ── Blush Bloom themes ─────────────────────────────────────────────────────────
+export const BLUSH_BLOOM_THEMES: CastleColorTheme[] = [
+  { id: 'default', emoji: '🌸', name: 'Blush Bloom',      PINK_DARK: '#c97090', PINK_D: '#e8a0ac', PINK_L: '#f2c8cf', PINK_XL: '#fdf0f2', CREAM: '#fdf8f5', TEXT: '#5a3a44', MUTED: '#8b5e6b', GOLD: '#f3d8df' },
+  { id: 'pearl',   emoji: '🤍', name: 'Pearl Ivory',      PINK_DARK: '#8a6f66', PINK_D: '#d8c3ba', PINK_L: '#efe1da', PINK_XL: '#fcf7f3', CREAM: '#fffdfb', TEXT: '#4f403b', MUTED: '#9d8a84', GOLD: '#eadfd6' },
+  { id: 'berry',   emoji: '🍓', name: 'Berry Rose',       PINK_DARK: '#8f2f56', PINK_D: '#cc5f8a', PINK_L: '#ebb2c8', PINK_XL: '#fff1f7', CREAM: '#fff7fb', TEXT: '#4a1f34', MUTED: '#9f6a82', GOLD: '#f5d6e3' },
+  { id: 'mauve',   emoji: '🌺', name: 'Mauve Dust',       PINK_DARK: '#7a4d69', PINK_D: '#b57fa0', PINK_L: '#dcb8d0', PINK_XL: '#f9f2f7', CREAM: '#fcf8fc', TEXT: '#4a3243', MUTED: '#8f7085', GOLD: '#e8d7e2' },
+  { id: 'sage',    emoji: '🌿', name: 'Sage Romance',     PINK_DARK: '#527367', PINK_D: '#7da394', PINK_L: '#c4ddd4', PINK_XL: '#f1f8f5', CREAM: '#f7fcf9', TEXT: '#2f4a40', MUTED: '#6f8f83', GOLD: '#deeee7' },
+  { id: 'charcoal',emoji: '🖤', name: 'Charcoal Blush',   PINK_DARK: '#2f2a2d', PINK_D: '#5f4f58', PINK_L: '#c8b8bf', PINK_XL: '#f6f2f4', CREAM: '#fbf9fa', TEXT: '#2f2a2d', MUTED: '#7f7078', GOLD: '#e4dde1' },
+];
+
+export const getBlushBloomTheme = (id?: string): CastleColorTheme =>
+  BLUSH_BLOOM_THEMES.find(t => t.id === id) ?? BLUSH_BLOOM_THEMES[0];
+
+// Velum themes - editorial ivory + premium accents
+export const VELUM_THEMES: CastleColorTheme[] = [
+  { id: 'default',    emoji: '✉️', name: 'Ivory Gold',      PINK_DARK: '#7a5d2d', PINK_D: '#c9a84c', PINK_L: '#e6dcc6', PINK_XL: '#f7f3ec', CREAM: '#ede8dc', TEXT: '#2a2118', MUTED: '#9a8a7a', GOLD: '#c9a84c' },
+  { id: 'charcoal',   emoji: '🖤', name: 'Charcoal Ivory',  PINK_DARK: '#111827', PINK_D: '#374151', PINK_L: '#d1d5db', PINK_XL: '#f8fafc', CREAM: '#f1f5f9', TEXT: '#111827', MUTED: '#6b7280', GOLD: '#9ca3af' },
+  { id: 'emerald',    emoji: '💚', name: 'Emerald Seal',    PINK_DARK: '#065f46', PINK_D: '#0f766e', PINK_L: '#b7d8ce', PINK_XL: '#f2faf7', CREAM: '#ecfdf5', TEXT: '#1b4332', MUTED: '#5e7c70', GOLD: '#34d399' },
+  { id: 'midnight',   emoji: '🌙', name: 'Midnight Silver', PINK_DARK: '#1e1b4b', PINK_D: '#312e81', PINK_L: '#c7d2fe', PINK_XL: '#eef2ff', CREAM: '#f5f7ff', TEXT: '#1e1b4b', MUTED: '#7c83a1', GOLD: '#a5b4fc' },
+  { id: 'burgundy',   emoji: '🍷', name: 'Burgundy Wax',    PINK_DARK: '#7f1d1d', PINK_D: '#9f1239', PINK_L: '#fbc2c4', PINK_XL: '#fff1f2', CREAM: '#fff5f5', TEXT: '#4a1b1f', MUTED: '#9f6a72', GOLD: '#fb7185' },
+  { id: 'champagne',  emoji: '🥂', name: 'Champagne Pearl', PINK_DARK: '#92400e', PINK_D: '#b45309', PINK_L: '#f3e5c9', PINK_XL: '#fff8ee', CREAM: '#fffbeb', TEXT: '#3f2a14', MUTED: '#9f8a6a', GOLD: '#fbbf24' },
+];
+
+export const getVelumTheme = (id?: string): CastleColorTheme =>
+  VELUM_THEMES.find(t => t.id === id) ?? VELUM_THEMES[0];
+
+// Etern Botanica themes - watercolor botanical variants
+export const ETERN_BOTANICA_THEMES: CastleColorTheme[] = [
+  { id: 'default',   emoji: '🌿', name: 'Botanica Rose',   PINK_DARK: '#c97890', PINK_D: '#8aaa78', PINK_L: '#e8a8b8', PINK_XL: '#fdfaf7', CREAM: '#f5f0e8', TEXT: '#2a2118', MUTED: '#9a8a7a', GOLD: '#c9a84c' },
+  { id: 'sage',      emoji: '🍃', name: 'Sage Ivory',      PINK_DARK: '#5a7a66', PINK_D: '#7fae97', PINK_L: '#b7d7c8', PINK_XL: '#f7fbf8', CREAM: '#eef7f2', TEXT: '#22352c', MUTED: '#6f8f83', GOLD: '#c8b46a' },
+  { id: 'champagne', emoji: '🥂', name: 'Champagne Floral',PINK_DARK: '#9a6c55', PINK_D: '#c89c7b', PINK_L: '#f0cfb2', PINK_XL: '#fff9f2', CREAM: '#f9f1e7', TEXT: '#3a2a20', MUTED: '#9f8a76', GOLD: '#d4af6a' },
+  { id: 'dusty-rose',emoji: '🌹', name: 'Dusty Rose',      PINK_DARK: '#a45d73', PINK_D: '#c892a4', PINK_L: '#ebc2cf', PINK_XL: '#fff4f7', CREAM: '#fdf0f3', TEXT: '#3f2430', MUTED: '#a47d8d', GOLD: '#d7b16a' },
+  { id: 'olive',     emoji: '🫒', name: 'Olive Garden',    PINK_DARK: '#53633f', PINK_D: '#738959', PINK_L: '#c7d6aa', PINK_XL: '#f7faee', CREAM: '#f0f5e3', TEXT: '#29311f', MUTED: '#7f8f6f', GOLD: '#bfa45b' },
+  { id: 'noir',      emoji: '🖤', name: 'Noir Botanica',   PINK_DARK: '#2a2a2a', PINK_D: '#4c5a4c', PINK_L: '#bfc9bf', PINK_XL: '#f5f6f4', CREAM: '#eceee9', TEXT: '#1a1a1a', MUTED: '#6c726c', GOLD: '#9f8b58' },
+];
+
+export const getEternBotanicaTheme = (id?: string): CastleColorTheme =>
+  ETERN_BOTANICA_THEMES.find(t => t.id === id) ?? ETERN_BOTANICA_THEMES[0];
 
 // ── Adventure Road themes ──────────────────────────────────────────────────────
 export interface AdventureColorTheme {

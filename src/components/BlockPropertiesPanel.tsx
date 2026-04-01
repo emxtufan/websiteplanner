@@ -291,6 +291,13 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
     const nextMap = { ...(block.textStyles || {}) } as Record<string, TextStyle>;
     if (Object.keys(cleaned).length === 0) delete nextMap[selectedTextKey];
     else nextMap[selectedTextKey] = cleaned;
+    const type = String(block.type || "");
+    const singleTextBlock =
+      type === "text" || type === "description" || type === "title" || type === "date";
+    if (singleTextBlock && Object.prototype.hasOwnProperty.call(patch, "color")) {
+      onUpdate({ textStyles: nextMap, textColor: patch.color ?? undefined });
+      return;
+    }
     onUpdate({ textStyles: nextMap });
   };
   const resetTextStyle = () => {
@@ -354,7 +361,7 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
 
       {/* Sections */}
       <div className="flex-1 overflow-y-auto scrollbar-hide">
-        {!isStructural && !isPhoto && !hasTextSelection && (
+        {!isPhoto && !hasTextSelection && (
           <div className="px-4 py-3">
             <div className={`text-[10px] rounded-lg border px-3 py-2 ${dark ? 'border-white/10 text-white/50 bg-white/5' : 'border-zinc-200 text-zinc-500 bg-zinc-50'}`}>
               Selectează un text din invitație pentru a-i edita stilul.
@@ -426,7 +433,7 @@ const BlockPropertiesPanel: React.FC<BlockPropertiesPanelProps> = ({ block, onUp
         )}
 
         {/* ── TEXT STYLE ── */}
-        {!isStructural && hasTextSelection && (
+        {!isPhoto && hasTextSelection && (
           <>
             <Sec title="Tipografie" icon={Type} dark={dark} open>
               <div className="space-y-2">

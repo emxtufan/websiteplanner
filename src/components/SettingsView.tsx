@@ -35,7 +35,7 @@ import JurassicTemplate from "./invitations/JurassicTemplate";
 import ZootropolisTemplate from "./invitations/ZootropolisTemplate";
 import { TextSelectionCtx } from "./BlockStyleContext";
 import LittleMermaidTemplate  from "./invitations/LittleMermaidTemplate";
-import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES, GABBY_THEMES, FROZEN_THEMES, UNICORN_THEMES, ADVENTURE_BOY_THEMES, ADVENTURE_GIRL_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES, ZOOTROPOLIS_BOY_THEMES, ZOOTROPOLIS_GIRL_THEMES, MERMAID_BOY_THEMES, MERMAID_GIRL_THEMES } from "./invitations/castleDefaults";
+import { CASTLE_THEMES, GIRL_THEMES, BOY_THEMES, CASTLE_DEFAULTS, CASTLE_DEFAULT_BLOCKS, CASTLE_PREVIEW_DATA, ROMANTIC_THEMES, LORD_MONO_THEMES, GABBY_THEMES, FROZEN_THEMES, UNICORN_THEMES, ADVENTURE_BOY_THEMES, ADVENTURE_GIRL_THEMES, JURASSIC_BOY_THEMES, JURASSIC_GIRL_THEMES, ZOOTROPOLIS_BOY_THEMES, ZOOTROPOLIS_GIRL_THEMES, MERMAID_BOY_THEMES, MERMAID_GIRL_THEMES, ROYAL_ROSE_THEMES, BLUSH_BLOOM_THEMES, VELUM_THEMES, ETERN_BOTANICA_THEMES } from "./invitations/castleDefaults";
 import { getTemplateDefaultBlocks, getTemplateDefaultProfile } from "./invitations/registry";
 import { TemplateMeta } from "./invitations/types";
 
@@ -320,6 +320,7 @@ const INLINE_TIMELINE_TEMPLATES = new Set([
   "gabbys-dollhouse",
   "frozen",
   "unicorn-academy",
+  "etern-botanica",
 ]);
 
 const SettingsContent: React.FC<{
@@ -435,7 +436,7 @@ const SettingsContent: React.FC<{
         </div>
       </Collapsible>
 
-      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose' || selectedTemplate === 'gabbys-dollhouse' || selectedTemplate === 'frozen' || selectedTemplate === 'unicorn-academy' || selectedTemplate === 'adventure-road' || selectedTemplate === 'jurassic-park' || selectedTemplate === 'zootropolis' || selectedTemplate === 'little-mermaid') && (() => {
+      {((selectedTemplate?.startsWith('castle-magic')) || selectedTemplate === 'lord-effects' || selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose' || selectedTemplate === 'blush-bloom' || selectedTemplate === 'velum' || selectedTemplate === 'etern-botanica' || selectedTemplate === 'gabbys-dollhouse' || selectedTemplate === 'frozen' || selectedTemplate === 'unicorn-academy' || selectedTemplate === 'adventure-road' || selectedTemplate === 'jurassic-park' || selectedTemplate === 'zootropolis' || selectedTemplate === 'little-mermaid') && (() => {
         const themes = selectedTemplate === 'lord-effects'
           ? LORD_MONO_THEMES
           : selectedTemplate === 'castle-magic-boys'
@@ -456,7 +457,15 @@ const SettingsContent: React.FC<{
                     ? [...ZOOTROPOLIS_BOY_THEMES, ...ZOOTROPOLIS_GIRL_THEMES]
                   : selectedTemplate === 'little-mermaid'
                     ? [...MERMAID_BOY_THEMES, ...MERMAID_GIRL_THEMES]
-                  : selectedTemplate === 'romantic' || selectedTemplate === 'royal-rose'
+                  : selectedTemplate === 'royal-rose'
+                    ? ROYAL_ROSE_THEMES
+                  : selectedTemplate === 'blush-bloom'
+                    ? BLUSH_BLOOM_THEMES
+                  : selectedTemplate === 'velum'
+                    ? VELUM_THEMES
+                  : selectedTemplate === 'etern-botanica'
+                    ? ETERN_BOTANICA_THEMES
+                  : selectedTemplate === 'romantic'
                     ? ROMANTIC_THEMES
                     : CASTLE_THEMES;
 
@@ -622,7 +631,7 @@ const SettingsContent: React.FC<{
           title="Intro"
           desc="Animația de început, texte și variante."
           icon={Sparkles}
-          defaultOpen={false}
+          defaultOpen={true}
         >
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 px-3 py-2">
@@ -827,7 +836,11 @@ const SettingsContent: React.FC<{
               <Collapsible title="Variantă Intro" defaultOpen={false} variant="sub">
                 <div className="space-y-1">
                   {Object.entries(introVariants).map(([ivId, iv]) => {
-                    const activeVariantId = (profile as any).introVariant ?? defaultIntroVariant ?? Object.keys(introVariants)[0];
+                    const selectedVariantId = (profile as any).introVariant as string | undefined;
+                    const fallbackVariantId = defaultIntroVariant ?? Object.keys(introVariants)[0];
+                    const activeVariantId = selectedVariantId && introVariants[selectedVariantId]
+                      ? selectedVariantId
+                      : fallbackVariantId;
                     const isChosen = activeVariantId === ivId;
                     const hasImg = !!(iv.desktop || iv.mobile);
                     const isExpanded = expandedTheme === ivId;
@@ -1288,7 +1301,11 @@ const SettingsContent: React.FC<{
               <Collapsible title="🖼 Variantă Intro" defaultOpen={true}>
                 <div className="space-y-1">
                   {Object.entries(introVariants).map(([ivId, iv]) => {
-                    const activeVariantId = (profile as any).introVariant ?? defaultIntroVariant ?? Object.keys(introVariants)[0];
+                    const selectedVariantId = (profile as any).introVariant as string | undefined;
+                    const fallbackVariantId = defaultIntroVariant ?? Object.keys(introVariants)[0];
+                    const activeVariantId = selectedVariantId && introVariants[selectedVariantId]
+                      ? selectedVariantId
+                      : fallbackVariantId;
                     const isChosen = activeVariantId === ivId;
                     const hasImg = !!(iv.desktop || iv.mobile);
                     const isExpanded = expandedTheme === ivId;
@@ -1708,8 +1725,12 @@ const SettingsView: React.FC<SettingsViewProps> = ({
     customSections:      session.profile?.customSections || "[]",
   } as UserProfile));
 
-  const [introPreview, setIntroPreview] = useState(false);
-  useEffect(() => { setIntroPreview(false); }, [selectedTemplate]);
+  const [introPreview, setIntroPreview] = useState(
+    () => !!selectedTemplate && INTRO_TEMPLATES.has(selectedTemplate),
+  );
+  useEffect(() => {
+    setIntroPreview(!!selectedTemplate && INTRO_TEMPLATES.has(selectedTemplate));
+  }, [selectedTemplate]);
 
   const [selectedBlock, setSelectedBlock] = useState<{ block: InvitationBlock; idx: number; textKey?: string; textLabel?: string } | null>(null);
   const [resetKey,      setResetKey]      = useState(0); // increment to force template remount
@@ -1958,11 +1979,24 @@ const SettingsView: React.FC<SettingsViewProps> = ({
       if (isMobile) setMobilePropsOpen(false);
       return;
     }
-    setSelectedBlock({ block: { ...block }, idx, textKey, textLabel });
+    const keepExistingTextSelection =
+      !textKey && selectedBlock?.block?.id === block.id && !!selectedBlock?.textKey;
+    const nextTextKey = keepExistingTextSelection ? selectedBlock?.textKey : textKey;
+    const nextTextLabel = keepExistingTextSelection ? selectedBlock?.textLabel : textLabel;
+
+    setSelectedBlock({ block: { ...block }, idx, textKey: nextTextKey, textLabel: nextTextLabel });
     if (isMobile) {
+      const activeEl =
+        typeof document !== "undefined" ? (document.activeElement as HTMLElement | null) : null;
+      const pointerOnEditableText = !!pointerEl?.closest?.('[contenteditable="true"]');
+      const activeIsEditableText = !!activeEl?.isContentEditable;
+      const selectingEditableText = !!textKey && (pointerOnEditableText || activeIsEditableText);
+
       setActiveTab('preview');
+      // Open properties sheet for editable text too (including intro texts),
+      // so style controls are immediately accessible after selection.
       setMobilePropsOpen(true);
-      setTimeout(() => scrollSelectedPreviewIntoView(), 220);
+      setTimeout(() => scrollSelectedPreviewIntoView(), selectingEditableText ? 120 : 220);
     }
   };
 

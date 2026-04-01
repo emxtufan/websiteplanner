@@ -186,6 +186,17 @@ export interface UserProfile {
   city?: string;
   county?: string;
   country?: string;
+  shippingCounty?: string;
+  shippingCity?: string;
+  shippingStreet?: string;
+  shippingNumber?: string;
+  shippingBlock?: string;
+  shippingStaircase?: string;
+  shippingFloor?: string;
+  shippingApartment?: string;
+  shippingPostalCode?: string;
+  shippingLandmark?: string;
+  shippingCountry?: string;
   eventRole?: string;
   billingType?: 'individual' | 'company' | string;
   billingName?: string;
@@ -288,17 +299,59 @@ export interface SystemConfig {
 }
 
 export interface PaymentRecord {
-    date: string;
-    amount: number;
-    invoiceId: string;
-    billingEmail: string;
+  date: string;
+  amount: number;
+  invoiceId: string;
+  billingEmail: string;
     paymentMethod?: string;
     status: 'Paid' | 'Pending' | 'Failed';
     invoiceNumber?: string;
     invoicePdfUrl?: string;
-    hostedInvoiceUrl?: string;
-    relatedEventDate?: string;
-    relatedEventName?: string;
+  hostedInvoiceUrl?: string;
+  relatedEventDate?: string;
+  relatedEventName?: string;
+  checkoutAddressSource?: "saved_account" | "manual_entry" | string;
+  checkoutFirstName?: string;
+  checkoutLastName?: string;
+  checkoutPhone?: string;
+  checkoutEmail?: string;
+  checkoutCounty?: string;
+  checkoutCity?: string;
+  checkoutStreet?: string;
+  checkoutNumber?: string;
+  checkoutBlock?: string;
+  checkoutStaircase?: string;
+  checkoutFloor?: string;
+  checkoutApartment?: string;
+  checkoutPostalCode?: string;
+  checkoutLandmark?: string;
+  checkoutCountry?: string;
+  savedAddressSnapshot?: {
+    county?: string;
+    city?: string;
+    street?: string;
+    number?: string;
+    block?: string;
+    staircase?: string;
+    floor?: string;
+    apartment?: string;
+    postalCode?: string;
+    landmark?: string;
+    country?: string;
+  };
+  checkoutAddressSnapshot?: {
+    county?: string;
+    city?: string;
+    street?: string;
+    number?: string;
+    block?: string;
+    staircase?: string;
+    floor?: string;
+    apartment?: string;
+    postalCode?: string;
+    landmark?: string;
+    country?: string;
+  };
 }
 
 export interface ArchivedEvent {

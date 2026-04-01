@@ -89,6 +89,64 @@ const profileDisplayName = (user: any) => {
   return "-";
 };
 
+const profilePrimaryAddress = (profile: any) => {
+  if (!profile) return "-";
+  const streetLine = [profile.shippingStreet, profile.shippingNumber].filter(Boolean).join(" ");
+  const extras = [
+    profile.shippingBlock ? `Bl. ${profile.shippingBlock}` : "",
+    profile.shippingStaircase ? `Sc. ${profile.shippingStaircase}` : "",
+    profile.shippingFloor ? `Et. ${profile.shippingFloor}` : "",
+    profile.shippingApartment ? `Ap. ${profile.shippingApartment}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+  const locality = [profile.shippingCity || profile.city, profile.shippingCounty || profile.county]
+    .filter(Boolean)
+    .join(", ");
+  const postal = profile.shippingPostalCode ? `CP ${profile.shippingPostalCode}` : "";
+  return [streetLine || profile.address, extras, locality, postal].filter(Boolean).join(" | ") || "-";
+};
+
+const paymentAddressSummary = (payment: any) => {
+  const source = payment?.checkoutAddressSource === "saved_account" ? "Adresa din cont" : "Adresa introdusa manual";
+  const contact = [payment?.checkoutFirstName, payment?.checkoutLastName].filter(Boolean).join(" ") || "-";
+  const phone = payment?.checkoutPhone || "-";
+  const email = payment?.checkoutEmail || payment?.billingEmail || "-";
+  const usedAddress = [
+    [payment?.checkoutStreet, payment?.checkoutNumber].filter(Boolean).join(" "),
+    payment?.checkoutBlock ? `Bl. ${payment.checkoutBlock}` : "",
+    payment?.checkoutStaircase ? `Sc. ${payment.checkoutStaircase}` : "",
+    payment?.checkoutFloor ? `Et. ${payment.checkoutFloor}` : "",
+    payment?.checkoutApartment ? `Ap. ${payment.checkoutApartment}` : "",
+    [payment?.checkoutCity, payment?.checkoutCounty].filter(Boolean).join(", "),
+    payment?.checkoutPostalCode ? `CP ${payment.checkoutPostalCode}` : "",
+    payment?.checkoutLandmark ? `Reper: ${payment.checkoutLandmark}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+  const savedSnapshot = payment?.savedAddressSnapshot || {};
+  const savedAddress = [
+    [savedSnapshot.street, savedSnapshot.number].filter(Boolean).join(" "),
+    savedSnapshot.block ? `Bl. ${savedSnapshot.block}` : "",
+    savedSnapshot.staircase ? `Sc. ${savedSnapshot.staircase}` : "",
+    savedSnapshot.floor ? `Et. ${savedSnapshot.floor}` : "",
+    savedSnapshot.apartment ? `Ap. ${savedSnapshot.apartment}` : "",
+    [savedSnapshot.city, savedSnapshot.county].filter(Boolean).join(", "),
+    savedSnapshot.postalCode ? `CP ${savedSnapshot.postalCode}` : "",
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  return {
+    source,
+    contact,
+    phone,
+    email,
+    usedAddress: usedAddress || payment?.billingAddress || "-",
+    savedAddress: savedAddress || "-",
+  };
+};
+
 const UserManagement = ({ token }: { token: string }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [search, setSearch] = useState("");
@@ -357,7 +415,7 @@ const UserManagement = ({ token }: { token: string }) => {
                       <UserIcon className="w-4 h-4" />
                     </div>
 
-                    <div className="min-w-0 flex-1 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="min-w-0 flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
                       <div className="truncate">
                         <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Email</div>
                         <div className="font-medium truncate">{user.user}</div>
@@ -373,6 +431,11 @@ const UserManagement = ({ token }: { token: string }) => {
                           Data evenimentului
                         </div>
                         <div className="font-medium truncate">{eventDate}</div>
+                      </div>
+
+                      <div className="truncate">
+                        <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Telefon</div>
+                        <div className="font-medium truncate">{user?.profile?.phone || "-"}</div>
                       </div>
                     </div>
 
@@ -529,6 +592,121 @@ const UserManagement = ({ token }: { token: string }) => {
                               }
                             />
                           </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Telefon</label>
+                            <Input
+                              value={expandedDraft?.profile?.phone || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("phone", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Judet (adresa principala)</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingCounty || expandedDraft?.profile?.county || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingCounty", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Localitate</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingCity || expandedDraft?.profile?.city || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingCity", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Strada</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingStreet || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingStreet", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Numar</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingNumber || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingNumber", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Cod postal</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingPostalCode || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingPostalCode", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Bloc</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingBlock || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingBlock", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Scara</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingStaircase || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingStaircase", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Etaj</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingFloor || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingFloor", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Apartament</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingApartment || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingApartment", e.target.value)
+                              }
+                            />
+                          </div>
+
+                          <div className="space-y-2 md:col-span-2">
+                            <label className="text-sm font-medium">Reper</label>
+                            <Input
+                              value={expandedDraft?.profile?.shippingLandmark || ""}
+                              onChange={(e: any) =>
+                                updateDraftProfileField("shippingLandmark", e.target.value)
+                              }
+                            />
+                          </div>
+                        </div>
+
+                        <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 text-xs text-muted-foreground">
+                          <div className="font-semibold text-foreground mb-1">Adresa principala (rezumat)</div>
+                          <div>{profilePrimaryAddress(expandedDraft?.profile || {})}</div>
                         </div>
 
                         <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
@@ -663,6 +841,7 @@ const UserManagement = ({ token }: { token: string }) => {
                             <div className="space-y-2 max-h-64 overflow-auto pr-1">
                               {paymentsForExpanded.map((p: any, idx: number) => {
                                 const method = paymentMethodLabel(inferPaymentMethod(p));
+                                const addressInfo = paymentAddressSummary(p);
                                 return (
                                   <div
                                     key={`${p?.invoiceId || "payment"}-${idx}`}
@@ -679,6 +858,32 @@ const UserManagement = ({ token }: { token: string }) => {
                                     </div>
                                     <div className="text-muted-foreground break-all">
                                       Invoice: {p?.invoiceNumber || p?.invoiceId || "-"}
+                                    </div>
+                                    <div className="mt-2 rounded border border-dashed border-zinc-200 dark:border-zinc-700 p-2 space-y-1">
+                                      <div>
+                                        <span className="font-semibold text-foreground">Client:</span>{" "}
+                                        {addressInfo.contact}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">Email:</span>{" "}
+                                        {addressInfo.email}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">Telefon:</span>{" "}
+                                        {addressInfo.phone}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">Sursa adresei:</span>{" "}
+                                        {addressInfo.source}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">Adresa folosita la checkout:</span>{" "}
+                                        {addressInfo.usedAddress}
+                                      </div>
+                                      <div>
+                                        <span className="font-semibold text-foreground">Adresa salvata in cont:</span>{" "}
+                                        {addressInfo.savedAddress}
+                                      </div>
                                     </div>
                                   </div>
                                 );

@@ -1006,7 +1006,14 @@ const LittleMermaidTemplate: React.FC<InvitationTemplateProps & {
 
       {/* MAIN CONTENT */}
       <div ref={el=>{contentRef.current=el;setContentEl(el);}}
-        style={{minHeight:'100vh',position:'relative',fontFamily:F.body,paddingBottom:60}}>
+        style={{
+          minHeight:'100dvh',
+          position:'relative',
+          fontFamily:F.body,
+          paddingBottom:'max(60px, env(safe-area-inset-bottom))',
+          backgroundColor:C.ocean,
+          overflow:'hidden',
+        }}>
 
         {/* Fixed background — coral scene */}
         <div style={{position:'fixed',inset:0,zIndex:0}}>

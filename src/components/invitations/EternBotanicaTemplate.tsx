@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus } from "lucide-react";
+import { ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus, Upload, Camera, Music, Play, Pause, SkipBack, SkipForward, Gift, MessageCircle } from "lucide-react";
 import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
 import { InvitationBlock } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
 import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
+import FlipClock from "./FlipClock";
+import { ETERN_BOTANICA_THEMES } from "./castleDefaults";
+import { WeddingIcon } from "../TimelineIcons";
 
 export const meta: TemplateMeta = {
   id: 'etern-botanica',
@@ -17,19 +20,138 @@ export const meta: TemplateMeta = {
 };
 
 // ─── Tokens ───────────────────────────────────────────────────────────────────
-const IVORY  = '#fdfaf7';
-const CREAM  = '#f5f0e8';
-const TEXT   = '#2a2118';
-const MUTED  = '#9a8a7a';
-const GOLD   = '#c9a84c';
-const GOLD_L = '#e8c84a';
-const GOLD_D = '#a07828';
-const ROSE   = '#e8a8b8';
-const ROSE_D = '#c97890';
-const GREEN  = '#8aaa78';
-const GREEN_D= '#5a7848';
+let IVORY  = '#fdfaf7';
+let CREAM  = '#f5f0e8';
+let TEXT   = '#2a2118';
+let MUTED  = '#9a8a7a';
+let GOLD   = '#c9a84c';
+let GOLD_L = '#e8c84a';
+let GOLD_D = '#a07828';
+let ROSE   = '#e8a8b8';
+let ROSE_D = '#c97890';
+let GREEN  = '#8aaa78';
+let GREEN_D= '#5a7848';
 const SERIF  = "'Cormorant Garamond','Playfair Display',Georgia,serif";
 const SANS   = "'DM Sans','Helvetica Neue',system-ui,sans-serif";
+
+const API_URL =
+  (typeof window !== "undefined" && (window as any).__API_URL__) ||
+  (import.meta as any)?.env?.VITE_API_URL ||
+  "http://localhost:3005/api";
+
+function deleteUploadedFile(url: string | undefined) {
+  if (!url || !url.startsWith("/uploads/")) return;
+  const _session = JSON.parse(localStorage.getItem("weddingPro_session") || "{}");
+  fetch(`${API_URL}/upload`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${_session?.token || ""}` },
+    body: JSON.stringify({ url }),
+  }).catch(() => {});
+}
+
+export const CASTLE_DEFAULT_BLOCKS: InvitationBlock[] = [
+  {
+    id: "etern-photo-1",
+    type: "photo" as const,
+    show: true,
+    imageData: "https://images.unsplash.com/photo-1520854221256-17451cc331bf?auto=format&fit=crop&w=1200&q=80",
+    altText: "Fotografie cuplu",
+    aspectRatio: "3:4" as const,
+    photoClip: "rounded" as any,
+    photoMasks: [] as any,
+  },
+  { id: "etern-title-1", type: "title" as const, show: true, content: "Ceremonia" },
+  {
+    id: "etern-location-1",
+    type: "location" as const,
+    show: true,
+    label: "Cununia religioasa",
+    time: "16:00",
+    locationName: "Biserica Sf. Nicolae",
+    locationAddress: "Strada Principala nr. 10, Bucuresti",
+    wazeLink: "",
+  },
+  { id: "etern-divider-1", type: "divider" as const, show: true },
+  { id: "etern-title-2", type: "title" as const, show: true, content: "Petrecerea" },
+  {
+    id: "etern-location-2",
+    type: "location" as const,
+    show: true,
+    label: "Receptia",
+    time: "19:00",
+    locationName: "Salon Botanica",
+    locationAddress: "Bulevardul Unirii nr. 45, Bucuresti",
+    wazeLink: "",
+  },
+  { id: "etern-countdown-1", type: "countdown" as const, show: true, countdownTitle: "Timp ramas pana la marele eveniment" },
+  { id: "etern-timeline-1", type: "timeline" as any, show: true, sectionTitle: "Programul Zilei" },
+  { id: "etern-music-1", type: "music" as const, show: true, musicTitle: "", musicArtist: "", musicType: "none" as any },
+  { id: "etern-text-1", type: "text" as const, show: true, content: "Va asteptam cu drag sa celebram impreuna o zi speciala din povestea noastra." },
+];
+
+const cloneDefaultBlocks = (): InvitationBlock[] =>
+  JSON.parse(JSON.stringify(CASTLE_DEFAULT_BLOCKS)) as InvitationBlock[];
+
+const ETERN_BLOCK_TYPES: Array<{ type: string; label: string; def: Partial<InvitationBlock> }> = [
+  { type: "photo", label: "📷 Foto", def: { imageData: undefined, altText: "", aspectRatio: "1:1", photoClip: "rect", photoMasks: [] } },
+  { type: "location", label: "Locatie", def: { label: "", time: "", locationName: "", locationAddress: "", wazeLink: "" } },
+  { type: "godparents", label: "Nasi", def: { sectionTitle: "Nasii Nostri", content: "" } },
+  { type: "parents", label: "Parinti", def: { sectionTitle: "Parintii Nostri", content: "" } },
+  { type: "calendar", label: "📅 Calendar", def: {} },
+  { type: "countdown", label: "⏱ Countdown", def: { countdownTitle: "Timp ramas pana la marele eveniment" } },
+  { type: "timeline", label: "🕒 Cronologie", def: { sectionTitle: "Programul Zilei" } },
+  { type: "music", label: "🎵 Muzica", def: { musicTitle: "", musicArtist: "", musicType: "none" } },
+  { type: "gift", label: "🎁 Cadouri", def: { sectionTitle: "Sugestie cadou", content: "", iban: "", ibanName: "" } },
+  { type: "whatsapp", label: "💬 WhatsApp", def: { label: "Contact WhatsApp", content: "0700000000" } },
+  { type: "rsvp", label: "RSVP", def: { label: "Confirma prezenta" } },
+  { type: "family", label: "👨‍👩‍👧 Familie", def: { label: "Parintii copilului", content: "Cu drag si recunostinta", members: JSON.stringify([{ name1: "Mama", name2: "Tata" }]) } },
+  { type: "date", label: "📆 Data", def: {} },
+  { type: "description", label: "Descriere", def: { content: "O scurta descriere..." } },
+  { type: "text", label: "Text", def: { content: "" } },
+  { type: "title", label: "Titlu", def: { content: "" } },
+  { type: "divider", label: "Linie", def: {} },
+];
+
+const BLOCK_TYPE_ICONS: Record<string, string> = {
+  photo: "🖼",
+  text: "✏️",
+  location: "📍",
+  calendar: "📅",
+  countdown: "⏱",
+  timeline: "🕒",
+  music: "🎵",
+  gift: "🎁",
+  whatsapp: "💬",
+  rsvp: "✉️",
+  divider: "—",
+  family: "👨‍👩‍👧",
+  date: "📆",
+  description: "📝",
+  godparents: "💒",
+  parents: "👪",
+  title: "Aa",
+};
+
+const TIMELINE_PRESETS = [
+  { icon: "diamond", emoji: "💍", title: "Pregatirea mirilor" },
+  { icon: "dress", emoji: "👗", title: "Imbracarea miresei" },
+  { icon: "ceremony", emoji: "⛪", title: "Ceremonia civila" },
+  { icon: "candles", emoji: "🕯️", title: "Ceremonia religioasa" },
+  { icon: "photo", emoji: "📷", title: "Sedinta foto" },
+  { icon: "arch", emoji: "🌸", title: "Intrarea in sala" },
+  { icon: "dance", emoji: "💃", title: "Dansul mirilor" },
+  { icon: "cocktails", emoji: "🍸", title: "Cocktail & aperitiv" },
+  { icon: "dinner", emoji: "🍽️", title: "Masa festiva" },
+  { icon: "music", emoji: "🎵", title: "Muzica live" },
+  { icon: "mic", emoji: "🎤", title: "Toast & discursuri" },
+  { icon: "cake", emoji: "🎂", title: "Taierea tortului" },
+  { icon: "bouquet", emoji: "💐", title: "Aruncarea buchetului" },
+  { icon: "champagne", emoji: "🥂", title: "Sampanie & felicitari" },
+  { icon: "car", emoji: "🚗", title: "Plecare miri" },
+  { icon: "disco", emoji: "🪩", title: "After party" },
+  { icon: "fireworks", emoji: "🎆", title: "Focuri de artificii" },
+  { icon: "moon", emoji: "🌙", title: "Finalul evenimentului" },
+];
 
 // ─── SVG: Watercolor rose cluster ─────────────────────────────────────────────
 const RoseCluster: React.FC<{ flip?: boolean; scale?: number; style?: React.CSSProperties }> =
@@ -539,6 +661,83 @@ const BlockToolbar = ({ onUp, onDown, onToggle, onDelete, visible, isFirst, isLa
   </div>
 );
 
+const InsertBlockButton: React.FC<{
+  insertIdx: number;
+  openInsertAt: number | null;
+  setOpenInsertAt: (v: number | null) => void;
+  BLOCK_TYPES: { type: string; label: string; def: any }[];
+  onInsert: (type: string, def: any) => void;
+}> = ({ insertIdx, openInsertAt, setOpenInsertAt, BLOCK_TYPES, onInsert }) => {
+  const isOpen = openInsertAt === insertIdx;
+  const [hovered, setHovered] = React.useState(false);
+  const visible = hovered || isOpen;
+  return (
+    <div
+      style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", height: 32, zIndex: 20 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{
+        position: "absolute", left: 0, right: 0, height: 1,
+        background: `repeating-linear-gradient(to right, ${ROSE} 0, ${ROSE} 6px, transparent 6px, transparent 12px)`,
+        opacity: 1, transition: "opacity 0.15s", zIndex: 1
+      }} />
+      <button
+        type="button"
+        onClick={() => setOpenInsertAt(isOpen ? null : insertIdx)}
+        style={{
+          width: 26, height: 26, borderRadius: "50%",
+          background: isOpen ? ROSE_D : "white",
+          border: `1.5px solid ${ROSE}`,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 16, color: isOpen ? "white" : ROSE_D,
+          boxShadow: "0 2px 10px rgba(201,120,144,0.2)",
+          opacity: 1, transition: "opacity 0.15s, transform 0.15s, background 0.15s",
+          transform: visible ? "scale(1)" : "scale(0.7)",
+          zIndex: 2, position: "relative", lineHeight: 1, fontWeight: 700,
+        }}
+      >{isOpen ? "×" : "+"}</button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute", bottom: 34, left: "50%", transform: "translateX(-50%)",
+            background: "white", borderRadius: 16, border: `1px solid ${ROSE}`,
+            boxShadow: "0 16px 48px rgba(201,120,144,0.12), 0 4px 16px rgba(0,0,0,0.06)",
+            padding: "16px", zIndex: 100, width: 260,
+          }}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <p style={{ fontFamily: SANS, fontSize: "0.5rem", fontWeight: 700, letterSpacing: "0.3em", textTransform: "uppercase", color: MUTED, margin: "0 0 10px", textAlign: "center" }}>
+            Adauga bloc
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+            {BLOCK_TYPES.map((bt) => (
+              <button key={bt.type} type="button" onClick={() => onInsert(bt.type, bt.def)}
+                style={{
+                  background: "#fff6f8",
+                  border: `1px solid ${ROSE}`,
+                  borderRadius: 10, padding: "8px 4px", cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                  transition: "background 0.15s, border-color 0.15s",
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.background = "#f9e6eb"; (e.currentTarget as HTMLButtonElement).style.borderColor = ROSE_D; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.background = "#fff6f8"; (e.currentTarget as HTMLButtonElement).style.borderColor = ROSE; }}
+              >
+                <span style={{ fontSize: 18, lineHeight: 1 }}>{BLOCK_TYPE_ICONS[bt.type] || "+"}</span>
+                <span style={{ fontFamily: SANS, fontSize: "0.5rem", fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: ROSE_D, lineHeight: 1.2, textAlign: "center" }}>
+                  {bt.label.replace(/^[^\s]+\s/, "")}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Location card ────────────────────────────────────────────────────────────
 const LocCard: React.FC<{ block: InvitationBlock; editMode: boolean; onUpdate: (p: Partial<InvitationBlock>) => void; idx?: number }> =
   ({ block, editMode, onUpdate, idx = 0 }) => {
@@ -593,6 +792,300 @@ const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }>
   }}>{children}</div>
 );
 
+const PhotoBlock: React.FC<{
+  imageData?: string;
+  altText?: string;
+  editMode: boolean;
+  onUpload: (url: string) => void;
+  onAltChange: (v: string) => void;
+  onRemove: () => void;
+  aspectRatio?: "1:1" | "4:3" | "3:4" | "16:9" | "free";
+}> = ({ imageData, altText, editMode, onUpload, onAltChange, onRemove, aspectRatio = "free" }) => {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const pt: Record<string, string> = { "1:1": "100%", "4:3": "75%", "3:4": "133%", "16:9": "56.25%", free: "66.6%" };
+
+  const handleFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    setUploading(true);
+    deleteUploadedFile(imageData);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const _s = JSON.parse(localStorage.getItem("weddingPro_session") || "{}");
+      const res = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${_s?.token || ""}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error("Image upload failed");
+      const { url } = await res.json();
+      onUpload(url);
+    } catch (e) {
+      console.error("Image upload:", e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ position: "relative", borderRadius: 12, overflow: "hidden", border: `1.5px solid ${ROSE}`, boxShadow: "0 8px 24px rgba(42,33,24,0.12)" }}>
+        <div style={{ position: "relative", paddingTop: pt[aspectRatio], overflow: "hidden" }}>
+          {imageData ? (
+            <img src={imageData} alt={altText || ""} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          ) : (
+            <div
+              style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg,#fff5f7,#fbe8ed)", color: ROSE_D, cursor: editMode ? "pointer" : "default" }}
+              onClick={editMode ? () => fileRef.current?.click() : undefined}
+            >
+              {uploading ? (
+                <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <div style={{ textAlign: "center" }}>
+                  <Upload className="w-8 h-8" style={{ margin: "0 auto 6px", opacity: 0.85 }} />
+                  <span style={{ fontFamily: SANS, fontSize: 10, letterSpacing: "0.2em", textTransform: "uppercase" }}>Adauga imagine</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {editMode && imageData && (
+            <div className="absolute inset-0 bg-black/35 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <button type="button" onClick={() => fileRef.current?.click()} className="p-2 bg-white rounded-full text-rose-600"><Camera className="w-5 h-5" /></button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteUploadedFile(imageData);
+                  onRemove();
+                }}
+                className="p-2 bg-white rounded-full text-red-600"
+              >
+                <Trash2 className="w-5 h-5" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/*"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleFile(f);
+        }}
+        style={{ display: "none" }}
+      />
+
+      {editMode && (
+        <div style={{ marginTop: 8 }}>
+          <InlineEdit
+            tag="p"
+            editMode={editMode}
+            value={altText || ""}
+            onChange={(v) => onAltChange(v)}
+            placeholder="Text alternativ..."
+            style={{ fontFamily: SERIF, fontSize: 12, color: MUTED, margin: 0, textAlign: "center" }}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MusicBlock: React.FC<{
+  block: InvitationBlock;
+  editMode: boolean;
+  onUpdate: (p: Partial<InvitationBlock>) => void;
+}> = ({ block, editMode, onUpdate }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const mp3Ref = useRef<HTMLInputElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => setProgress(a.currentTime);
+    const onDur = () => setDuration(a.duration);
+    const onEnd = () => {
+      setPlaying(false);
+      setProgress(0);
+    };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onDur);
+    a.addEventListener("ended", onEnd);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onDur);
+      a.removeEventListener("ended", onEnd);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+    };
+  }, [block.musicUrl, block.musicType]);
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const pct = duration ? `${(progress / duration) * 100}%` : "0%";
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      a.play().then(() => setPlaying(true)).catch(() => {});
+    }
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    audioRef.current.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * duration;
+  };
+
+  const handleMp3 = async (file: File) => {
+    if (!file.type.startsWith("audio/")) return;
+    setUploading(true);
+    deleteUploadedFile(block.musicUrl);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const _s = JSON.parse(localStorage.getItem("weddingPro_session") || "{}");
+      const res = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${_s?.token || ""}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error("Audio upload failed");
+      const { url } = await res.json();
+      onUpdate({ musicUrl: url, musicType: "mp3" });
+    } catch (e) {
+      console.error("Audio upload:", e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isActive = !!block.musicUrl;
+  const isPlaying = playing;
+
+  return (
+    <div style={{ background: "white", border: `1.5px solid ${isPlaying ? ROSE_D : ROSE}`, borderRadius: 14, padding: "20px 22px", transition: "border-color 0.3s, box-shadow 0.3s", boxShadow: isPlaying ? "0 0 0 3px rgba(201,120,144,0.15)" : "none" }}>
+      {block.musicType === "mp3" && block.musicUrl && <audio ref={audioRef} src={block.musicUrl} preload="metadata" />}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
+        <div style={{ width: 34, height: 34, borderRadius: "50%", background: isPlaying ? ROSE_D : "#fff1f5", border: `1.5px solid ${isPlaying ? ROSE_D : ROSE}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Music className="w-4 h-4" style={{ color: isPlaying ? "white" : ROSE_D }} />
+        </div>
+        <span style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.28em", textTransform: "uppercase", color: MUTED }}>
+          {isPlaying ? "Se reda acum" : "Melodia zilei"}
+        </span>
+      </div>
+
+      {!isActive && editMode && (
+        <button
+          type="button"
+          onClick={() => mp3Ref.current?.click()}
+          disabled={uploading}
+          style={{ width: "100%", background: "#fff4f7", border: `1px dashed ${ROSE}`, borderRadius: 10, padding: "14px 0", cursor: uploading ? "not-allowed" : "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}
+        >
+          {uploading ? <div className="w-5 h-5 border-2 border-rose-700 border-t-transparent rounded-full animate-spin" /> : <Upload className="w-5 h-5" style={{ color: ROSE_D, opacity: 0.8 }} />}
+          <span style={{ fontFamily: SANS, fontSize: 9, color: MUTED, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase" }}>MP3</span>
+        </button>
+      )}
+
+      {!isActive && !editMode && (
+        <div style={{ textAlign: "center", padding: "12px 0", opacity: 0.5 }}>
+          <Music className="w-7 h-7" style={{ color: ROSE_D, display: "block", margin: "0 auto 6px" }} />
+          <p style={{ fontFamily: SERIF, fontSize: 12, fontStyle: "italic", color: MUTED, margin: 0 }}>Melodia va aparea aici</p>
+        </div>
+      )}
+
+      {isActive && (
+        <div>
+          <InlineEdit tag="p" editMode={editMode} value={block.musicTitle || ""} onChange={v => onUpdate({ musicTitle: v })} placeholder="Titlul melodiei..."
+            style={{ fontFamily: SERIF, fontSize: 15, color: TEXT, margin: "0 0 2px", textAlign: "center" }} />
+          <InlineEdit tag="p" editMode={editMode} value={block.musicArtist || ""} onChange={v => onUpdate({ musicArtist: v })} placeholder="Artist..."
+            style={{ fontFamily: SANS, fontSize: 10, color: MUTED, margin: "0 0 12px", textAlign: "center" }} />
+
+          <div onClick={seek} style={{ height: 4, background: "#f8dce4", borderRadius: 99, marginBottom: 6, cursor: "pointer", position: "relative" }}>
+            <div style={{ height: "100%", borderRadius: 99, background: ROSE_D, width: pct, transition: "width 0.2s linear" }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+            <span style={{ fontFamily: SANS, fontSize: 9, color: MUTED }}>{fmt(progress)}</span>
+            <span style={{ fontFamily: SANS, fontSize: 9, color: MUTED }}>{duration ? fmt(duration) : "--:--"}</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
+            <button type="button" onClick={() => { const a = audioRef.current; if (a) a.currentTime = Math.max(0, a.currentTime - 10); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.6 }}>
+              <SkipBack className="w-4 h-4" style={{ color: ROSE_D }} />
+            </button>
+            <button type="button" onClick={toggle} style={{ width: 42, height: 42, borderRadius: "50%", background: ROSE_D, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {isPlaying ? <Pause className="w-4 h-4" style={{ color: "white" }} /> : <Play className="w-4 h-4" style={{ color: "white", marginLeft: 2 }} />}
+            </button>
+            <button type="button" onClick={() => { const a = audioRef.current; if (a) a.currentTime = Math.min(duration || a.currentTime + 10, a.currentTime + 10); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.6 }}>
+              <SkipForward className="w-4 h-4" style={{ color: ROSE_D }} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      <input
+        ref={mp3Ref}
+        type="file"
+        accept="audio/*,.mp3"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) handleMp3(f);
+        }}
+        style={{ display: "none" }}
+      />
+    </div>
+  );
+};
+
+const CalendarMonth: React.FC<{ date: string | undefined }> = ({ date }) => {
+  if (!date) return null;
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const day = d.getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthNames = ["IANUARIE", "FEBRUARIE", "MARTIE", "APRILIE", "MAI", "IUNIE", "IULIE", "AUGUST", "SEPTEMBRIE", "OCTOMBRIE", "NOIEMBRIE", "DECEMBRIE"];
+  const dayLabels = ["L", "M", "M", "J", "V", "S", "D"];
+  const startOffset = (firstDay + 6) % 7;
+  const cells: (number | null)[] = [...Array(startOffset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+
+  return (
+    <Card style={{ textAlign: "center" }}>
+      <p style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: "0.22em", color: ROSE_D, marginBottom: 12 }}>{monthNames[month]} {year}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 6 }}>
+        {dayLabels.map((l, i) => <div key={`${l}-${i}`} style={{ fontSize: 9, fontWeight: 700, color: MUTED }}>{l}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+        {cells.map((cell, i) => {
+          const isToday = cell === day;
+          return (
+            <div key={i} style={{ height: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? "white" : cell ? TEXT : "transparent", background: isToday ? ROSE_D : "transparent", borderRadius: "50%" }}>
+              {cell || ""}
+            </div>
+          );
+        })}
+      </div>
+    </Card>
+  );
+};
+
 // ─── Main template ─────────────────────────────────────────────────────────────
 export type EternBotanicaProps = InvitationTemplateProps & {
   editMode?: boolean;
@@ -627,15 +1120,38 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
 
   const safeJSON = (s: string | undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
-  const [blocks, setBlocks]           = useState<InvitationBlock[]>(() => safeJSON(profile.customSections, []));
+  const [blocks, setBlocks]           = useState<InvitationBlock[]>(() => {
+    const parsed = safeJSON(profile.customSections, []);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : cloneDefaultBlocks();
+  });
   const [godparents, setGodparents]   = useState<any[]>(() => safeJSON(profile.godparents, []));
   const [parentsData, setParentsData] = useState<any>(() => safeJSON(profile.parents, {}));
+  const [openInsertAt, setOpenInsertAt] = useState<number | null>(null);
 
-  useEffect(() => { setBlocks(safeJSON(profile.customSections, [])); }, [profile.customSections]);
+  useEffect(() => {
+    const parsed = safeJSON(profile.customSections, []);
+    setBlocks(Array.isArray(parsed) && parsed.length > 0 ? parsed : cloneDefaultBlocks());
+  }, [profile.customSections]);
   useEffect(() => { setGodparents(safeJSON(profile.godparents, [])); }, [profile.godparents]);
   useEffect(() => { setParentsData(safeJSON(profile.parents, {})); }, [profile.parents]);
 
   const timeline: any[] = safeJSON(profile.timeline, []);
+  const activeTheme =
+    ETERN_BOTANICA_THEMES.find((t) => t.id === ((profile as any).colorTheme ?? "default")) ||
+    ETERN_BOTANICA_THEMES[0];
+
+  IVORY = activeTheme.PINK_XL;
+  CREAM = activeTheme.CREAM;
+  TEXT = activeTheme.TEXT;
+  MUTED = activeTheme.MUTED;
+  GOLD = activeTheme.GOLD;
+  GOLD_L = activeTheme.GOLD;
+  GOLD_D = activeTheme.PINK_DARK;
+  ROSE = activeTheme.PINK_L;
+  ROSE_D = activeTheme.PINK_DARK;
+  GREEN = activeTheme.PINK_D;
+  GREEN_D = activeTheme.PINK_DARK;
+
   const countdown = useCountdown(profile.weddingDate || '');
 
   const _pq = useRef<Record<string, any>>({});
@@ -647,6 +1163,35 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
     if (_pt.current) clearTimeout(_pt.current);
     _pt.current = setTimeout(() => { onProfileUpdate?.(_pq.current); _pq.current = {}; }, 500);
   }, [onProfileUpdate]);
+
+  const getTimelineItems = useCallback(() => safeJSON(profile.timeline, []), [profile.timeline]);
+  const updateTimeline = useCallback((next: any[]) => {
+    upProfile("timeline", JSON.stringify(next));
+    upProfile("showTimeline", true);
+  }, [upProfile]);
+  const addTimelineItem = useCallback((preset: { icon?: string; title?: string } | null) => {
+    const current = getTimelineItems();
+    const next = [
+      ...current,
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        title: preset?.title || "",
+        time: "",
+        location: "",
+        icon: preset?.icon || "party",
+        notice: "",
+      },
+    ];
+    updateTimeline(next);
+  }, [getTimelineItems, updateTimeline]);
+  const updateTimelineItem = useCallback((id: string, patch: any) => {
+    const current = getTimelineItems();
+    updateTimeline(current.map((t: any) => (t.id === id ? { ...t, ...patch } : t)));
+  }, [getTimelineItems, updateTimeline]);
+  const removeTimelineItem = useCallback((id: string) => {
+    const current = getTimelineItems();
+    updateTimeline(current.filter((t: any) => t.id !== id));
+  }, [getTimelineItems, updateTimeline]);
 
   const debBlocks = useCallback((nb: InvitationBlock[]) => {
     if (_bt.current) clearTimeout(_bt.current);
@@ -662,9 +1207,35 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
   const delBlock = useCallback((idx: number) => {
     setBlocks(prev => { const nb = prev.filter((_, i) => i !== idx); onBlocksUpdate?.(nb); return nb; });
   }, [onBlocksUpdate]);
-  const addBlock = useCallback((type: string, def: any) => {
-    setBlocks(prev => { const nb = [...prev, { id: Date.now().toString(), type: type as any, show: true, ...def }]; onBlocksUpdate?.(nb); return nb; });
+  const addBlockAt = useCallback((afterIdx: number, type: string, def: any) => {
+    setBlocks(prev => {
+      const insertAt = afterIdx < 0 ? 0 : Math.min(afterIdx + 1, prev.length);
+      const newBlock: InvitationBlock = {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: type as any,
+        show: true,
+        ...def,
+      };
+      const nb = [...prev.slice(0, insertAt), newBlock, ...prev.slice(insertAt)];
+      onBlocksUpdate?.(nb);
+      return nb;
+    });
   }, [onBlocksUpdate]);
+  const BLOCK_TYPES: { type: string; label: string; def: any }[] = ETERN_BLOCK_TYPES;
+  const handleInsertAt = useCallback((afterIdx: number, type: string, def: any) => {
+    if (type === "timeline") {
+      const items = getTimelineItems();
+      if (items.length === 0) addTimelineItem(null);
+      addBlockAt(afterIdx, type, def);
+      setOpenInsertAt(null);
+      return;
+    }
+    addBlockAt(afterIdx, type, def);
+    setOpenInsertAt(null);
+  }, [addBlockAt, addTimelineItem, getTimelineItems]);
+  const addBlock = useCallback((type: string, def: any) => {
+    addBlockAt(Number.MAX_SAFE_INTEGER, type, def);
+  }, [addBlockAt]);
 
   const updGodparent = (i: number, f: 'godfather' | 'godmother', v: string) => {
     setGodparents(prev => { const ng = prev.map((g, j) => j === i ? { ...g, [f]: v } : g); upProfile('godparents', JSON.stringify(ng)); return ng; });
@@ -952,14 +1523,30 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
 
           {/* ── BLOCKS ── */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {editMode && (
+              <InsertBlockButton
+                insertIdx={-1}
+                openInsertAt={openInsertAt}
+                setOpenInsertAt={setOpenInsertAt}
+                BLOCK_TYPES={BLOCK_TYPES}
+                onInsert={(type, def) => handleInsertAt(-1, type, def)}
+              />
+            )}
             {displayBlocks.map((block, displayIdx) => {
               const isVisible = block.show !== false;
               const realIdx   = blocks.indexOf(block);
               const locIdx    = displayBlocks.filter((b, i) => i < displayIdx && b.type === 'location').length;
 
               return (
-                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-30")}
-                  onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
+                <div key={block.id} className="group/insert">
+                <div className={cn("relative group/block", !isVisible && editMode && "opacity-30")}
+                  onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}
+                  style={editMode ? {
+                    cursor: "pointer",
+                    outline: selectedBlockId === block.id ? `2px solid ${ROSE_D}` : "none",
+                    outlineOffset: 4,
+                    borderRadius: 8,
+                  } : undefined}>
                   {editMode && (
                     <BlockToolbar
                       onUp={() => movBlock(realIdx, -1)} onDown={() => movBlock(realIdx, 1)}
@@ -1065,16 +1652,441 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
                     </Reveal>
                   )}
 
+                  {block.type === "photo" && (
+                    <Reveal>
+                      <PhotoBlock
+                        imageData={block.imageData}
+                        altText={block.altText}
+                        editMode={editMode}
+                        onUpload={(url) => updBlock(realIdx, { imageData: url })}
+                        onAltChange={(v) => updBlock(realIdx, { altText: v })}
+                        onRemove={() => updBlock(realIdx, { imageData: undefined })}
+                        aspectRatio={(block.aspectRatio as any) || "free"}
+                      />
+                    </Reveal>
+                  )}
+
+                  {block.type === "calendar" && (
+                    <Reveal>
+                      <CalendarMonth date={profile.weddingDate} />
+                    </Reveal>
+                  )}
+
+                  {block.type === "countdown" && (
+                    <Reveal>
+                      <FlipClock
+                        targetDate={profile.weddingDate}
+                        bgColor={ROSE_D}
+                        textColor="white"
+                        accentColor={ROSE}
+                        labelColor="rgba(255,255,255,0.7)"
+                        editMode={editMode}
+                        titleText={block.countdownTitle || "Timp ramas pana la marele eveniment"}
+                        onTitleChange={(text) => updBlock(realIdx, { countdownTitle: text })}
+                      />
+                    </Reveal>
+                  )}
+
+                  {block.type === "timeline" && (timeline.length > 0 || editMode) && (
+                    <Reveal>
+                      <Card style={{ marginTop: 8 }}>
+                        <InlineEdit
+                          tag="p"
+                          editMode={editMode}
+                          value={block.sectionTitle || "Programul Zilei"}
+                          onChange={(v) => updBlock(realIdx, { sectionTitle: v })}
+                          style={{
+                            fontFamily: SANS,
+                            fontSize: 8,
+                            fontWeight: 700,
+                            letterSpacing: "0.44em",
+                            textTransform: "uppercase",
+                            color: ROSE_D,
+                            textAlign: "center",
+                            margin: "0 0 16px",
+                            opacity: 0.8,
+                          }}
+                        />
+
+                        {timeline.length === 0 && editMode && (
+                          <p
+                            style={{
+                              fontFamily: SERIF,
+                              fontSize: 12,
+                              fontStyle: "italic",
+                              color: MUTED,
+                              textAlign: "center",
+                              margin: "0 0 8px",
+                            }}
+                          >
+                            Adauga primul moment al zilei.
+                          </p>
+                        )}
+
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          {timeline.map((item: any, i: number) => (
+                            <div
+                              key={item.id}
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "58px 44px 1fr",
+                                alignItems: "stretch",
+                                minHeight: 64,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "flex-start",
+                                  justifyContent: "center",
+                                  paddingTop: 10,
+                                }}
+                              >
+                                <InlineTime
+                                  editMode={editMode}
+                                  value={item.time || ""}
+                                  onChange={(v) => updateTimelineItem(item.id, { time: v })}
+                                  textKey={`timeline:${item.id}:time`}
+                                  textLabel={`Ora ${i + 1}`}
+                                  style={{
+                                    fontFamily: SERIF,
+                                    fontSize: 15,
+                                    fontWeight: 600,
+                                    color: ROSE_D,
+                                    lineHeight: 1.2,
+                                    textAlign: "center",
+                                    width: "100%",
+                                  }}
+                                />
+                              </div>
+
+                              <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                                <div
+                                  style={{
+                                    width: 38,
+                                    height: 38,
+                                    borderRadius: "50%",
+                                    background: IVORY,
+                                    border: `1.5px solid ${ROSE}`,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  <WeddingIcon iconKey={item.icon || "party"} size={20} color={ROSE_D} />
+                                </div>
+                                {i < timeline.length - 1 && (
+                                  <div
+                                    style={{
+                                      flex: 1,
+                                      width: 1,
+                                      background: `linear-gradient(to bottom, ${ROSE}, transparent)`,
+                                      marginTop: 4,
+                                    }}
+                                  />
+                                )}
+                              </div>
+
+                              <div
+                                style={{
+                                  paddingLeft: 12,
+                                  paddingTop: 10,
+                                  paddingBottom: i < timeline.length - 1 ? 20 : 0,
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  {editMode && (
+                                    <select
+                                      value={item.icon || "party"}
+                                      onChange={(e: any) => updateTimelineItem(item.id, { icon: e.target.value })}
+                                      style={{
+                                        height: 22,
+                                        borderRadius: 8,
+                                        border: `1px solid ${ROSE}`,
+                                        background: "white",
+                                        color: ROSE_D,
+                                        fontFamily: SANS,
+                                        fontSize: 10,
+                                        padding: "0 4px",
+                                        cursor: "pointer",
+                                      }}
+                                    >
+                                      {TIMELINE_PRESETS.map((p) => (
+                                        <option key={p.icon} value={p.icon}>
+                                          {p.emoji}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  <InlineEdit
+                                    tag="span"
+                                    editMode={editMode}
+                                    value={item.title || ""}
+                                    onChange={(v) => updateTimelineItem(item.id, { title: v })}
+                                    placeholder="Moment..."
+                                    textKey={`timeline:${item.id}:title`}
+                                    textLabel={`Titlu ${i + 1}`}
+                                    style={{
+                                      fontFamily: SANS,
+                                      fontSize: 15,
+                                      fontWeight: 600,
+                                      color: TEXT,
+                                      display: "block",
+                                      lineHeight: 1.3,
+                                    }}
+                                  />
+                                  {editMode && (
+                                    <button
+                                      type="button"
+                                      onClick={() => removeTimelineItem(item.id)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        color: MUTED,
+                                        fontSize: 14,
+                                        padding: "0 4px",
+                                        opacity: 0.5,
+                                        lineHeight: 1,
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                                {(editMode || item.notice) && (
+                                  <InlineEdit
+                                    tag="span"
+                                    editMode={editMode}
+                                    value={item.notice || ""}
+                                    onChange={(v) => updateTimelineItem(item.id, { notice: v })}
+                                    placeholder="Nota..."
+                                    textKey={`timeline:${item.id}:notice`}
+                                    textLabel={`Nota ${i + 1}`}
+                                    style={{
+                                      fontFamily: SERIF,
+                                      fontSize: 13,
+                                      fontStyle: "italic",
+                                      color: MUTED,
+                                      display: "block",
+                                      marginTop: 4,
+                                      lineHeight: 1.5,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {editMode && (
+                          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => addTimelineItem(null)}
+                              style={{
+                                alignSelf: "center",
+                                background: "#fff4f7",
+                                border: `1px dashed ${ROSE}`,
+                                borderRadius: 99,
+                                padding: "6px 14px",
+                                cursor: "pointer",
+                                fontFamily: SANS,
+                                fontSize: "0.6rem",
+                                fontWeight: 700,
+                                letterSpacing: "0.18em",
+                                textTransform: "uppercase",
+                                color: ROSE_D,
+                              }}
+                            >
+                              + adauga moment
+                            </button>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center" }}>
+                              {TIMELINE_PRESETS.slice(0, 10).map((p) => (
+                                <button
+                                  key={p.icon}
+                                  type="button"
+                                  onClick={() => addTimelineItem(p)}
+                                  title={p.title}
+                                  style={{
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: 999,
+                                    border: `1px solid ${ROSE}`,
+                                    background: "white",
+                                    color: ROSE_D,
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    lineHeight: 1,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                >
+                                  {p.emoji}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    </Reveal>
+                  )}
+
+                  {block.type === "music" && (
+                    <Reveal>
+                      <MusicBlock block={block} editMode={editMode} onUpdate={(p) => updBlock(realIdx, p)} />
+                    </Reveal>
+                  )}
+
+                  {block.type === "gift" && (
+                    <Reveal>
+                      <Card style={{ textAlign: "center", background: ROSE_D, color: "white" }}>
+                        <Gift className="w-8 h-8 mx-auto mb-4 opacity-80" />
+                        <InlineEdit tag="h3" editMode={editMode} value={block.sectionTitle || "Sugestie cadou"} onChange={(v) => updBlock(realIdx, { sectionTitle: v })}
+                          style={{ fontFamily: SERIF, fontSize: "2rem", marginBottom: 8, color: "white" }} />
+                        <InlineEdit tag="p" editMode={editMode} value={block.content || ""} onChange={(v) => updBlock(realIdx, { content: v })} multiline
+                          style={{ fontFamily: SANS, fontSize: 11, opacity: 0.9, lineHeight: 1.7, color: "white" }} />
+                        {(block.iban || editMode) && (
+                          <div className="mt-4 p-3 rounded-lg" style={{ background: "rgba(255,255,255,0.16)" }}>
+                            <InlineEdit tag="p" editMode={editMode} value={block.iban || ""} onChange={(v) => updBlock(realIdx, { iban: v })} placeholder="IBAN..."
+                              style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, color: "white" }} />
+                          </div>
+                        )}
+                      </Card>
+                    </Reveal>
+                  )}
+
+                  {block.type === "whatsapp" && (
+                    <Reveal>
+                      <div className="flex flex-col items-center gap-4">
+                        <a
+                          href={`https://wa.me/${(block.content || "").replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group/wa flex items-center gap-4 px-8 py-4 bg-white text-green-600 rounded-2xl shadow-lg hover:shadow-xl transition-all border border-green-100"
+                        >
+                          <div className="w-10 h-10 bg-green-500 rounded-xl flex items-center justify-center">
+                            <MessageCircle className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="text-left">
+                            <InlineEdit tag="p" editMode={editMode} value={block.label || "Contact WhatsApp"} onChange={(v) => updBlock(realIdx, { label: v })}
+                              style={{ fontWeight: 800, fontSize: 13, color: "#1a1a1a", margin: 0 }} />
+                            <p style={{ fontFamily: SANS, fontSize: 10, color: "#666", margin: 0 }}>Raspundem rapid</p>
+                          </div>
+                        </a>
+                      </div>
+                    </Reveal>
+                  )}
+
+                  {block.type === "rsvp" && (
+                    <Reveal>
+                      <div className="flex justify-center">
+                        <button
+                          onClick={() => {
+                            if (!editMode) onOpenRSVP?.();
+                          }}
+                          className="group flex items-center justify-center px-6 py-3 rounded-full shadow-lg transition-all"
+                          style={{ fontFamily: SANS, background: `linear-gradient(to bottom, ${ROSE_D}, ${ROSE})`, color: "white" }}
+                        >
+                          <span className="transition-all ml-1 text-sm font-bold tracking-wider uppercase">
+                            <InlineEdit tag="span" editMode={editMode} value={block.label || "Confirma Prezenta"} onChange={(v) => updBlock(realIdx, { label: v })} />
+                          </span>
+                        </button>
+                      </div>
+                    </Reveal>
+                  )}
+
+                  {block.type === "date" && (
+                    <Reveal>
+                      <div style={{ textAlign: "center", padding: "4px 0" }}>
+                        <p style={{ fontFamily: SANS, fontWeight: 700, letterSpacing: "0.3em", fontSize: "0.85rem", color: ROSE_D, margin: 0 }}>
+                          {dateStrFull}
+                        </p>
+                      </div>
+                    </Reveal>
+                  )}
+
+                  {block.type === "description" && (
+                    <Reveal>
+                      <div style={{ textAlign: "center", padding: "0 16px" }}>
+                        <InlineEdit tag="p" editMode={editMode} value={block.content || ""} onChange={(v) => updBlock(realIdx, { content: v })}
+                          style={{ fontFamily: SERIF, fontSize: "0.9rem", color: MUTED, lineHeight: 1.8, margin: 0 }} />
+                      </div>
+                    </Reveal>
+                  )}
+
+                  {block.type === "family" && (
+                    <Reveal>
+                      {(() => {
+                        const members: { name1: string; name2: string }[] = (() => {
+                          try {
+                            return JSON.parse(block.members || "[]");
+                          } catch {
+                            return [];
+                          }
+                        })();
+                        const updateMembers = (newMembers: { name1: string; name2: string }[]) => {
+                          updBlock(realIdx, { members: JSON.stringify(newMembers) } as any);
+                        };
+                        return (
+                          <Card style={{ textAlign: "center" }}>
+                            <div style={{ marginBottom: 18 }}>
+                              <InlineEdit tag="p" editMode={editMode} value={block.label || "Parintii copilului"} onChange={(v) => updBlock(realIdx, { label: v })}
+                                style={{ fontFamily: SANS, fontSize: "0.55rem", fontWeight: 700, letterSpacing: "0.35em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }} />
+                              <InlineEdit tag="p" editMode={editMode} value={block.content || "Cu drag si recunostinta"} onChange={(v) => updBlock(realIdx, { content: v })}
+                                style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: "0.95rem", color: MUTED, margin: 0, lineHeight: 1.7 }} />
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                              {members.map((m, mi) => (
+                                <div key={mi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>
+                                  <InlineEdit tag="span" editMode={editMode} value={m.name1} onChange={(v) => { const nm = [...members]; nm[mi] = { ...nm[mi], name1: v }; updateMembers(nm); }} style={{ fontFamily: SERIF, fontSize: "1.5rem", color: TEXT }} />
+                                  <span style={{ fontFamily: SERIF, fontStyle: "italic", color: ROSE_D, fontSize: "1.2rem" }}>&amp;</span>
+                                  <InlineEdit tag="span" editMode={editMode} value={m.name2} onChange={(v) => { const nm = [...members]; nm[mi] = { ...nm[mi], name2: v }; updateMembers(nm); }} style={{ fontFamily: SERIF, fontSize: "1.5rem", color: TEXT }} />
+                                  {editMode && members.length > 1 && (
+                                    <button type="button" onClick={() => updateMembers(members.filter((_, i) => i !== mi))} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: "0 4px", opacity: 0.6, lineHeight: 1 }}>
+                                      x
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                            {editMode && (
+                              <button
+                                type="button"
+                                onClick={() => updateMembers([...members, { name1: "Nume 1", name2: "Nume 2" }])}
+                                style={{ marginTop: 14, background: "#fff4f7", border: `1px dashed ${ROSE}`, borderRadius: 99, padding: "5px 16px", cursor: "pointer", fontFamily: SANS, fontSize: "0.6rem", fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase", color: ROSE_D }}
+                              >
+                                + Adauga
+                              </button>
+                            )}
+                          </Card>
+                        );
+                      })()}
+                    </Reveal>
+                  )}
+
                   {block.type === 'divider' && <Reveal><RoseDivider/></Reveal>}
                   {block.type === 'spacer'  && <div style={{ height: 16 }}/>}
                   </BlockStyleProvider>
+                </div>
+                {editMode && (
+                  <InsertBlockButton
+                    insertIdx={realIdx}
+                    openInsertAt={openInsertAt}
+                    setOpenInsertAt={setOpenInsertAt}
+                    BLOCK_TYPES={BLOCK_TYPES}
+                    onInsert={(type, def) => handleInsertAt(realIdx, type, def)}
+                  />
+                )}
                 </div>
               );
             })}
           </div>
 
           {/* Add block */}
-          {editMode && (
+          {false && editMode && (
             <div className="text-center mt-4 py-4 border-2 border-dashed rounded transition-colors"
               style={{ borderColor: `${ROSE}33` }}>
               <p className="text-[9px] uppercase tracking-widest mb-2.5 font-bold"
@@ -1099,7 +2111,7 @@ const EternBotanicaTemplate: React.FC<EternBotanicaProps> = ({
           )}
 
           {/* Timeline */}
-          {profile.showTimeline && timeline.length > 0 && (
+          {false && profile.showTimeline && timeline.length > 0 && (
             <Reveal>
               <Card style={{ marginTop: 8 }}>
                 <p style={{ fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: '0.44em',

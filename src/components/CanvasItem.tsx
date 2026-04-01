@@ -47,6 +47,10 @@ const CanvasItem = memo(({
   
   const [tooltipData, setTooltipData] = useState<{ x: number, y: number, content: React.ReactNode } | null>(null);
   const [hoveredSeatIdx, setHoveredSeatIdx] = useState<number | null>(null);
+  const rotationRad = (displayRotation * Math.PI) / 180;
+  const controlDistance = Math.max(displayWidth, displayHeight) / 2 + 68;
+  const controlAnchorLocalX = -Math.cos(rotationRad) * controlDistance;
+  const controlAnchorLocalY = Math.sin(rotationRad) * controlDistance;
 
   const getStyle = (): React.CSSProperties => {
     const base: React.CSSProperties = {
@@ -171,16 +175,43 @@ const CanvasItem = memo(({
         {isSelected && !isGhost && (
           <>
             {!isRoom && (
-              <div className="rotate-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-primary/10 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center border-2 border-primary z-50" onMouseDown={(e) => { e.stopPropagation(); onRotateStart?.(el.id, { x: e.clientX, y: e.clientY }); }}>
+              <div
+                className="rotate-handle absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 bg-primary/10 rounded-full cursor-grab active:cursor-grabbing flex items-center justify-center border-2 border-primary z-50"
+                onMouseDown={(e) => { e.stopPropagation(); onRotateStart?.(el.id, { x: e.clientX, y: e.clientY }); }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const t = e.touches[0];
+                  if (!t) return;
+                  onRotateStart?.(el.id, { x: t.clientX, y: t.clientY });
+                }}
+              >
                 <RefreshCcw className="w-4 h-4 text-primary" />
               </div>
             )}
             
-            <div className="control-bar absolute -left-20 top-1/2 -translate-y-1/2 flex flex-col gap-2 z-[60]">
+            <div
+              className="control-bar absolute flex flex-col gap-2 z-[60]"
+              onTouchStart={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              style={{
+                left: `calc(50% + ${controlAnchorLocalX}px)`,
+                top: `calc(50% + ${controlAnchorLocalY}px)`,
+                transform: `translate(-50%, -50%) rotate(${-displayRotation}deg)`,
+                transformOrigin: 'center center',
+              }}
+            >
               <div 
                   className="w-9 h-9 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-foreground dark:text-zinc-200 rounded-lg flex items-center justify-center shadow-lg hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors cursor-nwse-resize"
                   title="Trage pentru redimensionare"
                   onMouseDown={(e) => { e.stopPropagation(); onResizeStart?.(el.id, { x: e.clientX, y: e.clientY }); }}
+                  onTouchStart={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const t = e.touches[0];
+                    if (!t) return;
+                    onResizeStart?.(el.id, { x: t.clientX, y: t.clientY });
+                  }}
               >
                   <Maximize className="w-4 h-4" />
               </div>
@@ -214,6 +245,13 @@ const CanvasItem = memo(({
             <div 
                 className="resize-handle absolute -bottom-1 -right-1 w-6 h-6 cursor-nwse-resize z-[60] flex items-end justify-end p-1"
                 onMouseDown={(e) => { e.stopPropagation(); onResizeStart?.(el.id, { x: e.clientX, y: e.clientY }); }}
+                onTouchStart={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  const t = e.touches[0];
+                  if (!t) return;
+                  onResizeStart?.(el.id, { x: t.clientX, y: t.clientY });
+                }}
             >
                  <div className="w-3 h-3 border-r-2 border-b-2 border-primary bg-white dark:bg-zinc-900" />
             </div>

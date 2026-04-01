@@ -31,13 +31,13 @@ const modules = [
   // ── Nuntă ────────────────────────────────────────────────────────────────
   { ...ClassicTemplate,         meta: { ...ClassicTemplate.meta,         id: 'classic',          name: 'Classic Nuntă',    category: 'wedding',  tags: ['baptism', 'kids'] } },
   { ...RoyalRoseTemplate,       meta: { ...RoyalRoseTemplate.meta,       id: 'royal-rose',       name: 'Royal Rose',       category: 'wedding',  tags: ['wedding'] } },
-  { ...DarkRoyalTemplate,       meta: { ...DarkRoyalTemplate.meta,       id: 'dark-royal',       name: 'Dark Royal',       category: 'wedding',  tags: ['wedding'] } },
+  // { ...DarkRoyalTemplate,       meta: { ...DarkRoyalTemplate.meta,       id: 'dark-royal',       name: 'Dark Royal',       category: 'wedding',  tags: ['wedding'] } },
   { ...BlushBloomTemplate,      meta: { ...BlushBloomTemplate.meta,      id: 'blush-bloom',      name: 'Blush Bloom',      category: 'wedding',  tags: ['wedding'] } },
   { ...GardenRomanticTemplate,  meta: { ...GardenRomanticTemplate.meta,  id: 'garden-romantic',  name: 'Garden Romantic',  category: 'wedding',  tags: ['wedding'] } },
-  { ...VelumTemplate,           meta: { ...VelumTemplate.meta,           id: 'velum',            name: 'Velum',            category: 'wedding',  tags: ['wedding'] } },
+  // { ...VelumTemplate,           meta: { ...VelumTemplate.meta,           id: 'velum',            name: 'Velum',            category: 'wedding',  tags: ['wedding'] } },
   { ...EternBotanicaTemplate,   meta: { ...EternBotanicaTemplate.meta,   id: 'etern-botanica',   name: 'Etern Botanica',   category: 'wedding',  tags: ['wedding'] } },
-  { ...TerraBohoTemplate,       meta: { ...TerraBohoTemplate.meta,       id: 'terra-boho',       name: 'Terra Boho',       category: 'wedding',  tags: ['wedding'] } },
-  { ...ArchRoseTemplate,        meta: { ...ArchRoseTemplate.meta,        id: 'arch-rose',        name: 'Arch & Rose',      category: 'wedding',  tags: ['wedding'] } },
+  // { ...TerraBohoTemplate,       meta: { ...TerraBohoTemplate.meta,       id: 'terra-boho',       name: 'Terra Boho',       category: 'wedding',  tags: ['wedding'] } },
+  // { ...ArchRoseTemplate,        meta: { ...ArchRoseTemplate.meta,        id: 'arch-rose',        name: 'Arch & Rose',      category: 'wedding',  tags: ['wedding'] } },
   { ...JungleMagicEffectTemplate, meta: { ...JungleMagicEffectTemplate.meta, id: 'regal',        name: 'Regal',            category: 'wedding',  tags: ['wedding'] } },
   { ...LordEffectsTemplate,      meta: { ...LordEffectsTemplate.meta,      id: 'lord-effects',    name: 'Lord Effects',     category: 'wedding',  tags: ['wedding'] } },
 

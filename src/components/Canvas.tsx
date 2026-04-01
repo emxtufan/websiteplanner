@@ -18,11 +18,12 @@ interface CanvasProps {
   onMoveGuest: (fromElId: string, fromIdx: number, toElId: string) => void;
   onUpdateCapacity: (id: string, delta: number) => void;
   lang: Language;
+  onCheckActive?: () => boolean;
 }
 
 const Canvas: React.FC<CanvasProps> = memo(({ 
   elements, setElements, config, setConfig, 
-  selectedId, setSelectedId, placementMode, onPlace, onDelete, onSeatClick, onTableClick, onMoveGuest, onUpdateCapacity, lang
+  selectedId, setSelectedId, placementMode, onPlace, onDelete, onSeatClick, onTableClick, onMoveGuest, onUpdateCapacity, lang, onCheckActive
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isPanning, setIsPanning] = useState(false);
@@ -32,9 +33,33 @@ const Canvas: React.FC<CanvasProps> = memo(({
   const [dragInfo, setDragInfo] = useState<{ id: string, startX: number, startY: number, currentX: number, currentY: number } | null>(null);
   const dragInfoRef = useRef<typeof dragInfo>(null); // ref în sync cu state — evită stale closure în touch handlers
   const [rotateInfo, setRotateInfo] = useState<{ id: string, startAngle: number, initialRotation: number, currentRotation: number } | null>(null);
-  const [resizeInfo, setResizeInfo] = useState<{ id: string, startWidth: number, startHeight: number, startX: number, startY: number, startMouseX: number, startMouseY: number, currentWidth: number, currentHeight: number, currentX: number, currentY: number } | null>(null);
+  const rotateInfoRef = useRef<typeof rotateInfo>(null);
+  const [resizeInfo, setResizeInfo] = useState<{
+    id: string,
+    startWidth: number,
+    startHeight: number,
+    startX: number,
+    startY: number,
+    startMouseX: number,
+    startMouseY: number,
+    centerX: number,
+    centerY: number,
+    signX: number,
+    signY: number,
+    baseRotation: number,
+    currentWidth: number,
+    currentHeight: number,
+    currentX: number,
+    currentY: number
+  } | null>(null);
+  const resizeInfoRef = useRef<typeof resizeInfo>(null);
+  const elementsRef = useRef<CanvasElement[]>(elements);
 
   const touchRef = useRef<{ x: number, y: number } | null>(null);
+  useEffect(() => { dragInfoRef.current = dragInfo; }, [dragInfo]);
+  useEffect(() => { rotateInfoRef.current = rotateInfo; }, [rotateInfo]);
+  useEffect(() => { resizeInfoRef.current = resizeInfo; }, [resizeInfo]);
+  useEffect(() => { elementsRef.current = elements; }, [elements]);
 
   useEffect(() => {
     if (containerRef.current) {
@@ -61,6 +86,11 @@ const Canvas: React.FC<CanvasProps> = memo(({
     const rect = containerRef.current.getBoundingClientRect();
     return { x: (clientX - rect.left - config.panX) / config.scale, y: (clientY - rect.top - config.panY) / config.scale };
   }, [config.panX, config.panY, config.scale]);
+  const placeAtClientPoint = useCallback((clientX: number, clientY: number) => {
+    if (!placementMode) return;
+    const coords = getCanvasCoords(clientX, clientY);
+    onPlace(coords.x, coords.y);
+  }, [placementMode, getCanvasCoords, onPlace]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     const coords = getCanvasCoords(e.clientX, e.clientY);
@@ -82,37 +112,26 @@ const Canvas: React.FC<CanvasProps> = memo(({
     if (resizeInfo) {
       const el = elements.find(item => item.id === resizeInfo.id);
       if (el) {
-        const dx = coords.x - resizeInfo.startMouseX;
-        const dy = coords.y - resizeInfo.startMouseY;
-        const rad = (el.rotation * Math.PI) / 180;
+        const rad = (resizeInfo.baseRotation * Math.PI) / 180;
         const cos = Math.cos(rad), sin = Math.sin(rad);
-        
-        const localDx = dx * cos + dy * sin;
-        const localDy = -dx * sin + dy * cos;
-        
-        let newW = Math.max(MIN_ELEMENT_SIZE, resizeInfo.startWidth - localDx);
-        let newH = Math.max(MIN_ELEMENT_SIZE, resizeInfo.startHeight - localDy);
+        const relX = coords.x - resizeInfo.centerX;
+        const relY = coords.y - resizeInfo.centerY;
+        const localX = relX * cos + relY * sin;
+        const localY = -relX * sin + relY * cos;
 
-        let finalX, finalY;
+        const halfW = Math.max(MIN_ELEMENT_SIZE / 2, localX * resizeInfo.signX);
+        const halfH = Math.max(MIN_ELEMENT_SIZE / 2, localY * resizeInfo.signY);
 
+        let newW = halfW * 2;
+        let newH = halfH * 2;
         if (el.shape === TableShape.ROUND) {
           const s = Math.max(newW, newH);
           newW = s;
           newH = s;
-          finalX = resizeInfo.startX + (resizeInfo.startWidth - newW) / 2;
-          finalY = resizeInfo.startY + (resizeInfo.startHeight - newH) / 2;
-        } else {
-          const actualDw = newW - resizeInfo.startWidth;
-          const actualDh = newH - resizeInfo.startHeight;
-          const oldCx = resizeInfo.startX + resizeInfo.startWidth / 2;
-          const oldCy = resizeInfo.startY + resizeInfo.startHeight / 2;
-          const localShiftX = -actualDw / 2;
-          const localShiftY = -actualDh / 2;
-          const worldShiftX = localShiftX * cos - localShiftY * sin;
-          const worldShiftY = localShiftX * sin + localShiftY * cos;
-          finalX = (oldCx + worldShiftX) - newW / 2;
-          finalY = (oldCy + worldShiftY) - newH / 2;
         }
+
+        const finalX = resizeInfo.centerX - newW / 2;
+        const finalY = resizeInfo.centerY - newH / 2;
 
         setResizeInfo(prev => prev ? { 
           ...prev, 
@@ -131,16 +150,19 @@ const Canvas: React.FC<CanvasProps> = memo(({
       const dx = dragInfo.currentX - dragInfo.startX, dy = dragInfo.currentY - dragInfo.startY;
       if (Math.abs(dx) > TOLERANCE || Math.abs(dy) > TOLERANCE) setElements(prev => prev.map(el => el.id === dragInfo.id ? { ...el, x: el.x + dx, y: el.y + dy } : el));
       setDragInfo(null);
+      dragInfoRef.current = null;
     }
     if (rotateInfo) {
       if (Math.abs(rotateInfo.currentRotation - rotateInfo.initialRotation) > 0.1) setElements(prev => prev.map(el => el.id === rotateInfo.id ? { ...el, rotation: rotateInfo.currentRotation } : el));
       setRotateInfo(null);
+      rotateInfoRef.current = null;
     }
     if (resizeInfo) {
       if (Math.abs(resizeInfo.currentWidth - resizeInfo.startWidth) > TOLERANCE || Math.abs(resizeInfo.currentHeight - resizeInfo.startHeight) > TOLERANCE) {
         setElements(prev => prev.map(el => el.id === resizeInfo.id ? { ...el, width: resizeInfo.currentWidth, height: resizeInfo.currentHeight, x: resizeInfo.currentX, y: resizeInfo.currentY } : el));
       }
       setResizeInfo(null);
+      resizeInfoRef.current = null;
     }
     setIsPanning(false);
   }, [dragInfo, rotateInfo, resizeInfo, setElements]);
@@ -162,23 +184,36 @@ const Canvas: React.FC<CanvasProps> = memo(({
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     if (e.touches.length !== 1) return;
     const touch = e.touches[0];
+    if (placementMode) {
+      if (onCheckActive && !onCheckActive()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      placeAtClientPoint(touch.clientX, touch.clientY);
+      return;
+    }
     touchRef.current = { x: touch.clientX, y: touch.clientY };
     // Panning doar dacă touch-ul pornește pe fundalul gol (nu pe un element)
     if (e.target === containerRef.current || (e.target as HTMLElement).closest('.canvas-bg')) {
+      setSelectedId(null);
       isPanningRef.current = true;
       setIsPanning(true);
     }
-  }, []);
+  }, [placementMode, placeAtClientPoint, setSelectedId, onCheckActive]);
 
   // Listeners globali pentru touchmove + touchend — adăugați pe window
   useEffect(() => {
     const handleTouchMoveGlobal = (e: TouchEvent) => {
-      if (e.touches.length !== 1 || !touchRef.current) return;
-      e.preventDefault(); // previne scroll-ul paginii în timpul drag
+      if (e.touches.length !== 1) return;
 
       const clientX = e.touches[0].clientX;
       const clientY = e.touches[0].clientY;
       const current = dragInfoRef.current;
+      const currentRotate = rotateInfoRef.current;
+      const currentResize = resizeInfoRef.current;
+      const isInteracting = !!(current || currentRotate || currentResize || isPanningRef.current);
+
+      if (!isInteracting) return;
+      e.preventDefault(); // previne scroll-ul paginii în timpul interacțiunii pe canvas
 
       if (current) {
         // Mișcăm un element
@@ -186,9 +221,62 @@ const Canvas: React.FC<CanvasProps> = memo(({
         const updated = { ...current, currentX: coords.x, currentY: coords.y };
         dragInfoRef.current = updated;
         setDragInfo(updated);
-        touchRef.current = { x: clientX, y: clientY };
         return;
       }
+
+      if (currentRotate) {
+        const el = elementsRef.current.find(item => item.id === currentRotate.id);
+        if (!el) return;
+        const coords = getCanvasCoords(clientX, clientY);
+        const centerX = el.x + el.width / 2;
+        const centerY = el.y + el.height / 2;
+        const angle = Math.atan2(coords.y - centerY, coords.x - centerX) * (180 / Math.PI);
+        const updated = {
+          ...currentRotate,
+          currentRotation: currentRotate.initialRotation + (angle - currentRotate.startAngle),
+        };
+        rotateInfoRef.current = updated;
+        setRotateInfo(updated);
+        return;
+      }
+
+      if (currentResize) {
+        const el = elementsRef.current.find(item => item.id === currentResize.id);
+        if (!el) return;
+        const coords = getCanvasCoords(clientX, clientY);
+        const rad = (currentResize.baseRotation * Math.PI) / 180;
+        const cos = Math.cos(rad), sin = Math.sin(rad);
+        const relX = coords.x - currentResize.centerX;
+        const relY = coords.y - currentResize.centerY;
+        const localX = relX * cos + relY * sin;
+        const localY = -relX * sin + relY * cos;
+
+        const halfW = Math.max(MIN_ELEMENT_SIZE / 2, localX * currentResize.signX);
+        const halfH = Math.max(MIN_ELEMENT_SIZE / 2, localY * currentResize.signY);
+        let newW = halfW * 2;
+        let newH = halfH * 2;
+
+        if (el.shape === TableShape.ROUND) {
+          const s = Math.max(newW, newH);
+          newW = s;
+          newH = s;
+        }
+        const finalX = currentResize.centerX - newW / 2;
+        const finalY = currentResize.centerY - newH / 2;
+
+        const updated = {
+          ...currentResize,
+          currentWidth: newW,
+          currentHeight: newH,
+          currentX: finalX,
+          currentY: finalY,
+        };
+        resizeInfoRef.current = updated;
+        setResizeInfo(updated);
+        return;
+      }
+
+      if (!touchRef.current) return;
 
       if (isPanningRef.current) {
         // Pan canvas
@@ -213,6 +301,37 @@ const Canvas: React.FC<CanvasProps> = memo(({
         dragInfoRef.current = null;
         setDragInfo(null);
       }
+      const currentRotate = rotateInfoRef.current;
+      if (currentRotate) {
+        if (Math.abs(currentRotate.currentRotation - currentRotate.initialRotation) > 0.1) {
+          setElements(prev => prev.map(el =>
+            el.id === currentRotate.id ? { ...el, rotation: currentRotate.currentRotation } : el
+          ));
+        }
+        rotateInfoRef.current = null;
+        setRotateInfo(null);
+      }
+      const currentResize = resizeInfoRef.current;
+      if (currentResize) {
+        if (
+          Math.abs(currentResize.currentWidth - currentResize.startWidth) > TOLERANCE ||
+          Math.abs(currentResize.currentHeight - currentResize.startHeight) > TOLERANCE
+        ) {
+          setElements(prev => prev.map(el =>
+            el.id === currentResize.id
+              ? {
+                  ...el,
+                  width: currentResize.currentWidth,
+                  height: currentResize.currentHeight,
+                  x: currentResize.currentX,
+                  y: currentResize.currentY,
+                }
+              : el
+          ));
+        }
+        resizeInfoRef.current = null;
+        setResizeInfo(null);
+      }
       isPanningRef.current = false;
       setIsPanning(false);
       touchRef.current = null;
@@ -220,9 +339,11 @@ const Canvas: React.FC<CanvasProps> = memo(({
 
     window.addEventListener('touchmove', handleTouchMoveGlobal, { passive: false });
     window.addEventListener('touchend', handleTouchEndGlobal);
+    window.addEventListener('touchcancel', handleTouchEndGlobal);
     return () => {
       window.removeEventListener('touchmove', handleTouchMoveGlobal);
       window.removeEventListener('touchend', handleTouchEndGlobal);
+      window.removeEventListener('touchcancel', handleTouchEndGlobal);
     };
   }, [getCanvasCoords, setConfig, setElements]);
 
@@ -263,7 +384,17 @@ const Canvas: React.FC<CanvasProps> = memo(({
         ref={containerRef} 
         className={`w-full h-full relative overflow-hidden bg-zinc-100 dark:bg-zinc-950 canvas-grid ${placementMode ? 'cursor-none' : 'cursor-default'} ${dragInfo || rotateInfo || resizeInfo ? 'select-none' : ''}`}
         style={{ touchAction: 'none' }}
-        onMouseDown={e => { if (placementMode) { const coords = getCanvasCoords(e.clientX, e.clientY); onPlace(coords.x, coords.y); return; } if (e.target === containerRef.current) setIsPanning(true); }} 
+        onMouseDown={e => {
+          if (placementMode) {
+            if (onCheckActive && !onCheckActive()) return;
+            placeAtClientPoint(e.clientX, e.clientY);
+            return;
+          }
+          if (e.target === containerRef.current) {
+            setSelectedId(null);
+            setIsPanning(true);
+          }
+        }} 
         onWheel={e => { const factor = e.deltaY > 0 ? 0.95 : 1.05; setConfig(prev => ({ ...prev, scale: Math.min(Math.max(0.1, prev.scale * factor), 5) })); }}
         onTouchStart={handleTouchStart}
     >
@@ -291,28 +422,55 @@ const Canvas: React.FC<CanvasProps> = memo(({
               key={el.id} el={el} isSelected={selectedId === el.id} isDropTarget={dropTargetId === el.id} isMoving={isM || isR} isResizing={isRes} 
               displayX={dX} displayY={dY} displayWidth={dW} displayHeight={dH} displayRotation={dRot} 
               decorStyle={el.type === ElementType.DECOR ? getDecorStyles(el.name) : {}} 
-              onSelect={(id, sC) => { setSelectedId(id); const c = getCanvasCoords(sC.x, sC.y); const di = { id, startX: c.x, startY: c.y, currentX: c.x, currentY: c.y }; dragInfoRef.current = di; setDragInfo(di); }} 
+              onSelect={(id, sC) => {
+                if (onCheckActive && !onCheckActive()) return;
+                setSelectedId(id);
+                touchRef.current = { x: sC.x, y: sC.y };
+                const c = getCanvasCoords(sC.x, sC.y);
+                const di = { id, startX: c.x, startY: c.y, currentX: c.x, currentY: c.y };
+                dragInfoRef.current = di;
+                setDragInfo(di);
+              }} 
               onDelete={onDelete}
               onTableClick={onTableClick}
               onRotateStart={(id, sC) => { 
+                if (onCheckActive && !onCheckActive()) return;
                 const c = getCanvasCoords(sC.x, sC.y); 
                 const item = elements.find(i => i.id === id); 
                 if (item) { 
                   const centerX = item.x + item.width / 2, centerY = item.y + item.height / 2; 
                   const sA = Math.atan2(c.y - centerY, c.x - centerX) * (180 / Math.PI); 
-                  setRotateInfo({ id, startAngle: sA, initialRotation: item.rotation, currentRotation: item.rotation }); 
+                  const ri = { id, startAngle: sA, initialRotation: item.rotation, currentRotation: item.rotation };
+                  rotateInfoRef.current = ri;
+                  setRotateInfo(ri); 
                 } 
               }} 
               onResizeStart={(id, sC) => { 
+                if (onCheckActive && !onCheckActive()) return;
                 const c = getCanvasCoords(sC.x, sC.y); 
-                setResizeInfo({ 
+                const centerX = el.x + el.width / 2;
+                const centerY = el.y + el.height / 2;
+                const rad = (el.rotation * Math.PI) / 180;
+                const cos = Math.cos(rad), sin = Math.sin(rad);
+                const relX = c.x - centerX;
+                const relY = c.y - centerY;
+                const localX = relX * cos + relY * sin;
+                const localY = -relX * sin + relY * cos;
+                const rs = { 
                   id, 
                   startWidth: el.width, startHeight: el.height, 
                   startX: el.x, startY: el.y,
                   startMouseX: c.x, startMouseY: c.y, 
+                  centerX,
+                  centerY,
+                  signX: localX >= 0 ? 1 : -1,
+                  signY: localY >= 0 ? 1 : -1,
+                  baseRotation: el.rotation,
                   currentWidth: el.width, currentHeight: el.height,
                   currentX: el.x, currentY: el.y
-                }); 
+                };
+                resizeInfoRef.current = rs;
+                setResizeInfo(rs); 
               }} 
               onSeatClick={onSeatClick}
               onDragOver={id => setDropTargetId(id)} onDragLeave={() => setDropTargetId(null)} onDrop={(toId, data) => { setDropTargetId(null); const { fromElId, fromIdx } = JSON.parse(data); onMoveGuest(fromElId, fromIdx, toId); }} onUpdateCapacity={onUpdateCapacity} 

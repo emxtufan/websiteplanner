@@ -205,6 +205,24 @@ const PaymentSchema = new mongoose.Schema({
     billingSector: String,
     billingCounty: String,
     billingCountry: String,
+    checkoutAddressSource: String,
+    checkoutFirstName: String,
+    checkoutLastName: String,
+    checkoutPhone: String,
+    checkoutEmail: String,
+    checkoutCounty: String,
+    checkoutCity: String,
+    checkoutStreet: String,
+    checkoutNumber: String,
+    checkoutBlock: String,
+    checkoutStaircase: String,
+    checkoutFloor: String,
+    checkoutApartment: String,
+    checkoutPostalCode: String,
+    checkoutLandmark: String,
+    checkoutCountry: String,
+    savedAddressSnapshot: Object,
+    checkoutAddressSnapshot: Object,
 });
 
 const ArchivedSnapshotSchema = new mongoose.Schema({
@@ -295,6 +313,17 @@ const UserSchema = new mongoose.Schema({
     city: String,
     county: String,
     country: String,
+    shippingCounty: String,
+    shippingCity: String,
+    shippingStreet: String,
+    shippingNumber: String,
+    shippingBlock: String,
+    shippingStaircase: String,
+    shippingFloor: String,
+    shippingApartment: String,
+    shippingPostalCode: String,
+    shippingLandmark: String,
+    shippingCountry: String,
     eventRole: String,
     billingType: String,
     billingName: String,
@@ -758,6 +787,148 @@ function inferRomanianCounty(city = '', country = '') {
   return cityToCounty[key] || '';
 }
 
+function sanitizeInputText(value = '', max = 180) {
+  return String(value ?? '').trim().replace(/\s+/g, ' ').slice(0, max);
+}
+
+function normalizeRoPhone(phone = '') {
+  return String(phone || '').trim().replace(/\s+/g, '');
+}
+
+function isValidRoPhone(phone = '') {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return false;
+  if (digits.length === 10 && digits.startsWith('0')) return true;
+  if (digits.length === 11 && digits.startsWith('40')) return true;
+  if (digits.length === 12 && digits.startsWith('400')) return true;
+  return false;
+}
+
+function isValidRoPostalCode(postalCode = '') {
+  return /^\d{6}$/.test(String(postalCode || '').trim());
+}
+
+function normalizeShippingAddressParts(input = {}) {
+  const country = normalizeCountryName(input.shippingCountry || input.country || 'Romania') || 'Romania';
+  const city = sanitizeInputText(input.shippingCity || input.city || '', 120);
+  const countyFromInput = sanitizeInputText(input.shippingCounty || input.county || '', 120);
+  const county = isBucharestCity(city)
+    ? 'Bucuresti'
+    : (normalizeCountyName(countyFromInput, country) || inferRomanianCounty(city, country));
+
+  return {
+    shippingCounty: county,
+    shippingCity: city,
+    shippingStreet: sanitizeInputText(input.shippingStreet || '', 160),
+    shippingNumber: sanitizeInputText(input.shippingNumber || '', 32),
+    shippingBlock: sanitizeInputText(input.shippingBlock || '', 32),
+    shippingStaircase: sanitizeInputText(input.shippingStaircase || '', 32),
+    shippingFloor: sanitizeInputText(input.shippingFloor || '', 32),
+    shippingApartment: sanitizeInputText(input.shippingApartment || '', 32),
+    shippingPostalCode: sanitizeInputText(input.shippingPostalCode || '', 16),
+    shippingLandmark: sanitizeInputText(input.shippingLandmark || '', 240),
+    shippingCountry: country,
+  };
+}
+
+function isShippingAddressComplete(parts = {}) {
+  return Boolean(
+    sanitizeInputText(parts.shippingCounty || '') &&
+    sanitizeInputText(parts.shippingCity || '') &&
+    sanitizeInputText(parts.shippingStreet || '') &&
+    sanitizeInputText(parts.shippingNumber || '') &&
+    isValidRoPostalCode(parts.shippingPostalCode || ''),
+  );
+}
+
+function composeShippingAddressLine(parts = {}) {
+  const streetLine = [
+    sanitizeInputText(parts.shippingStreet || ''),
+    sanitizeInputText(parts.shippingNumber || ''),
+  ].filter(Boolean).join(' ');
+  const extra = [
+    parts.shippingBlock ? `Bl. ${sanitizeInputText(parts.shippingBlock || '')}` : '',
+    parts.shippingStaircase ? `Sc. ${sanitizeInputText(parts.shippingStaircase || '')}` : '',
+    parts.shippingFloor ? `Et. ${sanitizeInputText(parts.shippingFloor || '')}` : '',
+    parts.shippingApartment ? `Ap. ${sanitizeInputText(parts.shippingApartment || '')}` : '',
+  ].filter(Boolean).join(', ');
+  const locality = [
+    sanitizeInputText(parts.shippingCity || ''),
+    sanitizeInputText(parts.shippingCounty || ''),
+    sanitizeInputText(parts.shippingCountry || 'Romania'),
+  ].filter(Boolean).join(', ');
+  const postal = isValidRoPostalCode(parts.shippingPostalCode || '')
+    ? `Cod postal ${sanitizeInputText(parts.shippingPostalCode || '')}`
+    : '';
+  const landmark = sanitizeInputText(parts.shippingLandmark || '');
+  return [streetLine, extra, locality, postal, landmark ? `Reper: ${landmark}` : '']
+    .filter(Boolean)
+    .join(' | ');
+}
+
+function getProfileShippingAddress(profile = {}) {
+  const normalized = normalizeShippingAddressParts({
+    shippingCounty: profile?.shippingCounty || profile?.county || '',
+    shippingCity: profile?.shippingCity || profile?.city || '',
+    shippingStreet: profile?.shippingStreet || '',
+    shippingNumber: profile?.shippingNumber || '',
+    shippingBlock: profile?.shippingBlock || '',
+    shippingStaircase: profile?.shippingStaircase || '',
+    shippingFloor: profile?.shippingFloor || '',
+    shippingApartment: profile?.shippingApartment || '',
+    shippingPostalCode: profile?.shippingPostalCode || '',
+    shippingLandmark: profile?.shippingLandmark || '',
+    shippingCountry: profile?.shippingCountry || profile?.country || 'Romania',
+  });
+  if (!normalized.shippingStreet && profile?.address) {
+    normalized.shippingStreet = sanitizeInputText(profile.address, 160);
+  }
+  return normalized;
+}
+
+function getCheckoutContactAndAddress({ billing = {}, profile = {}, emailFallback = '' }) {
+  const firstName = sanitizeInputText(
+    billing.firstName || profile?.firstName || splitDisplayName(profile?.billingName || '').firstName || '',
+    80,
+  );
+  const lastName = sanitizeInputText(
+    billing.lastName || profile?.lastName || splitDisplayName(profile?.billingName || '').lastName || '',
+    120,
+  );
+  const email = sanitizeInputText(
+    billing.email || profile?.billingEmail || profile?.email || emailFallback || '',
+    180,
+  ).toLowerCase();
+  const phone = normalizeRoPhone(billing.phone || profile?.billingPhone || profile?.phone || '');
+  const profileShipping = getProfileShippingAddress(profile);
+  const shippingAddress = normalizeShippingAddressParts({
+    shippingCounty: billing.county || billing.shippingCounty || profileShipping.shippingCounty,
+    shippingCity: billing.city || billing.shippingCity || profileShipping.shippingCity,
+    shippingStreet: billing.street || billing.shippingStreet || profileShipping.shippingStreet,
+    shippingNumber: billing.number || billing.shippingNumber || profileShipping.shippingNumber,
+    shippingBlock: billing.block || billing.shippingBlock || profileShipping.shippingBlock,
+    shippingStaircase: billing.staircase || billing.shippingStaircase || profileShipping.shippingStaircase,
+    shippingFloor: billing.floor || billing.shippingFloor || profileShipping.shippingFloor,
+    shippingApartment: billing.apartment || billing.shippingApartment || profileShipping.shippingApartment,
+    shippingPostalCode: billing.postalCode || billing.shippingPostalCode || profileShipping.shippingPostalCode,
+    shippingLandmark: billing.landmark || billing.shippingLandmark || profileShipping.shippingLandmark,
+    shippingCountry: billing.country || billing.shippingCountry || profileShipping.shippingCountry || 'Romania',
+  });
+
+  const sourceRaw = sanitizeInputText(billing.addressSource || billing.source || '', 40).toLowerCase();
+  const addressSource = sourceRaw === 'saved_account' ? 'saved_account' : 'manual_entry';
+
+  return {
+    firstName,
+    lastName,
+    email,
+    phone,
+    addressSource,
+    shippingAddress,
+    profileShipping,
+  };
+}
+
 function getSmartbillBillingFromProfile(profile = {}, emailFallback = '') {
   const billingType = String(profile?.billingType || '').trim() === 'company' ? 'company' : 'individual';
   const billingName = String(profile?.billingName || '').trim();
@@ -807,6 +978,12 @@ function buildEmailAttachmentFromFile(filePath, filename = 'factura.pdf') {
     console.error('[EMAIL] Failed preparing invoice attachment:', error.message);
     return null;
   }
+}
+
+function resolveLocalUploadPathFromPublicUrl(publicUrl = '') {
+  const normalized = String(publicUrl || '').trim();
+  if (!normalized.startsWith('/uploads/')) return '';
+  return path.join(process.cwd(), normalized.replace(/^\/+/, ''));
 }
 
 // --- STRIPE WEBHOOK ---
@@ -883,6 +1060,39 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
         const relatedEventDate = user?.profile?.weddingDate;
         const relatedEventName = user?.profile?.eventName || 'Eveniment Nedenumit';
         const billingEmail = (meta.billingEmail || customerEmail || '').trim();
+        const checkoutAddressSource = String(meta.checkoutAddressSource || '').trim() === 'saved_account'
+          ? 'saved_account'
+          : 'manual_entry';
+        const checkoutFirstName = String(meta.checkoutFirstName || user?.profile?.firstName || '').trim();
+        const checkoutLastName = String(meta.checkoutLastName || user?.profile?.lastName || '').trim();
+        const checkoutPhone = String(meta.checkoutPhone || user?.profile?.phone || '').trim();
+        const checkoutEmail = String(meta.checkoutEmail || billingEmail || '').trim();
+        const checkoutAddress = normalizeShippingAddressParts({
+          shippingCounty: meta.checkoutCounty || user?.profile?.shippingCounty || user?.profile?.county || '',
+          shippingCity: meta.checkoutCity || user?.profile?.shippingCity || user?.profile?.city || '',
+          shippingStreet: meta.checkoutStreet || user?.profile?.shippingStreet || stripeStreet || '',
+          shippingNumber: meta.checkoutNumber || user?.profile?.shippingNumber || '',
+          shippingBlock: meta.checkoutBlock || user?.profile?.shippingBlock || '',
+          shippingStaircase: meta.checkoutStaircase || user?.profile?.shippingStaircase || '',
+          shippingFloor: meta.checkoutFloor || user?.profile?.shippingFloor || '',
+          shippingApartment: meta.checkoutApartment || user?.profile?.shippingApartment || '',
+          shippingPostalCode: meta.checkoutPostalCode || user?.profile?.shippingPostalCode || '',
+          shippingLandmark: meta.checkoutLandmark || user?.profile?.shippingLandmark || '',
+          shippingCountry: meta.checkoutCountry || user?.profile?.shippingCountry || user?.profile?.country || 'Romania',
+        });
+        const savedAddressSnapshot = normalizeShippingAddressParts({
+          shippingCounty: meta.accountCounty || user?.profile?.shippingCounty || user?.profile?.county || '',
+          shippingCity: meta.accountCity || user?.profile?.shippingCity || user?.profile?.city || '',
+          shippingStreet: meta.accountStreet || user?.profile?.shippingStreet || '',
+          shippingNumber: meta.accountNumber || user?.profile?.shippingNumber || '',
+          shippingBlock: meta.accountBlock || user?.profile?.shippingBlock || '',
+          shippingStaircase: meta.accountStaircase || user?.profile?.shippingStaircase || '',
+          shippingFloor: meta.accountFloor || user?.profile?.shippingFloor || '',
+          shippingApartment: meta.accountApartment || user?.profile?.shippingApartment || '',
+          shippingPostalCode: meta.accountPostalCode || user?.profile?.shippingPostalCode || '',
+          shippingLandmark: meta.accountLandmark || user?.profile?.shippingLandmark || '',
+          shippingCountry: meta.accountCountry || user?.profile?.shippingCountry || user?.profile?.country || 'Romania',
+        });
         const billingType = (meta.billingType || '').trim() === 'company' ? 'company' : 'individual';
         const billingName = (meta.billingName || '').trim();
         const billingCompany = (meta.billingCompany || '').trim();
@@ -906,8 +1116,10 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
           sector: billingSector,
           country: billingCountry,
         }) || billingCity;
-        const baseAddress = (meta.billingAddress || stripeStreet || user?.profile?.billingAddress || user?.profile?.address || '').trim();
-        const billingAddress = [baseAddress, billingCity, billingCounty, billingCountry].filter(Boolean).join(', ');
+        const composedCheckoutAddress = composeShippingAddressLine(checkoutAddress);
+        const baseAddress = (meta.billingAddress || composedCheckoutAddress || stripeStreet || user?.profile?.billingAddress || user?.profile?.address || '').trim();
+        const billingAddress =
+          baseAddress || [billingCity, billingCounty, billingCountry].filter(Boolean).join(', ');
         const displayName = billingCompany || billingName;
         const { firstName: billingFirstName, lastName: billingLastName } = splitDisplayName(displayName);
 
@@ -986,6 +1198,48 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             billingSector,
             billingCounty,
             billingCountry,
+            checkoutAddressSource,
+            checkoutFirstName,
+            checkoutLastName,
+            checkoutPhone,
+            checkoutEmail,
+            checkoutCounty: checkoutAddress.shippingCounty,
+            checkoutCity: checkoutAddress.shippingCity,
+            checkoutStreet: checkoutAddress.shippingStreet,
+            checkoutNumber: checkoutAddress.shippingNumber,
+            checkoutBlock: checkoutAddress.shippingBlock,
+            checkoutStaircase: checkoutAddress.shippingStaircase,
+            checkoutFloor: checkoutAddress.shippingFloor,
+            checkoutApartment: checkoutAddress.shippingApartment,
+            checkoutPostalCode: checkoutAddress.shippingPostalCode,
+            checkoutLandmark: checkoutAddress.shippingLandmark,
+            checkoutCountry: checkoutAddress.shippingCountry || 'Romania',
+            savedAddressSnapshot: {
+              county: savedAddressSnapshot.shippingCounty,
+              city: savedAddressSnapshot.shippingCity,
+              street: savedAddressSnapshot.shippingStreet,
+              number: savedAddressSnapshot.shippingNumber,
+              block: savedAddressSnapshot.shippingBlock,
+              staircase: savedAddressSnapshot.shippingStaircase,
+              floor: savedAddressSnapshot.shippingFloor,
+              apartment: savedAddressSnapshot.shippingApartment,
+              postalCode: savedAddressSnapshot.shippingPostalCode,
+              landmark: savedAddressSnapshot.shippingLandmark,
+              country: savedAddressSnapshot.shippingCountry || 'Romania',
+            },
+            checkoutAddressSnapshot: {
+              county: checkoutAddress.shippingCounty,
+              city: checkoutAddress.shippingCity,
+              street: checkoutAddress.shippingStreet,
+              number: checkoutAddress.shippingNumber,
+              block: checkoutAddress.shippingBlock,
+              staircase: checkoutAddress.shippingStaircase,
+              floor: checkoutAddress.shippingFloor,
+              apartment: checkoutAddress.shippingApartment,
+              postalCode: checkoutAddress.shippingPostalCode,
+              landmark: checkoutAddress.shippingLandmark,
+              country: checkoutAddress.shippingCountry || 'Romania',
+            },
             invoicePdfUrl: invoicePdfUrl,
             hostedInvoiceUrl: hostedInvoiceUrl,
             paymentMethod: 'stripe_card',
@@ -1011,6 +1265,26 @@ app.post('/api/webhook', express.raw({ type: 'application/json' }), async (req, 
             profileBillingSet['profile.email'] = billingEmail;
         }
         if (meta.billingPhone) profileBillingSet['profile.billingPhone'] = meta.billingPhone;
+        profileBillingSet['profile.firstName'] = checkoutFirstName || user?.profile?.firstName || '';
+        profileBillingSet['profile.lastName'] = checkoutLastName || user?.profile?.lastName || '';
+        profileBillingSet['profile.phone'] = checkoutPhone || user?.profile?.phone || '';
+        if (isShippingAddressComplete(checkoutAddress)) {
+          profileBillingSet['profile.address'] = composedCheckoutAddress || user?.profile?.address || '';
+          profileBillingSet['profile.city'] = checkoutAddress.shippingCity || user?.profile?.city || '';
+          profileBillingSet['profile.county'] = checkoutAddress.shippingCounty || user?.profile?.county || '';
+          profileBillingSet['profile.country'] = checkoutAddress.shippingCountry || user?.profile?.country || 'Romania';
+          profileBillingSet['profile.shippingCounty'] = checkoutAddress.shippingCounty || '';
+          profileBillingSet['profile.shippingCity'] = checkoutAddress.shippingCity || '';
+          profileBillingSet['profile.shippingStreet'] = checkoutAddress.shippingStreet || '';
+          profileBillingSet['profile.shippingNumber'] = checkoutAddress.shippingNumber || '';
+          profileBillingSet['profile.shippingBlock'] = checkoutAddress.shippingBlock || '';
+          profileBillingSet['profile.shippingStaircase'] = checkoutAddress.shippingStaircase || '';
+          profileBillingSet['profile.shippingFloor'] = checkoutAddress.shippingFloor || '';
+          profileBillingSet['profile.shippingApartment'] = checkoutAddress.shippingApartment || '';
+          profileBillingSet['profile.shippingPostalCode'] = checkoutAddress.shippingPostalCode || '';
+          profileBillingSet['profile.shippingLandmark'] = checkoutAddress.shippingLandmark || '';
+          profileBillingSet['profile.shippingCountry'] = checkoutAddress.shippingCountry || 'Romania';
+        }
 
         const nextPlan = planAtLeast(user?.plan || 'free', targetPlan);
         await User.findByIdAndUpdate(userId, {
@@ -2435,7 +2709,17 @@ app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
             eventRole,
             contactName,
             phone,
-            address,
+            shippingCounty,
+            shippingCity,
+            shippingStreet,
+            shippingNumber,
+            shippingBlock,
+            shippingStaircase,
+            shippingFloor,
+            shippingApartment,
+            shippingPostalCode,
+            shippingLandmark,
+            shippingCountry,
             firstName,
             lastName,
         } = req.body || {};
@@ -2448,8 +2732,46 @@ app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
             return res.status(400).send({ error: 'Data evenimentului nu poate fi in trecut.' });
         }
 
-        if (!eventRole || !contactName || !phone || !address) {
-            return res.status(400).send({ error: 'Rolul, numele, telefonul si adresa sunt obligatorii.' });
+        const normalizedPhone = normalizeRoPhone(phone || '');
+        if (!eventRole || !contactName || !normalizedPhone) {
+            return res.status(400).send({ error: 'Rolul, numele si telefonul sunt obligatorii.' });
+        }
+        if (!isValidRoPhone(normalizedPhone)) {
+            return res.status(400).send({ error: 'Numarul de telefon este invalid.' });
+        }
+
+        const normalizedShipping = normalizeShippingAddressParts({
+          shippingCounty,
+          shippingCity,
+          shippingStreet,
+          shippingNumber,
+          shippingBlock,
+          shippingStaircase,
+          shippingFloor,
+          shippingApartment,
+          shippingPostalCode,
+          shippingLandmark,
+          shippingCountry: shippingCountry || 'Romania',
+        });
+        const hasAnyShippingPayload = [
+          shippingCounty,
+          shippingCity,
+          shippingStreet,
+          shippingNumber,
+          shippingBlock,
+          shippingStaircase,
+          shippingFloor,
+          shippingApartment,
+          shippingPostalCode,
+          shippingLandmark,
+          shippingCountry,
+        ]
+          .map((v) => sanitizeInputText(v || ''))
+          .some(Boolean);
+        if (hasAnyShippingPayload && !isShippingAddressComplete(normalizedShipping)) {
+          return res.status(400).send({
+            error: 'Adresa principala este incompleta. Completeaza judet, localitate, strada, numar si cod postal.',
+          });
         }
 
         const contactNameNorm = normalizeText(contactName);
@@ -2485,22 +2807,40 @@ app.post('/api/user/setup-event', authenticateToken, async (req, res) => {
         }
 
         const now = new Date();
+        const setupSet = {
+            "profile.eventName": eventName || `Eveniment ${eventType}`,
+            "profile.eventType": eventType,
+            "profile.weddingDate": new Date(weddingDate),
+            "profile.isSetupComplete": true,
+            "profile.eventRole": normalizeText(eventRole),
+            "profile.firstName": finalFirstName,
+            "profile.lastName": finalLastName,
+            "profile.phone": normalizedPhone,
+            "activity.lastProfileUpdateAt": now,
+            "activity.lastActionAt": now,
+            "activity.lastActionLabel": "Onboarding completat",
+            ...defaultData
+        };
+        if (hasAnyShippingPayload && isShippingAddressComplete(normalizedShipping)) {
+            setupSet["profile.address"] = composeShippingAddressLine(normalizedShipping);
+            setupSet["profile.city"] = normalizedShipping.shippingCity;
+            setupSet["profile.county"] = normalizedShipping.shippingCounty;
+            setupSet["profile.country"] = normalizedShipping.shippingCountry || 'Romania';
+            setupSet["profile.shippingCounty"] = normalizedShipping.shippingCounty;
+            setupSet["profile.shippingCity"] = normalizedShipping.shippingCity;
+            setupSet["profile.shippingStreet"] = normalizedShipping.shippingStreet;
+            setupSet["profile.shippingNumber"] = normalizedShipping.shippingNumber;
+            setupSet["profile.shippingBlock"] = normalizedShipping.shippingBlock;
+            setupSet["profile.shippingStaircase"] = normalizedShipping.shippingStaircase;
+            setupSet["profile.shippingFloor"] = normalizedShipping.shippingFloor;
+            setupSet["profile.shippingApartment"] = normalizedShipping.shippingApartment;
+            setupSet["profile.shippingPostalCode"] = normalizedShipping.shippingPostalCode;
+            setupSet["profile.shippingLandmark"] = normalizedShipping.shippingLandmark;
+            setupSet["profile.shippingCountry"] = normalizedShipping.shippingCountry || 'Romania';
+        }
+
         const updatedUser = await User.findByIdAndUpdate(req.user.userId, {
-            $set: {
-                "profile.eventName": eventName || `Eveniment ${eventType}`,
-                "profile.eventType": eventType,
-                "profile.weddingDate": new Date(weddingDate),
-                "profile.isSetupComplete": true,
-                "profile.eventRole": normalizeText(eventRole),
-                "profile.firstName": finalFirstName,
-                "profile.lastName": finalLastName,
-                "profile.phone": normalizeText(phone),
-                "profile.address": normalizeText(address),
-                "activity.lastProfileUpdateAt": now,
-                "activity.lastActionAt": now,
-                "activity.lastActionLabel": "Onboarding completat",
-                ...defaultData
-            }
+            $set: setupSet
         }, { new: true });
 
         if (EMAIL_WELCOME_ENABLED && updatedUser) {
@@ -2781,6 +3121,13 @@ app.post('/api/profile', authenticateToken, ensureActiveEvent, async (req, res) 
     try {
         const { profile } = req.body;
         if (profile && typeof profile === 'object') {
+            if (Object.prototype.hasOwnProperty.call(profile, 'phone')) {
+                const nextPhone = normalizeRoPhone(profile.phone || '');
+                if (nextPhone && !isValidRoPhone(nextPhone)) {
+                    return res.status(400).send({ error: 'Numarul de telefon trebuie sa fie valid.' });
+                }
+                profile.phone = nextPhone;
+            }
             if (Object.prototype.hasOwnProperty.call(profile, 'weddingDate')) {
                 const rawWeddingDate =
                     typeof profile.weddingDate === 'string'
@@ -2789,6 +3136,61 @@ app.post('/api/profile', authenticateToken, ensureActiveEvent, async (req, res) 
                 if (isPastOrInvalidEventDate(rawWeddingDate)) {
                     return res.status(400).send({ error: 'Data evenimentului nu poate fi in trecut.' });
                 }
+            }
+
+            const shippingKeys = [
+              'shippingCounty',
+              'shippingCity',
+              'shippingStreet',
+              'shippingNumber',
+              'shippingBlock',
+              'shippingStaircase',
+              'shippingFloor',
+              'shippingApartment',
+              'shippingPostalCode',
+              'shippingLandmark',
+              'shippingCountry',
+            ];
+            const hasShippingPayload = shippingKeys.some((k) =>
+              Object.prototype.hasOwnProperty.call(profile, k),
+            );
+            if (hasShippingPayload) {
+              const normalizedShipping = normalizeShippingAddressParts({
+                shippingCounty: profile.shippingCounty,
+                shippingCity: profile.shippingCity,
+                shippingStreet: profile.shippingStreet,
+                shippingNumber: profile.shippingNumber,
+                shippingBlock: profile.shippingBlock,
+                shippingStaircase: profile.shippingStaircase,
+                shippingFloor: profile.shippingFloor,
+                shippingApartment: profile.shippingApartment,
+                shippingPostalCode: profile.shippingPostalCode,
+                shippingLandmark: profile.shippingLandmark,
+                shippingCountry: profile.shippingCountry || profile.country || 'Romania',
+              });
+              if (!isShippingAddressComplete(normalizedShipping)) {
+                return res.status(400).send({
+                  error:
+                    'Adresa principala este incompleta. Completeaza judet, localitate, strada, numar si cod postal (6 cifre).',
+                });
+              }
+              profile.shippingCounty = normalizedShipping.shippingCounty;
+              profile.shippingCity = normalizedShipping.shippingCity;
+              profile.shippingStreet = normalizedShipping.shippingStreet;
+              profile.shippingNumber = normalizedShipping.shippingNumber;
+              profile.shippingBlock = normalizedShipping.shippingBlock;
+              profile.shippingStaircase = normalizedShipping.shippingStaircase;
+              profile.shippingFloor = normalizedShipping.shippingFloor;
+              profile.shippingApartment = normalizedShipping.shippingApartment;
+              profile.shippingPostalCode = normalizedShipping.shippingPostalCode;
+              profile.shippingLandmark = normalizedShipping.shippingLandmark;
+              profile.shippingCountry = normalizedShipping.shippingCountry;
+
+              // backward compatibility fields reused elsewhere in app
+              profile.address = composeShippingAddressLine(normalizedShipping);
+              profile.city = normalizedShipping.shippingCity;
+              profile.county = normalizedShipping.shippingCounty;
+              profile.country = normalizedShipping.shippingCountry;
             }
 
             const billingCity = String(profile.billingCity || '').trim();
@@ -3606,10 +4008,17 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
     }
     const currentPlan = normalizePlan(user.plan || 'free');
 
-    let billingEmail = clean(billing.email || email);
-    if (!billingEmail && user.profile?.billingEmail) billingEmail = clean(user.profile.billingEmail);
-    if (!billingEmail && user.profile?.email) billingEmail = clean(user.profile.email);
-    if (!billingEmail && user.user && user.user.includes('@')) billingEmail = clean(user.user);
+    const checkoutAddress = getCheckoutContactAndAddress({
+      billing,
+      profile: user.profile || {},
+      emailFallback: email || user.user,
+    });
+    const { shippingAddress, profileShipping, addressSource } = checkoutAddress;
+    const billingCountry = normalizeCountryName(shippingAddress.shippingCountry || 'Romania');
+    const billingCity = clean(shippingAddress.shippingCity, 120);
+    const billingCounty = clean(shippingAddress.shippingCounty, 120);
+    const billingAddress = composeShippingAddressLine(shippingAddress);
+    const billingEmail = clean(checkoutAddress.email);
 
     const billingType = clean(billing.type, 20) === 'company' ? 'company' : 'individual';
     const fallbackBillingName = clean(
@@ -3619,7 +4028,8 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
       'Client',
       120
     );
-    const billingName = clean(billing.name || fallbackBillingName, 120);
+    const contactFullName = `${checkoutAddress.firstName} ${checkoutAddress.lastName}`.trim();
+    const billingName = clean(billing.name || contactFullName || fallbackBillingName, 120);
     const billingCompany = clean(billing.company || user.profile?.billingCompany, 160);
     const billingVatCodeInput = clean(billing.vatCode || user.profile?.billingVatCode, 64);
     const billingVatCode = normalizeBillingTaxCode({
@@ -3627,20 +4037,23 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
       vatCode: billingVatCodeInput,
     });
     const billingRegNo = clean(billing.regNo || user.profile?.billingRegNo, 64);
-    const billingAddress = clean(billing.address || user.profile?.billingAddress || user.profile?.address, 240);
-    const billingCity = clean(billing.city || user.profile?.billingCity || user.profile?.city, 120);
     const billingSector = normalizeSectorName(clean(billing.sector || user.profile?.billingSector, 32));
-    const billingCountry = normalizeCountryName(
-      clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120)
-    );
-    const billingCountyRaw = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
-    const billingCounty = isBucharestCity(billingCity)
-      ? 'Bucuresti'
-      : (normalizeCountyName(billingCountyRaw, billingCountry) || inferRomanianCounty(billingCity, billingCountry));
-    const billingPhone = clean(billing.phone || user.profile?.billingPhone || user.profile?.phone, 40);
+    const billingPhone = clean(checkoutAddress.phone || user.profile?.billingPhone || user.profile?.phone, 40);
 
     if (!billingEmail || !billingEmail.includes('@')) {
         return res.status(400).send({ error: "Email-ul de facturare este obligatoriu." });
+    }
+    if (!checkoutAddress.firstName || !checkoutAddress.lastName) {
+      return res.status(400).send({ error: "Completeaza prenumele si numele pentru checkout." });
+    }
+    if (!checkoutAddress.phone || !isValidRoPhone(checkoutAddress.phone)) {
+      return res.status(400).send({ error: "Numarul de telefon este obligatoriu si trebuie sa fie valid." });
+    }
+    if (!isShippingAddressComplete(shippingAddress)) {
+      return res.status(400).send({
+        error:
+          "Adresa de checkout este incompleta. Completeaza judet, localitate, strada, numar si cod postal.",
+      });
     }
     if (!billingName) {
         return res.status(400).send({ error: "Numele de facturare este obligatoriu." });
@@ -3652,25 +4065,46 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
         return res.status(400).send({ error: "Pentru firme din Bucuresti, selecteaza sectorul." });
     }
     if (!billingAddress || !billingCity || !billingCountry || !billingCounty) {
-        return res.status(400).send({ error: "Completeaza adresa, orasul, judetul si tara pentru facturare." });
+      return res.status(400).send({ error: "Completeaza adresa, orasul, judetul si tara pentru facturare." });
     }
 
+    const profileUpdateSet = {
+      'profile.email': billingEmail,
+      'profile.billingType': billingType,
+      'profile.billingName': billingName,
+      'profile.billingCompany': billingCompany,
+      'profile.billingVatCode': billingVatCode,
+      'profile.billingRegNo': billingRegNo,
+      'profile.billingAddress': billingAddress,
+      'profile.billingCity': billingCity,
+      'profile.billingSector': billingSector,
+      'profile.billingCounty': billingCounty,
+      'profile.billingCountry': billingCountry,
+      'profile.billingEmail': billingEmail,
+      'profile.billingPhone': billingPhone,
+      'profile.firstName': checkoutAddress.firstName || user.profile?.firstName || '',
+      'profile.lastName': checkoutAddress.lastName || user.profile?.lastName || '',
+      'profile.phone': billingPhone || user.profile?.phone || '',
+    };
+    if (isShippingAddressComplete(shippingAddress)) {
+      profileUpdateSet['profile.address'] = billingAddress;
+      profileUpdateSet['profile.city'] = shippingAddress.shippingCity;
+      profileUpdateSet['profile.county'] = shippingAddress.shippingCounty;
+      profileUpdateSet['profile.country'] = shippingAddress.shippingCountry || 'Romania';
+      profileUpdateSet['profile.shippingCounty'] = shippingAddress.shippingCounty;
+      profileUpdateSet['profile.shippingCity'] = shippingAddress.shippingCity;
+      profileUpdateSet['profile.shippingStreet'] = shippingAddress.shippingStreet;
+      profileUpdateSet['profile.shippingNumber'] = shippingAddress.shippingNumber;
+      profileUpdateSet['profile.shippingBlock'] = shippingAddress.shippingBlock;
+      profileUpdateSet['profile.shippingStaircase'] = shippingAddress.shippingStaircase;
+      profileUpdateSet['profile.shippingFloor'] = shippingAddress.shippingFloor;
+      profileUpdateSet['profile.shippingApartment'] = shippingAddress.shippingApartment;
+      profileUpdateSet['profile.shippingPostalCode'] = shippingAddress.shippingPostalCode;
+      profileUpdateSet['profile.shippingLandmark'] = shippingAddress.shippingLandmark;
+      profileUpdateSet['profile.shippingCountry'] = shippingAddress.shippingCountry || 'Romania';
+    }
     await User.findByIdAndUpdate(userId, {
-      $set: {
-        'profile.email': billingEmail,
-        'profile.billingType': billingType,
-        'profile.billingName': billingName,
-        'profile.billingCompany': billingCompany,
-        'profile.billingVatCode': billingVatCode,
-        'profile.billingRegNo': billingRegNo,
-        'profile.billingAddress': billingAddress,
-        'profile.billingCity': billingCity,
-        'profile.billingSector': billingSector,
-        'profile.billingCounty': billingCounty,
-        'profile.billingCountry': billingCountry,
-        'profile.billingEmail': billingEmail,
-        'profile.billingPhone': billingPhone,
-      },
+      $set: profileUpdateSet,
     });
 
     const config = await getConfig();
@@ -3709,6 +4143,33 @@ app.post('/api/upgrade', authenticateToken, async (req, res) => {
       billingCountry,
       billingEmail,
       billingPhone,
+      checkoutAddressSource: addressSource,
+      checkoutFirstName: checkoutAddress.firstName,
+      checkoutLastName: checkoutAddress.lastName,
+      checkoutPhone: checkoutAddress.phone,
+      checkoutEmail: checkoutAddress.email,
+      checkoutCounty: shippingAddress.shippingCounty,
+      checkoutCity: shippingAddress.shippingCity,
+      checkoutStreet: shippingAddress.shippingStreet,
+      checkoutNumber: shippingAddress.shippingNumber,
+      checkoutBlock: shippingAddress.shippingBlock,
+      checkoutStaircase: shippingAddress.shippingStaircase,
+      checkoutFloor: shippingAddress.shippingFloor,
+      checkoutApartment: shippingAddress.shippingApartment,
+      checkoutPostalCode: shippingAddress.shippingPostalCode,
+      checkoutLandmark: shippingAddress.shippingLandmark,
+      checkoutCountry: shippingAddress.shippingCountry || 'Romania',
+      accountCounty: profileShipping.shippingCounty,
+      accountCity: profileShipping.shippingCity,
+      accountStreet: profileShipping.shippingStreet,
+      accountNumber: profileShipping.shippingNumber,
+      accountBlock: profileShipping.shippingBlock,
+      accountStaircase: profileShipping.shippingStaircase,
+      accountFloor: profileShipping.shippingFloor,
+      accountApartment: profileShipping.shippingApartment,
+      accountPostalCode: profileShipping.shippingPostalCode,
+      accountLandmark: profileShipping.shippingLandmark,
+      accountCountry: profileShipping.shippingCountry || 'Romania',
     };
     const stripeMetadata = Object.fromEntries(
       Object.entries(metadataRaw)
@@ -4059,6 +4520,12 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
         const orderId   = `ORD_${Date.now()}`;
         const timestamp = Date.now().toString();
 
+        const checkoutAddress = getCheckoutContactAndAddress({
+          billing,
+          profile: user.profile || {},
+          emailFallback: user.user,
+        });
+        const { shippingAddress, profileShipping, addressSource } = checkoutAddress;
         const billingType = clean(billing.type, 20) === 'company' ? 'company' : 'individual';
         const fallbackBillingName = clean(
           user.profile?.billingName ||
@@ -4067,28 +4534,35 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
           'Client',
           120
         );
-        const billingName = clean(billing.name || fallbackBillingName, 120);
+        const contactFullName = `${checkoutAddress.firstName} ${checkoutAddress.lastName}`.trim();
+        const billingName = clean(billing.name || contactFullName || fallbackBillingName, 120);
         const billingCompany = clean(billing.company || user.profile?.billingCompany, 160);
         const billingVatCode = normalizeBillingTaxCode({
           billingType,
           vatCode: clean(billing.vatCode || user.profile?.billingVatCode, 64),
         });
         const billingRegNo = clean(billing.regNo || user.profile?.billingRegNo, 64);
-        const billingAddress = clean(billing.address || user.profile?.billingAddress || user.profile?.address, 240);
-        const billingCity = clean(billing.city || user.profile?.billingCity || user.profile?.city, 120);
+        const billingAddress = composeShippingAddressLine(shippingAddress);
+        const billingCity = clean(shippingAddress.shippingCity, 120);
         const billingSector = normalizeSectorName(clean(billing.sector || user.profile?.billingSector, 32));
-        const billingCountry = normalizeCountryName(
-          clean(billing.country || user.profile?.billingCountry || user.profile?.country || 'Romania', 120)
-        );
-        const billingCountyRaw = clean(billing.county || user.profile?.billingCounty || user.profile?.county, 120);
-        const billingCounty = isBucharestCity(billingCity)
-          ? 'Bucuresti'
-          : (normalizeCountyName(billingCountyRaw, billingCountry) || inferRomanianCounty(billingCity, billingCountry));
-        const billingPhone = clean(billing.phone || user.profile?.billingPhone || user.profile?.phone || '0700000000', 40);
-        let billingEmail = clean(billing.email || user.profile?.billingEmail || user.profile?.email || user.user);
+        const billingCountry = normalizeCountryName(shippingAddress.shippingCountry || 'Romania');
+        const billingCounty = clean(shippingAddress.shippingCounty, 120);
+        const billingPhone = clean(checkoutAddress.phone || user.profile?.billingPhone || user.profile?.phone || '0700000000', 40);
+        let billingEmail = clean(checkoutAddress.email || user.profile?.billingEmail || user.profile?.email || user.user);
 
         if (!billingEmail || !billingEmail.includes('@')) {
           return res.status(400).json({ error: 'Email-ul de facturare este obligatoriu.' });
+        }
+        if (!checkoutAddress.firstName || !checkoutAddress.lastName) {
+          return res.status(400).json({ error: 'Completeaza prenumele si numele pentru checkout.' });
+        }
+        if (!checkoutAddress.phone || !isValidRoPhone(checkoutAddress.phone)) {
+          return res.status(400).json({ error: 'Numarul de telefon este obligatoriu si trebuie sa fie valid.' });
+        }
+        if (!isShippingAddressComplete(shippingAddress)) {
+          return res.status(400).json({
+            error: 'Adresa de checkout este incompleta. Completeaza judet, localitate, strada, numar si cod postal.',
+          });
         }
         if (!billingName) {
           return res.status(400).json({ error: 'Numele de facturare este obligatoriu.' });
@@ -4103,33 +4577,55 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
           return res.status(400).json({ error: 'Completeaza adresa, orasul, judetul si tara pentru facturare.' });
         }
 
-        await User.findByIdAndUpdate(userId, {
-          $set: {
-            'profile.email': billingEmail,
-            'profile.billingType': billingType,
-            'profile.billingName': billingName,
-            'profile.billingCompany': billingCompany,
-            'profile.billingVatCode': billingVatCode,
-            'profile.billingRegNo': billingRegNo,
-            'profile.billingAddress': billingAddress,
-            'profile.billingCity': billingCity,
-            'profile.billingSector': billingSector,
-            'profile.billingCounty': billingCounty,
-            'profile.billingCountry': billingCountry,
-            'profile.billingEmail': billingEmail,
-            'profile.billingPhone': billingPhone,
-          },
-        });
+        const profileUpdateSet = {
+          'profile.email': billingEmail,
+          'profile.billingType': billingType,
+          'profile.billingName': billingName,
+          'profile.billingCompany': billingCompany,
+          'profile.billingVatCode': billingVatCode,
+          'profile.billingRegNo': billingRegNo,
+          'profile.billingAddress': billingAddress,
+          'profile.billingCity': billingCity,
+          'profile.billingSector': billingSector,
+          'profile.billingCounty': billingCounty,
+          'profile.billingCountry': billingCountry,
+          'profile.billingEmail': billingEmail,
+          'profile.billingPhone': billingPhone,
+          'profile.firstName': checkoutAddress.firstName || user.profile?.firstName || '',
+          'profile.lastName': checkoutAddress.lastName || user.profile?.lastName || '',
+          'profile.phone': billingPhone || user.profile?.phone || '',
+        };
+        if (isShippingAddressComplete(shippingAddress)) {
+          profileUpdateSet['profile.address'] = billingAddress;
+          profileUpdateSet['profile.city'] = shippingAddress.shippingCity;
+          profileUpdateSet['profile.county'] = shippingAddress.shippingCounty;
+          profileUpdateSet['profile.country'] = shippingAddress.shippingCountry || 'Romania';
+          profileUpdateSet['profile.shippingCounty'] = shippingAddress.shippingCounty;
+          profileUpdateSet['profile.shippingCity'] = shippingAddress.shippingCity;
+          profileUpdateSet['profile.shippingStreet'] = shippingAddress.shippingStreet;
+          profileUpdateSet['profile.shippingNumber'] = shippingAddress.shippingNumber;
+          profileUpdateSet['profile.shippingBlock'] = shippingAddress.shippingBlock;
+          profileUpdateSet['profile.shippingStaircase'] = shippingAddress.shippingStaircase;
+          profileUpdateSet['profile.shippingFloor'] = shippingAddress.shippingFloor;
+          profileUpdateSet['profile.shippingApartment'] = shippingAddress.shippingApartment;
+          profileUpdateSet['profile.shippingPostalCode'] = shippingAddress.shippingPostalCode;
+          profileUpdateSet['profile.shippingLandmark'] = shippingAddress.shippingLandmark;
+          profileUpdateSet['profile.shippingCountry'] = shippingAddress.shippingCountry || 'Romania';
+        }
+        await User.findByIdAndUpdate(userId, { $set: profileUpdateSet });
 
         const displayName = billingCompany || billingName;
         const { firstName, lastName } = splitDisplayName(displayName);
+
+        const returnUrl =
+          `${APP_URL.replace(/\/$/, '')}/api/netopia/return?orderId=${encodeURIComponent(orderId)}`;
 
         const orderXml = {
             order: {
                 $: { id: orderId, timestamp, type: 'card' },
                 signature: NETOPIA_SIGNATURE,
                 url: {
-                    return:  `${APP_URL}/api/netopia/return`,
+                    return:  returnUrl,
                     confirm: `${APP_URL}/api/netopia/confirm`,
                 },
                 invoice: {
@@ -4162,11 +4658,53 @@ app.post('/api/netopia/initiate', authenticateToken, async (req, res) => {
                     billingEmail,
                     billingFirstName: firstName,
                     billingLastName: lastName,
-                    billingAddress: [billingAddress, billingCity, billingCounty, billingCountry].filter(Boolean).join(', '),
+                    billingAddress: billingAddress || [billingCity, billingCounty, billingCountry].filter(Boolean).join(', '),
                     billingCity,
                     billingSector,
                     billingCounty,
                     billingCountry,
+                    checkoutAddressSource: addressSource,
+                    checkoutFirstName: checkoutAddress.firstName,
+                    checkoutLastName: checkoutAddress.lastName,
+                    checkoutPhone: checkoutAddress.phone,
+                    checkoutEmail: checkoutAddress.email,
+                    checkoutCounty: shippingAddress.shippingCounty,
+                    checkoutCity: shippingAddress.shippingCity,
+                    checkoutStreet: shippingAddress.shippingStreet,
+                    checkoutNumber: shippingAddress.shippingNumber,
+                    checkoutBlock: shippingAddress.shippingBlock,
+                    checkoutStaircase: shippingAddress.shippingStaircase,
+                    checkoutFloor: shippingAddress.shippingFloor,
+                    checkoutApartment: shippingAddress.shippingApartment,
+                    checkoutPostalCode: shippingAddress.shippingPostalCode,
+                    checkoutLandmark: shippingAddress.shippingLandmark,
+                    checkoutCountry: shippingAddress.shippingCountry || 'Romania',
+                    savedAddressSnapshot: {
+                      county: profileShipping.shippingCounty,
+                      city: profileShipping.shippingCity,
+                      street: profileShipping.shippingStreet,
+                      number: profileShipping.shippingNumber,
+                      block: profileShipping.shippingBlock,
+                      staircase: profileShipping.shippingStaircase,
+                      floor: profileShipping.shippingFloor,
+                      apartment: profileShipping.shippingApartment,
+                      postalCode: profileShipping.shippingPostalCode,
+                      landmark: profileShipping.shippingLandmark,
+                      country: profileShipping.shippingCountry || 'Romania',
+                    },
+                    checkoutAddressSnapshot: {
+                      county: shippingAddress.shippingCounty,
+                      city: shippingAddress.shippingCity,
+                      street: shippingAddress.shippingStreet,
+                      number: shippingAddress.shippingNumber,
+                      block: shippingAddress.shippingBlock,
+                      staircase: shippingAddress.shippingStaircase,
+                      floor: shippingAddress.shippingFloor,
+                      apartment: shippingAddress.shippingApartment,
+                      postalCode: shippingAddress.shippingPostalCode,
+                      landmark: shippingAddress.shippingLandmark,
+                      country: shippingAddress.shippingCountry || 'Romania',
+                    },
                     paymentMethod:    'netopia_card',
                     planTarget:       requestedPlan,
                     status:           'Pending',
@@ -4199,12 +4737,15 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
 
   const payment = user.payments.find((p) => p.invoiceId === orderId);
   if (!payment) return null;
+  const wasAlreadyPaid = String(payment.status || '').toLowerCase() === 'paid';
   const targetPlan = normalizePlan(payment.planTarget || 'premium');
 
   const billing = getSmartbillBillingFromProfile(user.profile || {}, payment.billingEmail || user.user);
 
   let invoiceNum = payment.invoiceNumber || '';
   let invoiceUrl = payment.invoicePdfUrl || '';
+  let invoiceEmailData = null;
+  let invoiceGeneratedNow = false;
   if (!invoiceNum || !invoiceUrl) {
     if (isSmartbillConfigured()) {
       try {
@@ -4213,11 +4754,16 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
           amount: Number(payment.amount || 0),
           currency: 'RON',
           description: targetPlan === 'basic' ? 'Wedding Planner Basic' : 'Wedding Planner Premium',
-          sendEmail: true,
+          sendEmail: false,
         });
         if (smartbillResult?.enabled) {
           invoiceNum = smartbillResult.invoiceNumber || invoiceNum;
           invoiceUrl = smartbillResult.pdfPublicUrl || invoiceUrl;
+          invoiceEmailData = {
+            pdfFilePath: smartbillResult.pdfFilePath || '',
+            pdfFileName: smartbillResult.pdfFileName || '',
+          };
+          invoiceGeneratedNow = true;
         }
       } catch (smartbillErr) {
         console.error(`[SMARTBILL] Netopia order ${orderId} invoice failed:`, smartbillErr.message);
@@ -4231,6 +4777,10 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
       invoiceUrl = `/invoice/${invoiceNum}`;
     }
   }
+
+  const billingEmail = String(billing.email || payment.billingEmail || user.user || '').trim();
+  const displayName =
+    String(billing.company || billing.name || '').trim() || getUserDisplayName(user);
 
   const updated = await User.findOneAndUpdate(
     { _id: user._id, 'payments.invoiceId': orderId },
@@ -4246,20 +4796,76 @@ async function finalizeNetopiaPaymentAsPaid(orderId) {
     { new: true }
   );
 
-  return { user, updated, invoiceNum, invoiceUrl };
+  const shouldSendInvoiceEmail =
+    Boolean(billingEmail && invoiceNum) && (!wasAlreadyPaid || invoiceGeneratedNow);
+  let emailSent = false;
+
+  if (shouldSendInvoiceEmail) {
+    const attachmentPath =
+      invoiceEmailData?.pdfFilePath || resolveLocalUploadPathFromPublicUrl(invoiceUrl);
+    const attachment = buildEmailAttachmentFromFile(
+      attachmentPath,
+      invoiceEmailData?.pdfFileName || `${invoiceNum}.pdf`,
+    );
+    const invoicePublicUrl = invoiceUrl
+      ? (String(invoiceUrl).startsWith('http') ? invoiceUrl : `${CLIENT_URL}${invoiceUrl}`)
+      : '';
+
+    try {
+      emailSent = await emailNotifications.sendBillingInvoiceEmail({
+        email: billingEmail,
+        name: displayName,
+        invoiceNumber: invoiceNum,
+        amount: Number(payment.amount || 0),
+        currency: 'RON',
+        issueDate: new Date(),
+        eventName: payment.relatedEventName || user?.profile?.eventName || '',
+        invoiceUrl: invoicePublicUrl,
+        attachments: attachment ? [attachment] : [],
+      });
+      console.log('[NETOPIA][EMAIL] Invoice email sent via emailNotifications', {
+        orderId,
+        billingEmail,
+        invoiceNumber: invoiceNum,
+        hasAttachment: Boolean(attachment),
+        emailSent,
+      });
+    } catch (emailErr) {
+      console.error('[NETOPIA][EMAIL] Invoice email failed:', emailErr.message);
+    }
+  } else {
+    console.log('[NETOPIA][EMAIL] Invoice email skipped', {
+      orderId,
+      billingEmail,
+      invoiceNumber: invoiceNum,
+      wasAlreadyPaid,
+      invoiceGeneratedNow,
+    });
+  }
+
+  return {
+    user,
+    updated,
+    invoiceNum,
+    invoiceUrl,
+    emailSent,
+    wasAlreadyPaid,
+    invoiceGeneratedNow,
+  };
 }
 
 // 2. IPN (notifyUrl) — Netopia trimite JSON, la fel ca Stripe webhook
 app.post('/api/netopia/confirm', async (req, res) => {
     console.log('=== NETOPIA IPN RECEIVED ===');
     const crcOk = '<?xml version="1.0" encoding="utf-8"?><crc>OK</crc>';
+    const crcRetry = '<?xml version="1.0" encoding="utf-8"?><crc>RETRY</crc>';
     res.set('Content-Type', 'text/xml');
 
     const { env_key, data, iv, cipher } = req.body;
 
     if (!env_key || !data) {
-        console.warn('Netopia IPN: lipsesc env_key sau data în body');
-        return res.send(crcOk);
+        console.warn('Netopia IPN: payload invalid (env_key/data lipsa).');
+        return res.status(400).send(crcRetry);
     }
 
     try {
@@ -4307,7 +4913,7 @@ app.post('/api/netopia/confirm', async (req, res) => {
             console.log(`Netopia IPN: user găsit pentru orderId=${orderId}:`, !!result?.user);
 
             if (result?.user) {
-                console.log(`✅ Netopia IPN: user ${result.user._id} → plan=${result.updated?.plan} | factură=${result.invoiceNum} (order ${orderId})`);
+                console.log(`✅ Netopia IPN: user ${result.user._id} → plan=${result.updated?.plan} | factură=${result.invoiceNum} | email=${result.emailSent ? 'sent' : 'skip'} (order ${orderId})`);
             } else {
                 console.warn(`Netopia IPN: ordinul ${orderId} nu există în DB`);
             }
@@ -4322,7 +4928,8 @@ app.post('/api/netopia/confirm', async (req, res) => {
         return res.send(crcOk);
     } catch (err) {
         console.error('Netopia IPN error:', err.message);
-        return res.send(crcOk); // întotdeauna ack-uim ca să oprим retrimiterea
+        // No ACK on processing errors -> Netopia can retry callback delivery.
+        return res.status(500).send(crcRetry);
     }
 });
 
@@ -4356,7 +4963,7 @@ app.get('/api/netopia/return', async (req, res) => {
                 // Facem upgrade doar dacă e încă Pending (IPN-ul poate fi deja procesat)
                 if (payment && payment.status === 'Pending') {
                     const result = await finalizeNetopiaPaymentAsPaid(orderId);
-                    console.log(`✅ Netopia return: user ${user._id} → premium | factură=${result?.invoiceNum || '-'} (order ${orderId})`);
+                    console.log(`✅ Netopia return: user ${user._id} → premium | factură=${result?.invoiceNum || '-'} | email=${result?.emailSent ? 'sent' : 'skip'} (order ${orderId})`);
                 }
             }
         }

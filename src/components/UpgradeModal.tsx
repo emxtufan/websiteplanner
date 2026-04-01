@@ -1,10 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2, Check, Mail, ExternalLink, AlertTriangle, CreditCard } from 'lucide-react';
+import { Loader2, Check, ExternalLink, AlertTriangle, CreditCard } from 'lucide-react';
 import { Dialog, DialogContent } from './ui/dialog';
 import Button from './ui/button';
 import Input from './ui/input';
 import { API_URL } from '../constants';
 import { UserProfile } from '../types';
+import {
+  RO_COUNTIES,
+  ShippingAddressDraft,
+  composeAddressLine,
+  isAddressComplete,
+  isBucharest,
+  isValidRoPhone,
+  isValidRoPostalCode,
+  shortAddressSummary,
+} from '../lib/roAddress';
 
 interface UpgradeModalProps {
   isOpen: boolean;
@@ -55,6 +65,31 @@ const normalizeSector = (value: string) => {
   return `Sector ${m[1]}`;
 };
 
+type CheckoutContactAddress = ShippingAddressDraft & {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+};
+
+const createEmptyCheckoutAddress = (): CheckoutContactAddress => ({
+  firstName: '',
+  lastName: '',
+  phone: '',
+  email: '',
+  county: '',
+  city: '',
+  street: '',
+  number: '',
+  block: '',
+  staircase: '',
+  floor: '',
+  apartment: '',
+  postalCode: '',
+  landmark: '',
+  country: 'Romania',
+});
+
 const UpgradeModal: React.FC<UpgradeModalProps> = ({
   isOpen,
   onClose,
@@ -75,15 +110,14 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
   const [billingCompany, setBillingCompany] = useState('');
   const [billingVatCode, setBillingVatCode] = useState('');
   const [billingRegNo, setBillingRegNo] = useState('');
-  const [billingAddress, setBillingAddress] = useState('');
-  const [billingCity, setBillingCity] = useState('');
   const [billingSector, setBillingSector] = useState('');
-  const [billingCounty, setBillingCounty] = useState('');
-  const [billingCountry, setBillingCountry] = useState('Romania');
-  const [billingPhone, setBillingPhone] = useState('');
+  const [savedCheckoutAddress, setSavedCheckoutAddress] = useState<CheckoutContactAddress>(createEmptyCheckoutAddress);
+  const [checkoutAddress, setCheckoutAddress] = useState<CheckoutContactAddress>(createEmptyCheckoutAddress);
+  const [addressMode, setAddressMode] = useState<'saved_account' | 'manual_entry'>('manual_entry');
+  const [isCheckoutAddressEditable, setIsCheckoutAddressEditable] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<'basic' | 'premium'>('premium');
   const [error, setError] = useState<string | null>(null);
-  const bucharestSelected = isBucharestCity(billingCity);
+  const bucharestSelected = isBucharest(checkoutAddress.city);
   const normalizedCurrentPlan: 'free' | 'basic' | 'premium' =
     currentPlan === 'basic' || currentPlan === 'premium' ? currentPlan : 'free';
   const planRank: Record<'free' | 'basic' | 'premium', number> = { free: 0, basic: 1, premium: 2 };
@@ -112,6 +146,8 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
     billingType === 'company'
       ? 'RO12345678'
       : '13 cifre (daca il lasi gol, se genereaza automat)';
+  const hasSavedAddress = isAddressComplete(savedCheckoutAddress);
+  const displayCheckoutAddressSummary = shortAddressSummary(checkoutAddress);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -120,46 +156,129 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
     const profile = userProfile || {};
     const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim();
+    const savedFromProfile: CheckoutContactAddress = {
+      firstName: profile.firstName || '',
+      lastName: profile.lastName || '',
+      phone: profile.phone || profile.billingPhone || '',
+      email: (profile.email || profile.billingEmail || userEmail || '').trim(),
+      county: profile.shippingCounty || profile.county || profile.billingCounty || '',
+      city: profile.shippingCity || profile.city || profile.billingCity || '',
+      street: profile.shippingStreet || '',
+      number: profile.shippingNumber || '',
+      block: profile.shippingBlock || '',
+      staircase: profile.shippingStaircase || '',
+      floor: profile.shippingFloor || '',
+      apartment: profile.shippingApartment || '',
+      postalCode: profile.shippingPostalCode || '',
+      landmark: profile.shippingLandmark || '',
+      country: profile.shippingCountry || profile.country || profile.billingCountry || 'Romania',
+    };
+    const fallbackForManual = {
+      ...createEmptyCheckoutAddress(),
+      firstName: profile.firstName || '',
+      lastName: profile.lastName || '',
+      phone: profile.phone || '',
+      email: (profile.email || userEmail || '').trim(),
+      county: profile.shippingCounty || profile.county || '',
+      city: profile.shippingCity || profile.city || '',
+      country: profile.shippingCountry || profile.country || 'Romania',
+    };
+    const initialMode: 'saved_account' | 'manual_entry' = isAddressComplete(savedFromProfile)
+      ? 'saved_account'
+      : 'manual_entry';
+    setAddressMode(initialMode);
+    setSavedCheckoutAddress(savedFromProfile);
+    setCheckoutAddress(initialMode === 'saved_account' ? savedFromProfile : fallbackForManual);
+    setIsCheckoutAddressEditable(initialMode !== 'saved_account');
 
     setBillingType(profile.billingType === 'company' ? 'company' : 'individual');
     setBillingName(profile.billingName || fullName || '');
     setBillingCompany(profile.billingCompany || '');
     setBillingVatCode(profile.billingVatCode || '');
     setBillingRegNo(profile.billingRegNo || '');
-    setBillingAddress(profile.billingAddress || profile.address || '');
-    setBillingCity(profile.billingCity || profile.city || '');
     setBillingSector(normalizeSector(profile.billingSector || ''));
-    setBillingCounty(profile.billingCounty || profile.county || '');
-    setBillingCountry(profile.billingCountry || profile.country || 'Romania');
-    setBillingPhone(profile.billingPhone || profile.phone || '');
 
     const initialEmail = (profile.billingEmail || userEmail || profile.email || '').trim();
     setBillingEmail(initialEmail);
   }, [isOpen, userEmail, userProfile]);
 
   const getBillingPayload = () => {
-    const email = (billingEmail || userEmail || '').trim();
+    const email = (checkoutAddress.email || billingEmail || userEmail || '').trim();
     const normalizedSector = normalizeSector(billingSector);
+    const normalizedCounty = (isBucharest(checkoutAddress.city) ? 'Bucuresti' : checkoutAddress.county).trim();
+    const normalizedCountry = (checkoutAddress.country || 'Romania').trim() || 'Romania';
+    const composedAddress = composeAddressLine({
+      county: normalizedCounty,
+      city: checkoutAddress.city,
+      street: checkoutAddress.street,
+      number: checkoutAddress.number,
+      block: checkoutAddress.block,
+      staircase: checkoutAddress.staircase,
+      floor: checkoutAddress.floor,
+      apartment: checkoutAddress.apartment,
+      postalCode: checkoutAddress.postalCode,
+      landmark: checkoutAddress.landmark,
+      country: normalizedCountry,
+    });
+    const contactFullName = `${checkoutAddress.firstName} ${checkoutAddress.lastName}`.trim();
     return {
       type: billingType,
-      name: billingName.trim(),
+      name: (billingName || contactFullName).trim(),
       company: billingCompany.trim(),
       vatCode: billingVatCode.trim(),
       regNo: billingRegNo.trim(),
-      address: billingAddress.trim(),
-      city: billingCity.trim(),
+      address: composedAddress,
+      city: checkoutAddress.city.trim(),
       sector: normalizedSector,
-      county: (bucharestSelected ? 'Bucuresti' : billingCounty).trim(),
-      country: billingCountry.trim(),
+      county: normalizedCounty,
+      country: normalizedCountry,
       email,
-      phone: billingPhone.trim(),
+      phone: checkoutAddress.phone.trim(),
+      firstName: checkoutAddress.firstName.trim(),
+      lastName: checkoutAddress.lastName.trim(),
+      shippingCounty: normalizedCounty,
+      shippingCity: checkoutAddress.city.trim(),
+      shippingStreet: checkoutAddress.street.trim(),
+      shippingNumber: checkoutAddress.number.trim(),
+      shippingBlock: checkoutAddress.block?.trim() || '',
+      shippingStaircase: checkoutAddress.staircase?.trim() || '',
+      shippingFloor: checkoutAddress.floor?.trim() || '',
+      shippingApartment: checkoutAddress.apartment?.trim() || '',
+      shippingPostalCode: checkoutAddress.postalCode.trim(),
+      shippingLandmark: checkoutAddress.landmark?.trim() || '',
+      shippingCountry: normalizedCountry,
+      source: addressMode,
+      addressSource: addressMode,
+      accountCounty: savedCheckoutAddress.county || '',
+      accountCity: savedCheckoutAddress.city || '',
+      accountStreet: savedCheckoutAddress.street || '',
+      accountNumber: savedCheckoutAddress.number || '',
+      accountBlock: savedCheckoutAddress.block || '',
+      accountStaircase: savedCheckoutAddress.staircase || '',
+      accountFloor: savedCheckoutAddress.floor || '',
+      accountApartment: savedCheckoutAddress.apartment || '',
+      accountPostalCode: savedCheckoutAddress.postalCode || '',
+      accountLandmark: savedCheckoutAddress.landmark || '',
+      accountCountry: savedCheckoutAddress.country || '',
     };
   };
 
   const validateBilling = () => {
     const payload = getBillingPayload();
+    if (!payload.firstName || !payload.lastName) {
+      return 'Completeaza prenumele si numele pentru checkout.';
+    }
     if (!payload.email || !payload.email.includes('@')) {
       return 'Te rugam sa introduci o adresa de email valida pentru factura.';
+    }
+    if (!payload.phone || !isValidRoPhone(payload.phone)) {
+      return 'Completeaza un numar de telefon valid.';
+    }
+    if (!payload.shippingCounty || !payload.shippingCity || !payload.shippingStreet || !payload.shippingNumber) {
+      return 'Completeaza judetul, localitatea, strada si numarul.';
+    }
+    if (!isValidRoPostalCode(payload.shippingPostalCode)) {
+      return 'Codul postal trebuie sa aiba 6 cifre.';
     }
     if (!payload.name) {
       return 'Completeaza numele persoanei de facturare.';
@@ -218,6 +337,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
           userId,
           email: billing.email,
           billing,
+          addressSource: addressMode,
           targetPlan: selectedPlan,
         }),
       });
@@ -267,6 +387,7 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
         body: JSON.stringify({
           email: billing.email,
           billing,
+          addressSource: addressMode,
           targetPlan: selectedPlan,
         }),
       });
@@ -384,13 +505,219 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
 
           <div className="mb-6 border border-neutral-200 dark:border-neutral-800 rounded-xl p-4 bg-neutral-50/60 dark:bg-neutral-900/30">
             <div className="mb-3">
-              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Date de facturare</p>
+              <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Checkout rapid</p>
               <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-                Aceste date sunt trimise catre Stripe si salvate in contul tau.
+                Folosim datele din cont ca sa completezi cat mai putin.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-2 mb-4">
+              <p className="text-xs font-semibold text-muted-foreground">Folosesti adresa salvata in cont?</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasSavedAddress) return;
+                    setAddressMode('saved_account');
+                    setCheckoutAddress(savedCheckoutAddress);
+                    setIsCheckoutAddressEditable(false);
+                  }}
+                  disabled={!hasSavedAddress}
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    addressMode === 'saved_account'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+                      : 'border-neutral-200 dark:border-neutral-700 hover:border-indigo-300'
+                  } ${!hasSavedAddress ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  Da, folosesc adresa din cont
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAddressMode('manual_entry');
+                    setIsCheckoutAddressEditable(true);
+                    setCheckoutAddress(createEmptyCheckoutAddress());
+                  }}
+                  className={`rounded-lg border px-3 py-2 text-left text-sm transition-colors ${
+                    addressMode === 'manual_entry'
+                      ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-950/20'
+                      : 'border-neutral-200 dark:border-neutral-700 hover:border-indigo-300'
+                  }`}
+                >
+                  Nu, folosesc alta adresa
+                </button>
+              </div>
+            </div>
+
+            {addressMode === 'saved_account' && (
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/70 dark:bg-emerald-950/20 p-3 mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                      Adresa salvata in cont
+                    </p>
+                    <p className="text-sm font-medium mt-1">
+                      {checkoutAddress.firstName} {checkoutAddress.lastName}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{displayCheckoutAddressSummary || 'Adresa incompleta'}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsCheckoutAddressEditable((v) => !v)}
+                  >
+                    {isCheckoutAddressEditable ? 'Ascunde editarea' : 'Editeaza'}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {(addressMode === 'manual_entry' || isCheckoutAddressEditable) && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Prenume *</label>
+                    <Input
+                      autoComplete="given-name"
+                      value={checkoutAddress.firstName}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, firstName: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Nume *</label>
+                    <Input
+                      autoComplete="family-name"
+                      value={checkoutAddress.lastName}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, lastName: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Telefon *</label>
+                    <Input
+                      autoComplete="tel"
+                      value={checkoutAddress.phone}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, phone: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Email *</label>
+                    <Input
+                      autoComplete="email"
+                      type="email"
+                      value={checkoutAddress.email}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        setCheckoutAddress((prev) => ({ ...prev, email: next }));
+                        setBillingEmail(next);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Judet *</label>
+                    <select
+                      value={checkoutAddress.county}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, county: e.target.value }))}
+                      className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    >
+                      <option value="">Selecteaza judet</option>
+                      {RO_COUNTIES.map((county) => (
+                        <option key={county} value={county}>
+                          {county}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Localitate *</label>
+                    <Input
+                      autoComplete="address-level2"
+                      value={checkoutAddress.city}
+                      onChange={(e) => {
+                        const city = e.target.value;
+                        setCheckoutAddress((prev) => ({
+                          ...prev,
+                          city,
+                          county: isBucharest(city) ? 'Bucuresti' : prev.county,
+                        }));
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Strada *</label>
+                    <Input
+                      autoComplete="address-line1"
+                      value={checkoutAddress.street}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, street: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Numar *</label>
+                    <Input
+                      value={checkoutAddress.number}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, number: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Bloc (optional)</label>
+                    <Input
+                      value={checkoutAddress.block || ''}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, block: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Scara (optional)</label>
+                    <Input
+                      value={checkoutAddress.staircase || ''}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, staircase: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Etaj (optional)</label>
+                    <Input
+                      value={checkoutAddress.floor || ''}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, floor: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Apartament (optional)</label>
+                    <Input
+                      value={checkoutAddress.apartment || ''}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, apartment: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Cod postal *</label>
+                    <Input
+                      autoComplete="postal-code"
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={checkoutAddress.postalCode}
+                      onChange={(e) =>
+                        setCheckoutAddress((prev) => ({
+                          ...prev,
+                          postalCode: String(e.target.value || '').replace(/\D/g, '').slice(0, 6),
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-xs font-semibold text-muted-foreground">
+                      Reper / detalii livrare (optional)
+                    </label>
+                    <Input
+                      value={checkoutAddress.landmark || ''}
+                      onChange={(e) => setCheckoutAddress((prev) => ({ ...prev, landmark: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground">Tip facturare</label>
                 <select
@@ -402,109 +729,39 @@ const UpgradeModal: React.FC<UpgradeModalProps> = ({
                   <option value="company">Companie</option>
                 </select>
               </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Email facturare</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    value={billingEmail}
-                    onChange={(e) => setBillingEmail(e.target.value)}
-                    placeholder={userEmail || 'adresa@email.com'}
-                    className="pl-9"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Nume complet</label>
-                <Input value={billingName} onChange={(e) => setBillingName(e.target.value)} placeholder="Ex: Maria Popescu" />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Telefon</label>
-                <Input value={billingPhone} onChange={(e) => setBillingPhone(e.target.value)} placeholder="07xxxxxxxx" />
-              </div>
-
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-muted-foreground">{taxCodeLabel}</label>
                 <Input value={billingVatCode} onChange={(e) => setBillingVatCode(e.target.value)} placeholder={taxCodePlaceholder} />
               </div>
-
               {billingType === 'company' && (
                 <>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-muted-foreground">Companie</label>
+                    <label className="text-xs font-semibold text-muted-foreground">Companie *</label>
                     <Input value={billingCompany} onChange={(e) => setBillingCompany(e.target.value)} placeholder="SC Exemplu SRL" />
                   </div>
-                  <div className="space-y-1 md:col-span-2">
+                  <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Nr. Reg. Comertului</label>
                     <Input value={billingRegNo} onChange={(e) => setBillingRegNo(e.target.value)} placeholder="J40/0000/2026" />
                   </div>
+                  {bucharestSelected && (
+                    <div className="space-y-1 md:col-span-2">
+                      <label className="text-xs font-semibold text-muted-foreground">Sector (obligatoriu pentru firme din Bucuresti)</label>
+                      <select
+                        value={normalizeSector(billingSector)}
+                        onChange={(e) => setBillingSector(e.target.value)}
+                        className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="">Alege sectorul</option>
+                        {SECTOR_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </>
               )}
-
-              <div className="space-y-1 md:col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">Adresa</label>
-                <Input
-                  value={billingAddress}
-                  onChange={(e) => setBillingAddress(e.target.value)}
-                  placeholder="Strada, numar, bloc, apartament"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Oras</label>
-                <Input
-                  value={billingCity}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setBillingCity(value);
-                    if (isBucharestCity(value)) {
-                      setBillingCounty('Bucuresti');
-                    } else if (billingCounty === 'Bucuresti') {
-                      setBillingCounty('');
-                    }
-                  }}
-                  placeholder="Bucuresti"
-                />
-              </div>
-
-              {billingType === 'company' && bucharestSelected && (
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-muted-foreground">Sector (obligatoriu pentru SmartBill)</label>
-                  <select
-                    value={normalizeSector(billingSector)}
-                    onChange={(e) => setBillingSector(e.target.value)}
-                    className="w-full h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <option value="">Alege sectorul</option>
-                    {SECTOR_OPTIONS.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[11px] text-muted-foreground">
-                    Pentru firme din Bucuresti, localitatea pe factura SmartBill va fi sectorul selectat.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-muted-foreground">Judet</label>
-                <Input
-                  value={bucharestSelected ? 'Bucuresti' : billingCounty}
-                  onChange={(e) => setBillingCounty(e.target.value)}
-                  placeholder="Ilfov"
-                  disabled={bucharestSelected}
-                />
-              </div>
-
-              <div className="space-y-1 md:col-span-2">
-                <label className="text-xs font-semibold text-muted-foreground">Tara</label>
-                <Input value={billingCountry} onChange={(e) => setBillingCountry(e.target.value)} placeholder="Romania" />
-              </div>
             </div>
           </div>
 

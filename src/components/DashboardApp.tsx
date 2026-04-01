@@ -183,8 +183,30 @@ const navGroups = [
   ],
 ];
 
+const navGroupsForUi = [
+  [
+    { id: "dashboard", label: "Panou Control", icon: LayoutDashboard },
+    { id: "planner", label: "Planificator", icon: LayoutGrid },
+  ],
+  [
+    { id: "calendar", label: "Calendar", icon: CalendarIcon },
+    { id: "tasks", label: "Sarcini", icon: ClipboardList },
+  ],
+  [{ id: "budget", label: "Buget", icon: Wallet }],
+  [
+    { id: "guests", label: "Invitati", icon: Users },
+    { id: "invitations", label: "Invitatii", icon: Mail },
+    { id: "settings", label: "Config Template", icon: Settings },
+  ],
+  [
+    { id: "services", label: "Servicii", icon: ShoppingBag },
+    { id: "service-requests", label: "Cereri", icon: Inbox },
+  ],
+  [{ id: "history", label: "Istoric", icon: History }],
+];
+
 // Flattened list helper for title finding
-const allNavItems = navGroups.flat();
+const allNavItems = navGroupsForUi.flat();
 
 type InAppNotification = {
   _id: string;
@@ -224,6 +246,17 @@ type AccountDraft = {
   city: string;
   county: string;
   country: string;
+  shippingCounty: string;
+  shippingCity: string;
+  shippingStreet: string;
+  shippingNumber: string;
+  shippingBlock: string;
+  shippingStaircase: string;
+  shippingFloor: string;
+  shippingApartment: string;
+  shippingPostalCode: string;
+  shippingLandmark: string;
+  shippingCountry: string;
   billingType: string;
   billingName: string;
   billingCompany: string;
@@ -310,6 +343,17 @@ const buildAccountDraft = (session: UserSession | null): AccountDraft => {
     city: String(profile?.city || ""),
     county: String(profile?.county || ""),
     country: String(profile?.country || ""),
+    shippingCounty: String(profile?.shippingCounty || profile?.county || ""),
+    shippingCity: String(profile?.shippingCity || profile?.city || ""),
+    shippingStreet: String(profile?.shippingStreet || profile?.address || ""),
+    shippingNumber: String(profile?.shippingNumber || ""),
+    shippingBlock: String(profile?.shippingBlock || ""),
+    shippingStaircase: String(profile?.shippingStaircase || ""),
+    shippingFloor: String(profile?.shippingFloor || ""),
+    shippingApartment: String(profile?.shippingApartment || ""),
+    shippingPostalCode: String(profile?.shippingPostalCode || ""),
+    shippingLandmark: String(profile?.shippingLandmark || ""),
+    shippingCountry: String(profile?.shippingCountry || profile?.country || "Romania"),
     billingType: String(profile?.billingType || ""),
     billingName: String(profile?.billingName || ""),
     billingCompany: String(profile?.billingCompany || ""),
@@ -317,11 +361,11 @@ const buildAccountDraft = (session: UserSession | null): AccountDraft => {
     billingRegNo: String(profile?.billingRegNo || ""),
     billingEmail: String(profile?.billingEmail || ""),
     billingPhone: String(profile?.billingPhone || ""),
-    billingAddress: String(profile?.billingAddress || ""),
-    billingCity: String(profile?.billingCity || ""),
+    billingAddress: String(profile?.billingAddress || profile?.address || ""),
+    billingCity: String(profile?.billingCity || profile?.city || ""),
     billingSector: String(profile?.billingSector || ""),
-    billingCounty: String(profile?.billingCounty || ""),
-    billingCountry: String(profile?.billingCountry || ""),
+    billingCounty: String(profile?.billingCounty || profile?.county || ""),
+    billingCountry: String(profile?.billingCountry || profile?.country || "Romania"),
   };
 };
 
@@ -628,6 +672,9 @@ const DashboardApp = () => {
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">(
     "saved",
   );
+  // Increment only when the user edits profile locally.
+  // This avoids triggering autosave from periodic /api/user/me refreshes.
+  const [profileDirtyTick, setProfileDirtyTick] = useState(0);
 
   const [config, setConfig] = useState<CanvasConfig>({
     scale: 1,
@@ -665,7 +712,6 @@ const DashboardApp = () => {
   const [setupRole, setSetupRole] = useState("organizer");
   const [setupContactName, setSetupContactName] = useState("");
   const [setupPhone, setSetupPhone] = useState("");
-  const [setupAddress, setSetupAddress] = useState("");
   const [isSettingUp, setIsSettingUp] = useState(false);
   const minEventDate = getTodayDateInput();
 
@@ -750,7 +796,6 @@ const DashboardApp = () => {
     setSetupRole((profile as any).eventRole || "organizer");
     setSetupContactName(defaultContactName);
     setSetupPhone(profile.phone || "");
-    setSetupAddress(profile.address || "");
   }, [needsSetup, session?.profile]);
 
   useEffect(() => {
@@ -843,7 +888,7 @@ const DashboardApp = () => {
     });
   };
 
-  const openAccountPanel = useCallback(() => {
+  const openAccountPanel = useCallback(async () => {
     setIsUserMenuOpen(false);
     setIsNotificationsPanelOpen(false);
     setIsAccountPanelOpen(true);
@@ -853,7 +898,28 @@ const DashboardApp = () => {
     setConfirmNewPassword("");
     setPendingEmailChange("");
     setEmailChangeOtpCode("");
-    setAccountDraft(buildAccountDraft(session));
+    let draftSource = session;
+    if (session?.token) {
+      try {
+        const res = await fetch(`${API_URL}/user/me`, {
+          headers: { Authorization: `Bearer ${session.token}` },
+        });
+        if (res.ok) {
+          const fresh = await res.json();
+          draftSource = {
+            ...(session as any),
+            user: fresh?.user ?? session?.user,
+            profile: {
+              ...((session as any)?.profile || {}),
+              ...(fresh?.profile || {}),
+            },
+          } as any;
+        }
+      } catch {
+        // fallback pe datele locale daca refresh-ul esueaza
+      }
+    }
+    setAccountDraft(buildAccountDraft(draftSource as any));
   }, [session]);
 
   const updateAccountDraft = useCallback(
@@ -881,8 +947,59 @@ const DashboardApp = () => {
       });
       return;
     }
+    const phoneDigits = String(accountDraft.phone || "").replace(/\D/g, "");
+    const validPhone =
+      (phoneDigits.length === 10 && phoneDigits.startsWith("0")) ||
+      (phoneDigits.length === 11 && phoneDigits.startsWith("40")) ||
+      (phoneDigits.length === 12 && phoneDigits.startsWith("400"));
+    if (!validPhone) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Numarul de telefon este invalid.",
+      });
+      return;
+    }
 
     const guestEstimateNum = Number(accountDraft.guestEstimate || 0);
+    const normalizedCountry = String(accountDraft.shippingCountry || "Romania").trim() || "Romania";
+    const shippingDraft = {
+      county: String(accountDraft.shippingCounty || "").trim(),
+      city: String(accountDraft.shippingCity || "").trim(),
+      street: String(accountDraft.shippingStreet || "").trim(),
+      number: String(accountDraft.shippingNumber || "").trim(),
+      block: String(accountDraft.shippingBlock || "").trim(),
+      staircase: String(accountDraft.shippingStaircase || "").trim(),
+      floor: String(accountDraft.shippingFloor || "").trim(),
+      apartment: String(accountDraft.shippingApartment || "").trim(),
+      postalCode: String(accountDraft.shippingPostalCode || "").trim(),
+      landmark: String(accountDraft.shippingLandmark || "").trim(),
+      country: normalizedCountry,
+    };
+    const hasAnyShippingField = [
+      shippingDraft.county,
+      shippingDraft.city,
+      shippingDraft.street,
+      shippingDraft.number,
+      shippingDraft.block,
+      shippingDraft.staircase,
+      shippingDraft.floor,
+      shippingDraft.apartment,
+      shippingDraft.postalCode,
+      shippingDraft.landmark,
+    ].some((v) => !!String(v || "").trim());
+    const hasCoreShippingFields =
+      !!shippingDraft.county &&
+      !!shippingDraft.city &&
+      !!shippingDraft.street &&
+      !!shippingDraft.number &&
+      /^\d{6}$/.test(shippingDraft.postalCode);
+    if (hasAnyShippingField && !hasCoreShippingFields) {
+      setAccountPanelMessage({
+        type: "error",
+        text: "Daca vrei sa salvezi adresa principala, completeaza judet, localitate, strada, numar si cod postal (6 cifre).",
+      });
+      return;
+    }
     const profilePayload: Partial<UserProfile> = {
       firstName: accountDraft.firstName.trim(),
       lastName: accountDraft.lastName.trim(),
@@ -895,10 +1012,6 @@ const DashboardApp = () => {
       partner1Name: accountDraft.partner1Name.trim(),
       partner2Name: accountDraft.partner2Name.trim(),
       inviteSlug: accountDraft.inviteSlug.trim(),
-      address: accountDraft.address.trim(),
-      city: accountDraft.city.trim(),
-      county: accountDraft.county.trim(),
-      country: accountDraft.country.trim(),
       billingType: accountDraft.billingType.trim(),
       billingName: accountDraft.billingName.trim(),
       billingCompany: accountDraft.billingCompany.trim(),
@@ -912,6 +1025,38 @@ const DashboardApp = () => {
       billingCounty: accountDraft.billingCounty.trim(),
       billingCountry: accountDraft.billingCountry.trim(),
     };
+    if (hasCoreShippingFields) {
+      const composedLegacyAddress = [
+        `${shippingDraft.street} ${shippingDraft.number}`.trim(),
+        shippingDraft.block ? `Bl. ${shippingDraft.block}` : "",
+        shippingDraft.staircase ? `Sc. ${shippingDraft.staircase}` : "",
+        shippingDraft.floor ? `Et. ${shippingDraft.floor}` : "",
+        shippingDraft.apartment ? `Ap. ${shippingDraft.apartment}` : "",
+        [shippingDraft.city, shippingDraft.county, shippingDraft.country]
+          .filter(Boolean)
+          .join(", "),
+        shippingDraft.postalCode ? `Cod postal ${shippingDraft.postalCode}` : "",
+        shippingDraft.landmark ? `Reper: ${shippingDraft.landmark}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      profilePayload.address = composedLegacyAddress;
+      profilePayload.city = shippingDraft.city;
+      profilePayload.county = shippingDraft.county;
+      profilePayload.country = shippingDraft.country;
+      profilePayload.shippingCounty = shippingDraft.county;
+      profilePayload.shippingCity = shippingDraft.city;
+      profilePayload.shippingStreet = shippingDraft.street;
+      profilePayload.shippingNumber = shippingDraft.number;
+      profilePayload.shippingBlock = shippingDraft.block;
+      profilePayload.shippingStaircase = shippingDraft.staircase;
+      profilePayload.shippingFloor = shippingDraft.floor;
+      profilePayload.shippingApartment = shippingDraft.apartment;
+      profilePayload.shippingPostalCode = shippingDraft.postalCode;
+      profilePayload.shippingLandmark = shippingDraft.landmark;
+      profilePayload.shippingCountry = shippingDraft.country;
+    }
 
     setIsSavingAccount(true);
     setAccountPanelMessage(null);
@@ -1188,10 +1333,15 @@ const DashboardApp = () => {
       });
       return;
     }
-    if (!setupPhone.trim() || !setupAddress.trim()) {
+    const setupPhoneDigits = String(setupPhone || "").replace(/\D/g, "");
+    const validPhone =
+      (setupPhoneDigits.length === 10 && setupPhoneDigits.startsWith("0")) ||
+      (setupPhoneDigits.length === 11 && setupPhoneDigits.startsWith("40")) ||
+      (setupPhoneDigits.length === 12 && setupPhoneDigits.startsWith("400"));
+    if (!validPhone) {
       toast({
-        title: "Date lipsa",
-        description: "Completeaza telefonul si adresa de contact.",
+        title: "Telefon invalid",
+        description: "Introdu un numar de telefon valid.",
         variant: "destructive",
       });
       return;
@@ -1213,7 +1363,6 @@ const DashboardApp = () => {
           eventRole: setupRole.trim(),
           contactName: setupContactName.trim(),
           phone: setupPhone.trim(),
-          address: setupAddress.trim(),
           firstName: firstName || "",
           lastName: lastName || "",
         }),
@@ -1233,7 +1382,6 @@ const DashboardApp = () => {
             firstName: firstName || session?.profile?.firstName || "",
             lastName: lastName || session?.profile?.lastName || "",
             phone: setupPhone.trim(),
-            address: setupAddress.trim(),
             ...(data?.profile || {}),
           },
         };
@@ -1593,6 +1741,33 @@ const DashboardApp = () => {
               "partner1Name",
               "partner2Name",
               "inviteSlug",
+              "address",
+              "city",
+              "county",
+              "country",
+              "shippingCounty",
+              "shippingCity",
+              "shippingStreet",
+              "shippingNumber",
+              "shippingBlock",
+              "shippingStaircase",
+              "shippingFloor",
+              "shippingApartment",
+              "shippingPostalCode",
+              "shippingLandmark",
+              "shippingCountry",
+              "billingType",
+              "billingName",
+              "billingCompany",
+              "billingVatCode",
+              "billingRegNo",
+              "billingEmail",
+              "billingPhone",
+              "billingAddress",
+              "billingCity",
+              "billingSector",
+              "billingCounty",
+              "billingCountry",
             ]);
             const clean: any = {};
             Object.keys(data.profile).forEach((k) => {
@@ -1864,6 +2039,7 @@ const DashboardApp = () => {
     }
 
     setSaveStatus("unsaved");
+    setProfileDirtyTick((v) => v + 1);
   }, [session]);
 
   const handleUpgradeSuccess = (payments?: any[]) => {
@@ -1898,7 +2074,7 @@ const DashboardApp = () => {
     budgetCategories,
     totalBudget,
     selectedTemplate,
-    session?.profile,
+    profileDirtyTick,
   ]);
 
   const saveProjectToBackend = async (isManual = true) => {
@@ -1906,6 +2082,7 @@ const DashboardApp = () => {
 
     // Final guard against saving in read-only mode
     if (!isEventActive || viewingSnapshotId) {
+      if (isManual) handleActionAttempt();
       return;
     }
 
@@ -1959,6 +2136,46 @@ const DashboardApp = () => {
       });
 
       if (!resProject.ok || !resProfile.ok) {
+        const readError = async (res: Response) => {
+          try {
+            const j = await res.json();
+            return j?.message || j?.error || `HTTP ${res.status}`;
+          } catch {
+            try {
+              const t = await res.text();
+              return t || `HTTP ${res.status}`;
+            } catch {
+              return `HTTP ${res.status}`;
+            }
+          }
+        };
+        const projectErr = !resProject.ok ? await readError(resProject) : "";
+        const profileErr = !resProfile.ok ? await readError(resProfile) : "";
+        const fullErr = [projectErr, profileErr].filter(Boolean).join(" | ");
+
+        if (
+          resProject.status === 403 ||
+          resProfile.status === 403 ||
+          /event finished|expirat|read-only|offline/i.test(fullErr)
+        ) {
+          setShowExpiredModal(true);
+        }
+
+        if (isManual) {
+          toast({
+            title: "Nu s-a putut salva",
+            description:
+              fullErr || "Salvarea a eșuat. Verifică statusul evenimentului.",
+            variant: "destructive",
+          });
+        }
+
+        console.warn("[SAVE_PROJECT] Failed", {
+          resProjectStatus: resProject.status,
+          resProfileStatus: resProfile.status,
+          projectErr,
+          profileErr,
+        });
         setSaveStatus("unsaved");
         if (isManual) setIsSaveModalOpen(false);
         return;
@@ -2398,7 +2615,8 @@ const DashboardApp = () => {
                   onChange={(e) => setSetupContactName(e.target.value)}
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-border p-3 space-y-3">
+                <p className="text-sm font-semibold">Date contact</p>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold">Telefon</label>
                   <Input
@@ -2409,17 +2627,8 @@ const DashboardApp = () => {
                     onChange={(e) => setSetupPhone(e.target.value)}
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold">Adresa</label>
-                  <Input
-                    type="text"
-                    className="h-11"
-                    placeholder="Strada, numar, oras"
-                    value={setupAddress}
-                    onChange={(e) => setSetupAddress(e.target.value)}
-                  />
-                </div>
               </div>
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold">
                   Data Evenimentului
@@ -2439,7 +2648,13 @@ const DashboardApp = () => {
               <Button
                 className="w-full h-12 text-base font-semibold"
                 onClick={handleSetupSubmit}
-                disabled={!setupDate || !setupRole || !setupContactName.trim() || !setupPhone.trim() || !setupAddress.trim() || isSettingUp}
+                disabled={
+                  !setupDate ||
+                  !setupRole ||
+                  !setupContactName.trim() ||
+                  !setupPhone.trim() ||
+                  isSettingUp
+                }
               >
                 {isSettingUp ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -2740,7 +2955,7 @@ const DashboardApp = () => {
         </div>
 
         <div className="flex-1 overflow-y-auto py-6 px-3 space-y-2 scrollbar-hide">
-          {navGroups.map((group, groupIdx) => (
+          {navGroupsForUi.map((group, groupIdx) => (
             <div key={groupIdx} className="space-y-1 relative">
               {groupIdx > 0 && (
                 <div
@@ -3008,9 +3223,9 @@ const DashboardApp = () => {
               <div className="rounded-lg border border-border bg-muted/30 p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                   <div>
-                    <div className="text-sm font-semibold">Profil client</div>
+                    <div className="text-sm font-semibold">Date personale</div>
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Toate campurile sunt editabile. Pentru email, schimbarea se valideaza prin OTP.
+                      Datele de contact ale contului. Pentru email, schimbarea se valideaza prin OTP.
                     </p>
                   </div>
                   <Button
@@ -3153,23 +3368,52 @@ const DashboardApp = () => {
               </div>
 
               <div className="rounded-lg border border-border bg-muted/30 p-4">
-                <div className="text-sm font-semibold mb-3">Adresa si contact</div>
+                <div className="text-sm font-semibold mb-1">Adresele mele</div>
+                <p className="text-xs text-muted-foreground mb-3">
+                  Adresa principala de livrare/facturare. Campurile marcate optional pot ramane goale.
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Judet *</label>
+                    <Input value={accountDraft.shippingCounty} onChange={(e: any) => updateAccountDraft("shippingCounty", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Localitate *</label>
+                    <Input
+                      value={accountDraft.shippingCity}
+                      onChange={(e: any) => {
+                        const city = e.target.value;
+                        updateAccountDraft("shippingCity", city);
+                        if (isBucharestCity(city)) updateAccountDraft("shippingCounty", "Bucuresti");
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Strada *</label>
+                    <Input value={accountDraft.shippingStreet} onChange={(e: any) => updateAccountDraft("shippingStreet", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Numar *</label>
+                    <Input value={accountDraft.shippingNumber} onChange={(e: any) => updateAccountDraft("shippingNumber", e.target.value)} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">Cod postal *</label>
+                    <Input
+                      inputMode="numeric"
+                      maxLength={6}
+                      value={accountDraft.shippingPostalCode}
+                      onChange={(e: any) =>
+                        updateAccountDraft("shippingPostalCode", String(e.target.value || "").replace(/\D/g, "").slice(0, 6))
+                      }
+                    />
+                  </div>
                   <div className="space-y-1 md:col-span-2">
-                    <label className="text-xs text-muted-foreground">Adresa</label>
-                    <Input value={accountDraft.address} onChange={(e: any) => updateAccountDraft("address", e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Oras</label>
-                    <Input value={accountDraft.city} onChange={(e: any) => updateAccountDraft("city", e.target.value)} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-muted-foreground">Judet</label>
-                    <Input value={accountDraft.county} onChange={(e: any) => updateAccountDraft("county", e.target.value)} />
+                    <label className="text-xs text-muted-foreground">Reper / detalii livrare (optional)</label>
+                    <Input value={accountDraft.shippingLandmark} onChange={(e: any) => updateAccountDraft("shippingLandmark", e.target.value)} />
                   </div>
                   <div className="space-y-1 md:col-span-2">
                     <label className="text-xs text-muted-foreground">Tara</label>
-                    <Input value={accountDraft.country} onChange={(e: any) => updateAccountDraft("country", e.target.value)} />
+                    <Input value={accountDraft.shippingCountry} onChange={(e: any) => updateAccountDraft("shippingCountry", e.target.value)} />
                   </div>
                 </div>
               </div>
@@ -3828,6 +4072,7 @@ const DashboardApp = () => {
                   onMoveGuest={handleMoveGuest}
                   onUpdateCapacity={handleUpdateCapacity}
                   lang="ro"
+                  onCheckActive={handleActionAttempt}
                 />
               </div>
               <div

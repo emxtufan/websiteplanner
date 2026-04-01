@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, Sparkles, Image as ImageIcon, Lock, Heart, Baby, Gift, PartyPopper, Briefcase, AlertTriangle, Settings2 } from "lucide-react";
+import { Check, Sparkles, Lock, Heart, Baby, Gift, PartyPopper, Briefcase, AlertTriangle, Settings2 } from "lucide-react";
 import { Card, CardContent } from "./ui/card";
 import Button from "./ui/button";
 import { cn } from "../lib/utils";
@@ -249,24 +249,14 @@ export default function InvitationMarketplace({
                                 >
                                   {!isEventActive ? "Blocat (Read-Only)" : isSelected ? "✓ Selectat" : isLocked ? "🔒 Premium" : "Alege"}
                                 </Button>
-                                <div className="flex w-full sm:w-auto gap-2">
-                                  <Button
-                                    size="sm"
-                                    variant="secondary"
-                                    className="flex-1 sm:flex-none h-8 text-[10px] font-bold"
-                                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEditTemplate?.(template.id); }}
-                                  >
-                                    <Settings2 className="w-3.5 h-3.5 mr-1" /> EDIT TEMPLATE
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="flex-1 sm:flex-none h-8 text-[10px] font-bold"
-                                    onClick={(e: React.MouseEvent) => { e.stopPropagation(); window.open(`/templates/${template.id}/preview`, "_blank"); }}
-                                  >
-                                    <ImageIcon className="w-3.5 h-3.5 mr-1" /> DEMO
-                                  </Button>
-                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  className="w-full sm:w-auto h-8 text-[10px] font-bold"
+                                  onClick={(e: React.MouseEvent) => { e.stopPropagation(); onEditTemplate?.(template.id); }}
+                                >
+                                  <Settings2 className="w-3.5 h-3.5 mr-1" /> EDIT TEMPLATE
+                                </Button>
                               </div>
                             </CardContent>
                         </Card>
@@ -283,7 +273,7 @@ export default function InvitationMarketplace({
                   <div>
                       <h4 className="font-semibold text-foreground">Personalizare Completă</h4>
                       <p className="text-sm text-muted-foreground">
-                          Editează textele, locațiile, nașii și programul din <strong>Setări</strong>. 
+                          Editează textele, locațiile, nașii și programul din <strong>Config Template</strong>. 
                           Toate modificările se reflectă în timp real în invitație.
                       </p>
                   </div>

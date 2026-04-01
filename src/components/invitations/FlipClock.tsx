@@ -182,6 +182,8 @@ interface FlipClockProps {
   accentColor?: string;        // PINK_L - culoarea deschisă
   labelColor?: string;         // Opțional - culoarea labelurilor
   titleText?: string;          // Text titlu editabil
+  titleTextKey?: string;
+  titleTextLabel?: string;
   onTitleChange?: (text: string) => void;  // Callback pentru schimbare titlu
   editMode?: boolean;          // Mode editare
 }
@@ -193,6 +195,8 @@ const FlipClock: React.FC<FlipClockProps> = ({
   accentColor = '#fbcfe8',
   labelColor = 'rgba(255, 255, 255, 0.7)',
   titleText = 'Timp rămas până la Marele Eveniment',
+  titleTextKey,
+  titleTextLabel,
   onTitleChange,
   editMode = false,
 }) => {
@@ -236,6 +240,8 @@ const FlipClock: React.FC<FlipClockProps> = ({
   editMode={editMode}
   value={titleText}
   onChange={onTitleChange || (() => {})}
+  textKey={titleTextKey}
+  textLabel={titleTextLabel}
   placeholder="Text titlu..."
   style={{
     fontSize: '0.875rem',

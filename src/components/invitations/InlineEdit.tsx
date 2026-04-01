@@ -85,9 +85,17 @@ export const InlineEdit: React.FC<InlineEditProps> = ({
       style={patchedStyle}
       onMouseDown={(e) => {
         e.stopPropagation();
-        if (resolvedKey) ctx.onTextSelect?.(resolvedKey, textLabel);
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
       }}
       onClick={(e) => {
+        e.stopPropagation();
+      }}
+      onMouseUp={(e) => {
         e.stopPropagation();
       }}
       onFocus={() => {

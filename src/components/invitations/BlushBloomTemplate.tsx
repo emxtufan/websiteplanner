@@ -1,11 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus, Camera, Upload } from "lucide-react";
+import { ChevronUp, ChevronDown, Eye, EyeOff, Trash2, Plus, Camera, Upload, Calendar, Music, Play, Pause, SkipForward, SkipBack, Gift, MessageCircle } from "lucide-react";
 import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
-import { InvitationBlock } from "../../types";
+import { InvitationBlock, InvitationBlockType } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
 import { BlockStyleProvider, BlockStyle } from "../BlockStyleContext";
 import { WeddingIcon } from "../TimelineIcons";
+import FlipClock from "./FlipClock";
+import { getBlushBloomTheme } from "./castleDefaults";
+import { TimelineInsertButton } from "./TimelineInsertButton";
 
 export const meta: TemplateMeta = {
   id: 'blush-bloom',
@@ -23,12 +26,12 @@ const DISPLAY = "'Bodoni Moda','Didot','Playfair Display',Georgia,serif";
 const SANS    = "'DM Sans','Helvetica Neue',system-ui,sans-serif";
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
-const BLUSH     = '#e8a0ac';
-const BLUSH_D   = '#c97090';
-const BLUSH_L   = '#f2c8cf';
-const BLUSH_XL  = '#fdf0f2';
-const PLUM      = '#5a3a44';
-const MUTED     = 'rgba(139,94,107,0.5)';
+let BLUSH     = '#e8a0ac';
+let BLUSH_D   = '#c97090';
+let BLUSH_L   = '#f2c8cf';
+let BLUSH_XL  = '#fdf0f2';
+let PLUM      = '#5a3a44';
+let MUTED     = '#8b5e6b';
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
 const API_URL = (typeof window !== 'undefined' && (window as any).__API_URL__)
@@ -44,6 +47,51 @@ function deleteUploadedFile(url: string | undefined) {
     body: JSON.stringify({ url }),
   }).catch(() => {});
 }
+
+// ─── Template defaults ───────────────────────────────────────────────────────
+export const CASTLE_DEFAULTS = {
+  partner1Name: 'Sofia',
+  partner2Name: 'Alexandru',
+  welcomeText: 'Impreuna cu familiile noastre',
+  invitationLeadText: 'Va invita cu drag la',
+  celebrationText: 'nuntii noastre',
+  showWelcomeText: true,
+  showCelebrationText: true,
+  showTimeline: true,
+  showCountdown: true,
+  showRsvpButton: true,
+  rsvpButtonText: 'Confirma Prezenta',
+};
+
+export const CASTLE_DEFAULT_BLOCKS: InvitationBlock[] = [
+  { id: 'bb-date', type: 'date', show: true, content: '' },
+  { id: 'bb-description', type: 'description', show: true, content: 'Va asteptam cu drag sa celebram impreuna o zi speciala din povestea noastra.' },
+  { id: 'bb-location', type: 'location', show: true, label: 'Locatie', time: '17:00', locationName: 'Salon Blush Bloom', locationAddress: 'Str. Bisericii nr. 5, Oras', wazeLink: '' },
+  { id: 'bb-text', type: 'text', show: true, content: 'Alaturi de nasii nostri, care ne-au calauzit pasii:' },
+  { id: 'bb-photo', type: 'photo', show: true, imageData: '', altText: 'Foto cuplu', aspectRatio: '3:4', photoClip: 'arch', photoMasks: ['fade-b'] },
+  { id: 'bb-calendar', type: 'calendar', show: true },
+  { id: 'bb-countdown', type: 'countdown', show: true, countdownTitle: 'Timp ramas pana la marele eveniment' },
+  { id: 'bb-timeline', type: 'timeline', show: true },
+  { id: 'bb-music', type: 'music', show: true, musicTitle: '', musicArtist: '', musicType: 'none' },
+  { id: 'bb-gift', type: 'gift', show: true, sectionTitle: 'Sugestie cadou', content: '', iban: '', ibanName: '' },
+  { id: 'bb-whatsapp', type: 'whatsapp', show: true, label: 'Contact WhatsApp', content: '0700000000' },
+  { id: 'bb-family', type: 'family', show: true, label: 'Familie', content: 'Cu drag si recunostinta', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) },
+  { id: 'bb-rsvp', type: 'rsvp', show: true, label: 'Confirma Prezenta' },
+  { id: 'bb-divider', type: 'divider', show: true },
+];
+
+export const CASTLE_PREVIEW_DATA = {
+  guest: { name: 'Familia Popescu', status: 'pending', type: 'family' },
+  project: { selectedTemplate: 'blush-bloom' },
+  profile: {
+    ...CASTLE_DEFAULTS,
+    weddingDate: '',
+    customSections: JSON.stringify(CASTLE_DEFAULT_BLOCKS),
+    godparents: JSON.stringify([{ godfather: 'Nume Nas', godmother: 'Nume Nasa' }]),
+    parents: JSON.stringify({ p1_father: 'Tatal Miresei', p1_mother: 'Mama Miresei', p2_father: 'Tatal Mirelui', p2_mother: 'Mama Mirelui' }),
+    timeline: JSON.stringify([]),
+  },
+};
 
 // ─── Photo shape system ───────────────────────────────────────────────────────
 type ClipShape = 'rect'|'rounded'|'rounded-lg'|'squircle'|'circle'|'arch'|'arch-b'|'hexagon'|'diamond'|'triangle'|'star'|'heart'|'diagonal'|'diagonal-r'|'wave-b'|'wave-t'|'wave-both'|'blob'|'blob2'|'blob3'|'blob4';
@@ -90,7 +138,7 @@ interface PhotoPlaceholderProps {
 const PhotoPlaceholder: React.FC<PhotoPlaceholderProps> = ({aspectRatio,photoClip,photoMasks,initial1='S',initial2='A',variant=0,editMode,onClick}) => {
   const pads: Record<string,string> = {'1:1':'100%','4:3':'75%','3:4':'133%','16:9':'56.25%','free':'75%'};
   const pt = pads[aspectRatio] || '75%';
-  const g = [['#f2c8cf','#e8a0ac'],['#fad4da','#d4889a'],['#e8b8c0','#c97090'],['#fce0e5','#d4a0b0']][variant%4];
+  const g = [[BLUSH_L, BLUSH], [BLUSH_XL, BLUSH_L], [BLUSH, BLUSH_D], [BLUSH_XL, BLUSH]][variant%4];
   const gId = `bb-ph-${variant}`;
   return (
     <div style={{position:'relative',paddingTop:pt,cursor:editMode?'pointer':'default',...getClipStyle(photoClip),...getMaskStyle(photoMasks),overflow:'hidden'}} onClick={editMode?onClick:undefined}>
@@ -219,7 +267,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 9999,
-      background: "linear-gradient(160deg,#fdf8f5 0%,#faf0ee 50%,#fdf5f7 100%)",
+      background: `linear-gradient(160deg,${BLUSH_XL} 0%,${BLUSH_L}44 50%,${BLUSH_XL} 100%)`,
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
       opacity: phase === 5 ? 0 : 1,
       transform: phase === 5 ? "scale(1.04)" : "scale(1)",
@@ -230,9 +278,9 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
 
       {/* Ambient blobs */}
       {[
-        { top: "-12%", left: "-8%",  w: 420, c: "rgba(232,160,172,0.22)", delay: "0s"    },
-        { top: "50%",  right: "-8%", w: 340, c: "rgba(201,116,138,0.16)", delay: "0.3s"  },
-        { bottom: "-8%", left: "20%", w: 300, c: "rgba(248,200,210,0.2)",  delay: "0.5s"  },
+        { top: "-12%", left: "-8%",  w: 420, c: `${BLUSH}38`, delay: "0s"   },
+        { top: "50%",  right: "-8%", w: 340, c: `${BLUSH_D}2a`, delay: "0.3s" },
+        { bottom: "-8%", left: "20%", w: 300, c: `${BLUSH_L}44`, delay: "0.5s" },
       ].map((b, i) => (
         <div key={i} style={{
           position: "absolute", ...b as any,
@@ -253,7 +301,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
           width: `${6 + (i % 4) * 4}px`,
           height: `${10 + (i % 4) * 5}px`,
           borderRadius: "50% 50% 50% 50% / 60% 60% 40% 40%",
-          background: `rgba(${[232, 201, 248][i % 3]},${[160, 116, 180][i % 3]},${[172, 138, 195][i % 3]},${0.15 + (i % 4) * 0.05})`,
+          background: [`${BLUSH}33`, `${BLUSH_D}2e`, `${BLUSH_L}4a`][i % 3],
           transform: `rotate(${i * 27}deg)`,
           animation: `bb-float-${i % 3} ${3 + (i % 4)}s ease-in-out infinite`,
           animationDelay: `${i * 0.25}s`,
@@ -274,17 +322,17 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
         <svg width="280" height="280" viewBox="0 0 280 280" fill="none" style={{ position: "absolute", inset: 0 }}>
 
           {/* Outer glow ring */}
-          <circle cx="140" cy="140" r="112" stroke="rgba(232,160,172,0.12)" strokeWidth="20"/>
+          <circle cx="140" cy="140" r="112" stroke={`${BLUSH}22`} strokeWidth="20"/>
 
           {/* Dashed inner ring */}
-          <circle cx="140" cy="140" r="78" stroke="rgba(201,116,144,0.18)" strokeWidth="0.6"
+          <circle cx="140" cy="140" r="78" stroke={`${BLUSH_D}2e`} strokeWidth="0.6"
             strokeDasharray="3 9"
             opacity={phase >= 3 ? 1 : 0}
             style={{ transition: "opacity 0.6s 0.4s" }}/>
 
           {/* Animated circle */}
           <circle cx="140" cy="140" r="95"
-            stroke="rgba(232,160,172,0.2)" strokeWidth="0.5"/>
+            stroke={`${BLUSH}33`} strokeWidth="0.5"/>
           <circle cx="140" cy="140" r="95"
             stroke="url(#bb-ring-grad)" strokeWidth="1.2"
             strokeDasharray={2 * Math.PI * 95}
@@ -297,9 +345,9 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
 
           {/* Second animated ring (delayed) */}
           <circle cx="140" cy="140" r="85"
-            stroke="rgba(232,160,172,0.35)" strokeWidth="0.5"/>
+            stroke={`${BLUSH}59`} strokeWidth="0.5"/>
           <circle cx="140" cy="140" r="85"
-            stroke="#e8a0ac" strokeWidth="0.8"
+            stroke={BLUSH} strokeWidth="0.8"
             strokeDasharray={circleLen}
             strokeDashoffset={phase >= 3 ? 0 : circleLen}
             strokeLinecap="round"
@@ -310,9 +358,9 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
 
           <defs>
             <linearGradient id="bb-ring-grad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#f4b8c4" stopOpacity="0.9"/>
-              <stop offset="50%" stopColor="#e8a0ac"/>
-              <stop offset="100%" stopColor="#c97090" stopOpacity="0.6"/>
+              <stop offset="0%" stopColor={BLUSH_L} stopOpacity="0.9"/>
+              <stop offset="50%" stopColor={BLUSH}/>
+              <stop offset="100%" stopColor={BLUSH_D} stopOpacity="0.6"/>
             </linearGradient>
           </defs>
 
@@ -324,7 +372,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
               <line key={i}
                 x1={140 + r1 * Math.cos(angle)} y1={140 + r1 * Math.sin(angle)}
                 x2={140 + r2 * Math.cos(angle)} y2={140 + r2 * Math.sin(angle)}
-                stroke="rgba(201,116,144,0.25)" strokeWidth={i % 6 === 0 ? 1 : 0.5}
+                stroke={`${BLUSH_D}40`} strokeWidth={i % 6 === 0 ? 1 : 0.5}
                 opacity={phase >= 3 ? 1 : 0}
                 style={{ transition: `opacity 0.3s ${0.5 + i * 0.02}s` }}/>
             );
@@ -342,11 +390,11 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
                 {[0, 72, 144, 216, 288].map((pa, pi) => {
                   const pr = ((pa - 90) * Math.PI) / 180;
                   const px = cx + Math.cos(pr) * 5.5, py = cy + Math.sin(pr) * 5.5;
-                  return <ellipse key={pi} cx={px} cy={py} rx="2.5" ry="4.5" fill="#e8a0ac" opacity="0.65"
+                  return <ellipse key={pi} cx={px} cy={py} rx="2.5" ry="4.5" fill={BLUSH} opacity="0.65"
                     transform={`rotate(${pa},${px},${py})`}/>;
                 })}
-                <circle cx={cx} cy={cy} r="3.5" fill="#e8a0ac" opacity="0.9"/>
-                <circle cx={cx} cy={cy} r="2" fill="#e07888"/>
+                <circle cx={cx} cy={cy} r="3.5" fill={BLUSH} opacity="0.9"/>
+                <circle cx={cx} cy={cy} r="2" fill={BLUSH_D}/>
               </g>
             );
           })}
@@ -366,7 +414,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
             const cy = 140 + Math.sin(rad) * 95;
             return (
               <rect key={i} x={cx - 3} y={cy - 3} width="6" height="6"
-                fill="#e8a0ac" opacity={phase >= 4 ? 0.7 : 0}
+                fill={BLUSH} opacity={phase >= 4 ? 0.7 : 0}
                 transform={`rotate(45 ${cx} ${cy})`}
                 style={{ transition: `opacity 0.3s ${0.6 + i * 0.08}s` }}/>
             );
@@ -381,12 +429,12 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
                 fontFamily: i === 1 ? SERIF : DISPLAY,
                 fontSize: i === 1 ? 32 : 80, fontWeight: i === 1 ? 400 : 400,
                 lineHeight: 1, letterSpacing: i === 1 ? 0 : -3,
-                color: i === 1 ? "#c97090" : "#5a3a44",
+                color: i === 1 ? BLUSH_D : PLUM,
                 fontStyle: i === 1 ? "italic" : "normal",
                 paddingTop: i === 1 ? 12 : 0, margin: i === 1 ? "0 4px" : 0,
                 opacity: phase >= 2 ? 1 : 0,
                 transform: phase >= 2 ? "translateY(0) scale(1)" : i === 1 ? "scale(0.3)" : "translateY(24px) scale(0.9)",
-                textShadow: i !== 1 ? "0 0 50px rgba(232,160,172,0.4)" : undefined,
+                textShadow: i !== 1 ? `0 0 50px ${BLUSH}66` : undefined,
                 transition: `opacity 0.7s ${i * 0.1}s cubic-bezier(0.22,1,0.36,1), transform 0.7s ${i * 0.1}s cubic-bezier(0.22,1,0.36,1)`,
               }}>{ch}</span>
             ))}
@@ -395,7 +443,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
           {/* Shimmer line under initials */}
           <div style={{
             height: 1, margin: "8px auto 0", width: 60,
-            background: "linear-gradient(90deg, transparent, #e8a0ac, transparent)",
+            background: `linear-gradient(90deg, transparent, ${BLUSH}, transparent)`,
             backgroundSize: "200% auto",
             animation: phase >= 3 ? "bb-shimmer 2s linear infinite" : "none",
             opacity: phase >= 3 ? 1 : 0,
@@ -407,7 +455,7 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
       {/* Tagline */}
       <p style={{
         fontFamily: SERIF, fontSize: 13, fontStyle: "italic",
-        color: "rgba(139,94,107,0.55)", marginTop: 24,
+        color: MUTED, marginTop: 24,
         opacity: phase >= 3 ? 1 : 0,
         transform: phase >= 3 ? "translateY(0)" : "translateY(10px)",
         transition: "opacity 0.5s 0.7s, transform 0.5s 0.7s",
@@ -420,9 +468,9 @@ const BlushIntro: React.FC<{ l1: string; l2: string; onDone: () => void }> = ({ 
         opacity: phase >= 3 ? 1 : 0,
         transition: "opacity 0.5s 0.9s",
       }}>
-        <div style={{ flex: 1, height: "0.6px", background: "linear-gradient(to right,transparent,rgba(201,116,144,0.4))" }}/>
+        <div style={{ flex: 1, height: "0.6px", background: `linear-gradient(to right,transparent,${BLUSH_D}66)` }}/>
         <RoseDividerIcon/>
-        <div style={{ flex: 1, height: "0.6px", background: "linear-gradient(to left,transparent,rgba(201,116,144,0.4))" }}/>
+        <div style={{ flex: 1, height: "0.6px", background: `linear-gradient(to left,transparent,${BLUSH_D}66)` }}/>
       </div>
     </div>
   );
@@ -434,19 +482,19 @@ const RoseDividerIcon = () => (
     {[0, 72, 144, 216, 288].map((a, i) => {
       const r = ((a - 90) * Math.PI) / 180;
       const cx = 10 + Math.cos(r) * 6, cy = 10 + Math.sin(r) * 6;
-      return <ellipse key={i} cx={cx} cy={cy} rx="3" ry="5.5" fill="#e8a0ac" opacity="0.55"
+      return <ellipse key={i} cx={cx} cy={cy} rx="3" ry="5.5" fill={BLUSH} opacity="0.55"
         transform={`rotate(${a},${cx},${cy})`}/>;
     })}
-    <circle cx="10" cy="10" r="4" fill="#e8a0ac" opacity="0.9"/>
-    <circle cx="10" cy="10" r="2.5" fill="#e07888"/>
+    <circle cx="10" cy="10" r="4" fill={BLUSH} opacity="0.9"/>
+    <circle cx="10" cy="10" r="2.5" fill={BLUSH_D}/>
   </svg>
 );
 
 const RoseDivider = () => (
   <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-    <div style={{ flex: 1, height: "0.6px", background: "linear-gradient(to right,transparent,rgba(201,116,144,0.3))" }}/>
+    <div style={{ flex: 1, height: "0.6px", background: `linear-gradient(to right,transparent,${BLUSH_D}4d)` }}/>
     <RoseDividerIcon/>
-    <div style={{ flex: 1, height: "0.6px", background: "linear-gradient(to left,transparent,rgba(201,116,144,0.3))" }}/>
+    <div style={{ flex: 1, height: "0.6px", background: `linear-gradient(to left,transparent,${BLUSH_D}4d)` }}/>
   </div>
 );
 
@@ -455,16 +503,16 @@ const SplashTopLeft = () => (
     style={{ position: "absolute", top: -30, left: -40, width: 280, height: 240, pointerEvents: "none", opacity: 0.5 }}>
     <defs>
       <radialGradient id="bb-s1" cx="40%" cy="35%" r="60%">
-        <stop offset="0%"   stopColor="#f2b8c0" stopOpacity="0.7"/>
-        <stop offset="60%"  stopColor="#e8a0ac" stopOpacity="0.35"/>
-        <stop offset="100%" stopColor="#e8a0ac" stopOpacity="0"/>
+        <stop offset="0%"   stopColor={BLUSH_L} stopOpacity="0.7"/>
+        <stop offset="60%"  stopColor={BLUSH} stopOpacity="0.35"/>
+        <stop offset="100%" stopColor={BLUSH} stopOpacity="0"/>
       </radialGradient>
       <filter id="bb-blur1"><feGaussianBlur stdDeviation="12"/></filter>
     </defs>
     <ellipse cx="120" cy="100" rx="140" ry="110" fill="url(#bb-s1)" filter="url(#bb-blur1)"/>
-    <path d="M20 60 Q60 40 110 55 Q80 65 20 60Z"      fill="#e8a0ac" opacity="0.22"/>
-    <path d="M5  90 Q30 70  80 85  Q50 95  5  90Z"    fill="#e8a0ac" opacity="0.16"/>
-    <path d="M40 140 Q90 125 130 140 Q100 155 40 140Z" fill="#d4849a" opacity="0.18"/>
+    <path d="M20 60 Q60 40 110 55 Q80 65 20 60Z"      fill={BLUSH} opacity="0.22"/>
+    <path d="M5  90 Q30 70  80 85  Q50 95  5  90Z"    fill={BLUSH} opacity="0.16"/>
+    <path d="M40 140 Q90 125 130 140 Q100 155 40 140Z" fill={BLUSH_D} opacity="0.18"/>
   </svg>
 );
 
@@ -473,8 +521,8 @@ const SplashBottomRight = () => (
     style={{ position: "absolute", bottom: -20, right: -30, width: 260, height: 220, pointerEvents: "none", opacity: 0.45 }}>
     <defs>
       <radialGradient id="bb-s3" cx="60%" cy="65%" r="55%">
-        <stop offset="0%"   stopColor="#c9748a" stopOpacity="0.5"/>
-        <stop offset="100%" stopColor="#c9748a" stopOpacity="0"/>
+        <stop offset="0%"   stopColor={BLUSH_D} stopOpacity="0.5"/>
+        <stop offset="100%" stopColor={BLUSH_D} stopOpacity="0"/>
       </radialGradient>
       <filter id="bb-blur2"><feGaussianBlur stdDeviation="14"/></filter>
     </defs>
@@ -486,32 +534,32 @@ const RoseBranch: React.FC<{ flip?: boolean }> = ({ flip }) => (
   <svg viewBox="0 0 180 320" fill="none"
     style={{ width: 155, height: 285, opacity: 0.65, transform: flip ? "scaleX(-1)" : undefined, pointerEvents: "none" }}>
     <path d="M90 310 C88 260 82 210 88 160 C92 120 80 80 85 40"
-      stroke="#9a6670" strokeWidth="1.2" fill="none" strokeLinecap="round"/>
-    <path d="M87 240 C70 230 50 220 30 215"  stroke="#9a6670" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
-    <path d="M86 185 C68 175 50 165 32 155"  stroke="#9a6670" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
-    <path d="M87 130 C72 118 56 108 42 100"  stroke="#9a6670" strokeWidth="0.8" fill="none" strokeLinecap="round"/>
-    <path d="M88 210 C106 200 124 192 142 188" stroke="#9a6670" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
-    <path d="M87 160 C104 150 118 142 135 138" stroke="#9a6670" strokeWidth="0.8" fill="none" strokeLinecap="round"/>
+      stroke={MUTED} strokeWidth="1.2" fill="none" strokeLinecap="round"/>
+    <path d="M87 240 C70 230 50 220 30 215"  stroke={MUTED} strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+    <path d="M86 185 C68 175 50 165 32 155"  stroke={MUTED} strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+    <path d="M87 130 C72 118 56 108 42 100"  stroke={MUTED} strokeWidth="0.8" fill="none" strokeLinecap="round"/>
+    <path d="M88 210 C106 200 124 192 142 188" stroke={MUTED} strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+    <path d="M87 160 C104 150 118 142 135 138" stroke={MUTED} strokeWidth="0.8" fill="none" strokeLinecap="round"/>
     <ellipse cx="22"  cy="213" rx="14" ry="8"  fill="#b8d4a8" opacity="0.6"  transform="rotate(-20 22 213)"/>
     <ellipse cx="25"  cy="153" rx="13" ry="7"  fill="#a8c898" opacity="0.55" transform="rotate(-15 25 153)"/>
     <ellipse cx="35"  cy="98"  rx="12" ry="7"  fill="#b8d4a8" opacity="0.5"  transform="rotate(-10 35 98)"/>
     <ellipse cx="148" cy="186" rx="13" ry="7"  fill="#a8c898" opacity="0.55" transform="rotate(25 148 186)"/>
     <ellipse cx="140" cy="136" rx="12" ry="6"  fill="#b8d4a8" opacity="0.5"  transform="rotate(20 140 136)"/>
-    <circle cx="85" cy="38" r="10"  fill="#e8a0ac" opacity="0.85"/>
-    <circle cx="85" cy="38" r="7"   fill="#e07888"/>
-    <path d="M78 36 Q85 28 92 36 Q85 44 78 36Z" fill="#f4c0c8" opacity="0.6"/>
-    <circle cx="40"  cy="99"  r="7"   fill="#e8a0ac" opacity="0.75"/>
-    <circle cx="40"  cy="99"  r="4.5" fill="#e07888"/>
-    <circle cx="137" cy="136" r="6"   fill="#e8a0ac" opacity="0.7"/>
-    <circle cx="137" cy="136" r="4"   fill="#e07888"/>
-    <circle cx="148" cy="188" r="4.5" fill="#e8a0ac" opacity="0.65"/>
-    <circle cx="24"  cy="155" r="4"   fill="#e8a0ac" opacity="0.6"/>
+    <circle cx="85" cy="38" r="10"  fill={BLUSH} opacity="0.85"/>
+    <circle cx="85" cy="38" r="7"   fill={BLUSH_D}/>
+    <path d="M78 36 Q85 28 92 36 Q85 44 78 36Z" fill={BLUSH_L} opacity="0.6"/>
+    <circle cx="40"  cy="99"  r="7"   fill={BLUSH} opacity="0.75"/>
+    <circle cx="40"  cy="99"  r="4.5" fill={BLUSH_D}/>
+    <circle cx="137" cy="136" r="6"   fill={BLUSH} opacity="0.7"/>
+    <circle cx="137" cy="136" r="4"   fill={BLUSH_D}/>
+    <circle cx="148" cy="188" r="4.5" fill={BLUSH} opacity="0.65"/>
+    <circle cx="24"  cy="155" r="4"   fill={BLUSH} opacity="0.6"/>
   </svg>
 );
 
 const Sprig = () => (
   <svg viewBox="0 0 120 60" fill="none" style={{ width: 100, height: 50, opacity: 0.45, pointerEvents: "none" }}>
-    <path d="M10 50 Q40 30 60 20 Q80 10 110 8" stroke="#9a6670" strokeWidth="0.9" fill="none" strokeLinecap="round"/>
+    <path d="M10 50 Q40 30 60 20 Q80 10 110 8" stroke={MUTED} strokeWidth="0.9" fill="none" strokeLinecap="round"/>
     {[20, 40, 60, 80, 100].map((x, i) => {
       const y = 50 - i * 8;
       return (
@@ -521,8 +569,8 @@ const Sprig = () => (
         </g>
       );
     })}
-    <circle cx="110" cy="8" r="5" fill="#e8a0ac" opacity="0.75"/>
-    <circle cx="110" cy="8" r="3" fill="#e07888"/>
+    <circle cx="110" cy="8" r="5" fill={BLUSH} opacity="0.75"/>
+    <circle cx="110" cy="8" r="3" fill={BLUSH_D}/>
   </svg>
 );
 
@@ -540,18 +588,18 @@ const FlipDigit: React.FC<{ value: number }> = ({ value }) => {
   }, [value]);
   return (
     <div style={{ width: 56, height: 66, background: "rgba(255,255,255,0.9)",
-      border: "1px solid rgba(232,160,172,0.4)", borderRadius: 6,
+      border: `1px solid ${BLUSH_L}`, borderRadius: 6,
       display: "flex", alignItems: "center", justifyContent: "center",
       position: "relative", overflow: "hidden",
       boxShadow: "0 4px 18px rgba(184,120,140,0.1), inset 0 1px 0 rgba(255,255,255,0.8)" }}>
-      <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: "0.5px", background: "rgba(201,116,144,0.2)", zIndex: 2 }}/>
-      <span style={{ fontFamily: SERIF, fontSize: 34, fontWeight: 400, color: "#5a3a44",
+      <div style={{ position: "absolute", left: 0, right: 0, top: "50%", height: "0.5px", background: BLUSH_L, zIndex: 2 }}/>
+      <span style={{ fontFamily: SERIF, fontSize: 34, fontWeight: 400, color: PLUM,
         lineHeight: 1, zIndex: 1, letterSpacing: -1,
         transform: flash ? "translateY(-3px)" : "translateY(0)",
         transition: "transform 0.16s cubic-bezier(0.4,0,0.2,1)", display: "block" }}>
         {String(value).padStart(2, '0')}
       </span>
-      <div style={{ position: "absolute", inset: 0, background: "#e8a0ac",
+      <div style={{ position: "absolute", inset: 0, background: BLUSH,
         opacity: flash ? 0.08 : 0, transition: "opacity 0.32s", pointerEvents: "none" }}/>
     </div>
   );
@@ -571,16 +619,133 @@ function useCountdown(target: string) {
 
 // ─── Block toolbar ────────────────────────────────────────────────────────────
 const BlockToolbar = ({ onUp, onDown, onToggle, onDelete, visible, isFirst, isLast }: any) => (
-  <div className="absolute -top-3.5 right-2 flex items-center gap-0.5 bg-white border border-rose-200 rounded-full shadow-lg px-1.5 py-1 opacity-0 group-hover/block:opacity-100 transition-all z-30 pointer-events-none group-hover/block:pointer-events-auto">
-    <button type="button" onClick={e => { e.stopPropagation(); onUp(); }} disabled={isFirst} className="p-0.5 rounded-full hover:bg-rose-50 disabled:opacity-25 transition-colors"><ChevronUp className="w-3 h-3 text-rose-400"/></button>
-    <button type="button" onClick={e => { e.stopPropagation(); onDown(); }} disabled={isLast} className="p-0.5 rounded-full hover:bg-rose-50 disabled:opacity-25 transition-colors"><ChevronDown className="w-3 h-3 text-rose-400"/></button>
-    <div className="w-px h-3 bg-rose-100 mx-0.5"/>
-    <button type="button" onClick={e => { e.stopPropagation(); onToggle(); }} className="p-0.5 rounded-full hover:bg-rose-50 transition-colors">
-      {visible ? <Eye className="w-3 h-3 text-rose-400"/> : <EyeOff className="w-3 h-3 text-rose-300"/>}
+  <div className="absolute -top-3.5 right-2 flex items-center gap-0.5 bg-white rounded-full shadow-lg px-1.5 py-1 opacity-0 group-hover/block:opacity-100 transition-all z-30 pointer-events-none group-hover/block:pointer-events-auto" style={{ border: `1px solid ${BLUSH_L}` }}>
+    <button type="button" onClick={e => { e.stopPropagation(); onUp(); }} disabled={isFirst} className="p-0.5 rounded-full disabled:opacity-25 transition-colors"><ChevronUp className="w-3 h-3" style={{ color: BLUSH_D }}/></button>
+    <button type="button" onClick={e => { e.stopPropagation(); onDown(); }} disabled={isLast} className="p-0.5 rounded-full disabled:opacity-25 transition-colors"><ChevronDown className="w-3 h-3" style={{ color: BLUSH_D }}/></button>
+    <div className="w-px h-3 mx-0.5" style={{ background: BLUSH_L }}/>
+    <button type="button" onClick={e => { e.stopPropagation(); onToggle(); }} className="p-0.5 rounded-full transition-colors">
+      {visible ? <Eye className="w-3 h-3" style={{ color: BLUSH_D }}/> : <EyeOff className="w-3 h-3" style={{ color: BLUSH }}/>}
     </button>
     <button type="button" onClick={e => { e.stopPropagation(); onDelete(); }} className="p-0.5 rounded-full hover:bg-red-50 transition-colors"><Trash2 className="w-3 h-3 text-red-400"/></button>
   </div>
 );
+
+const BLOCK_TYPE_ICONS: Record<string, string> = {
+  photo: "📷",
+  text: "T",
+  location: "📍",
+  calendar: "📅",
+  countdown: "⏱",
+  timeline: "🕒",
+  music: "🎵",
+  gift: "🎁",
+  whatsapp: "💬",
+  rsvp: "RSVP",
+  divider: "—",
+  family: "👨‍👩‍👧",
+  date: "📆",
+  description: "📝",
+  title: "Aa",
+  godparents: "💍",
+  parents: "👪",
+  spacer: "↕",
+};
+
+const InsertBlockButton: React.FC<{
+  insertIdx: number;
+  openInsertAt: number | null;
+  setOpenInsertAt: (v: number | null) => void;
+  blockTypes: { type: string; label: string; def: any }[];
+  onInsert: (type: string, def: any) => void;
+}> = ({ insertIdx, openInsertAt, setOpenInsertAt, blockTypes, onInsert }) => {
+  const isOpen = openInsertAt === insertIdx;
+  const [hovered, setHovered] = useState(false);
+  const visible = hovered || isOpen;
+  return (
+    <div
+      style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", height: 30, zIndex: 40 }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div style={{
+        position: "absolute",
+        left: 0,
+        right: 0,
+        height: 1,
+        background: `repeating-linear-gradient(to right, ${BLUSH_L} 0, ${BLUSH_L} 6px, transparent 6px, transparent 12px)`,
+      }} />
+      <button
+        type="button"
+        onClick={() => setOpenInsertAt(isOpen ? null : insertIdx)}
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: "50%",
+          border: `1.5px solid ${BLUSH_L}`,
+          background: isOpen ? BLUSH_D : "white",
+          color: isOpen ? "white" : BLUSH_D,
+          fontWeight: 700,
+          lineHeight: 1,
+          cursor: "pointer",
+          boxShadow: "0 2px 10px rgba(0,0,0,0.12)",
+          transform: visible ? "scale(1)" : "scale(0.7)",
+          transition: "all .15s",
+          zIndex: 2,
+        }}
+      >
+        {isOpen ? "x" : "+"}
+      </button>
+      {isOpen && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 34,
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 280,
+            background: "white",
+            border: `1px solid ${BLUSH_L}`,
+            borderRadius: 16,
+            boxShadow: "0 16px 48px rgba(0,0,0,0.16), 0 4px 16px rgba(0,0,0,0.08)",
+            padding: 14,
+            zIndex: 200,
+          }}
+        >
+          <p style={{ fontSize: "0.58rem", fontWeight: 700, letterSpacing: "0.22em", textTransform: "uppercase", color: PLUM, margin: "0 0 10px", textAlign: "center" }}>
+            Adauga bloc
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+            {blockTypes.map(bt => (
+              <button
+                key={bt.type}
+                type="button"
+                onClick={() => onInsert(bt.type, bt.def)}
+                style={{
+                  border: `1px solid ${BLUSH_L}`,
+                  borderRadius: 10,
+                  background: BLUSH_XL,
+                  color: PLUM,
+                  cursor: "pointer",
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 4,
+                  padding: "8px 4px",
+                }}
+              >
+                <span style={{ fontSize: 16, lineHeight: 1 }}>{BLOCK_TYPE_ICONS[bt.type] || "+"}</span>
+                <span style={{ fontSize: "0.56rem", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1.15, textAlign: "center" }}>
+                  {bt.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // ─── Scroll reveal ────────────────────────────────────────────────────────────
 function useReveal() {
@@ -600,26 +765,26 @@ const LocCard: React.FC<{ block: InvitationBlock; editMode: boolean; onUpdate: (
   return (
     <div ref={ref} style={{
       background: "rgba(255,255,255,0.82)", backdropFilter: "blur(8px)",
-      borderRadius: 4, border: "1px solid rgba(232,160,172,0.25)",
+      borderRadius: 4, border: `1px solid ${BLUSH_L}`,
       padding: "20px 24px", boxShadow: "0 4px 24px rgba(184,120,140,0.07)",
       opacity: visible ? 1 : 0, transform: visible ? "translateY(0)" : "translateY(16px)",
       transition: "opacity 0.6s cubic-bezier(0.4,0,0.2,1), transform 0.6s cubic-bezier(0.4,0,0.2,1)",
     }}>
       <InlineEdit tag="p" editMode={editMode} value={block.label || ''} onChange={v => onUpdate({ label: v })} placeholder="Eveniment..."
         style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.42em",
-          textTransform: "uppercase", color: "rgba(139,94,107,0.5)", display: "block", marginBottom: 12 }}/>
+          textTransform: "uppercase", color: MUTED, display: "block", marginBottom: 12 }}/>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1px 1fr", gap: 0, alignItems: "start" }}>
         <div>
           <InlineTime value={block.time || ''} onChange={v => onUpdate({ time: v })} editMode={editMode}
-            className="font-serif text-3xl font-light" style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 300, color: "#5a3a44", display: "block" }}/>
-          <p style={{ fontFamily: SANS, fontSize: 8, color: "rgba(139,94,107,0.45)", margin: "2px 0 0" }}>ora</p>
+            className="font-serif text-3xl font-light" style={{ fontFamily: SERIF, fontSize: 30, fontWeight: 300, color: PLUM, display: "block" }}/>
+          <p style={{ fontFamily: SANS, fontSize: 8, color: MUTED, opacity: 0.75, margin: "2px 0 0" }}>ora</p>
         </div>
-        <div style={{ background: "rgba(201,116,144,0.18)", margin: "4px 18px 0", alignSelf: "stretch" }}/>
+        <div style={{ background: `${BLUSH_D}2e`, margin: "4px 18px 0", alignSelf: "stretch" }}/>
         <div>
           <InlineEdit tag="p" editMode={editMode} value={block.locationName || ''} onChange={v => onUpdate({ locationName: v })} placeholder="Locație..."
-            style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: "#5a3a44", margin: "0 0 3px", lineHeight: 1.3 }}/>
+            style={{ fontFamily: SANS, fontSize: 13, fontWeight: 600, color: PLUM, margin: "0 0 3px", lineHeight: 1.3 }}/>
           <InlineEdit tag="p" editMode={editMode} value={block.locationAddress || ''} onChange={v => onUpdate({ locationAddress: v })} placeholder="Adresă..."
-            style={{ fontFamily: SANS, fontSize: 11, color: "rgba(90,58,68,0.48)", margin: 0, lineHeight: 1.5, fontStyle: "italic" }} multiline/>
+            style={{ fontFamily: SANS, fontSize: 11, color: MUTED, opacity: 0.8, margin: 0, lineHeight: 1.5, fontStyle: "italic" }} multiline/>
         </div>
       </div>
       {(block.wazeLink || editMode) && (
@@ -627,6 +792,190 @@ const LocCard: React.FC<{ block: InvitationBlock; editMode: boolean; onUpdate: (
           <InlineWaze value={block.wazeLink || ''} onChange={v => onUpdate({ wazeLink: v })} editMode={editMode}/>
         </div>
       )}
+    </div>
+  );
+};
+
+const MusicBlock: React.FC<{
+  block: InvitationBlock;
+  editMode: boolean;
+  onUpdate: (p: Partial<InvitationBlock>) => void;
+}> = ({ block, editMode, onUpdate }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const mp3Ref = useRef<HTMLInputElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    const onTime = () => setProgress(a.currentTime);
+    const onDur = () => setDuration(a.duration);
+    const onEnd = () => { setPlaying(false); setProgress(0); };
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("loadedmetadata", onDur);
+    a.addEventListener("ended", onEnd);
+    a.addEventListener("play", onPlay);
+    a.addEventListener("pause", onPause);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("loadedmetadata", onDur);
+      a.removeEventListener("ended", onEnd);
+      a.removeEventListener("play", onPlay);
+      a.removeEventListener("pause", onPause);
+    };
+  }, [block.musicUrl, block.musicType]);
+
+  const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+  const pct = duration ? `${(progress / duration) * 100}%` : "0%";
+
+  const toggle = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    if (playing) {
+      a.pause();
+      setPlaying(false);
+    } else {
+      a.play().then(() => setPlaying(true)).catch(() => {});
+    }
+  };
+
+  const seek = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!audioRef.current || !duration) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    audioRef.current.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * duration;
+  };
+
+  const handleMp3 = async (file: File) => {
+    if (!file.type.startsWith("audio/")) return;
+    setUploading(true);
+    deleteUploadedFile(block.musicUrl);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const _s = JSON.parse(localStorage.getItem("weddingPro_session") || "{}");
+      const res = await fetch(`${API_URL}/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${_s?.token || ""}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error("Audio upload failed");
+      const { url } = await res.json();
+      onUpdate({ musicUrl: url, musicType: "mp3" });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const isActive = !!block.musicUrl;
+
+  return (
+    <div style={{ background: "rgba(255,255,255,0.86)", border: `1px solid ${playing ? BLUSH_D : BLUSH_L}`, borderRadius: 6, padding: "16px 18px" }}>
+      {block.musicType === "mp3" && block.musicUrl && <audio ref={audioRef} src={block.musicUrl} preload="metadata" />}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div style={{ width: 30, height: 30, borderRadius: "50%", background: playing ? BLUSH_D : BLUSH_XL, border: `1px solid ${playing ? BLUSH_D : BLUSH_L}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <Music className="w-4 h-4" style={{ color: playing ? "white" : BLUSH_D }} />
+        </div>
+        <span style={{ fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: playing ? BLUSH_D : MUTED }}>
+          {playing ? "Se reda acum" : "Muzica"}
+        </span>
+      </div>
+
+      {!isActive && editMode && (
+        <div style={{ display: "flex", gap: 8 }}>
+          <button type="button" onClick={() => mp3Ref.current?.click()} disabled={uploading}
+            style={{ flex: 1, background: BLUSH_XL, border: `1px dashed ${BLUSH_L}`, borderRadius: 8, padding: "12px 0", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+            {uploading ? <div className="w-5 h-5 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: BLUSH_D }} /> : <Upload className="w-5 h-5" style={{ color: BLUSH_D }} />}
+            <span style={{ fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.16em", textTransform: "uppercase", color: MUTED }}>MP3</span>
+          </button>
+          <input ref={mp3Ref} type="file" accept="audio/*,.mp3" onChange={e => { const f = e.target.files?.[0]; if (f) handleMp3(f); }} style={{ display: "none" }} />
+        </div>
+      )}
+
+      {!isActive && !editMode && (
+        <div style={{ textAlign: "center", opacity: 0.45, padding: "8px 0" }}>
+          <Music className="w-8 h-8" style={{ color: BLUSH_D, display: "block", margin: "0 auto 6px" }} />
+          <p style={{ fontFamily: SERIF, fontStyle: "italic", fontSize: 12, color: MUTED, margin: 0 }}>Melodia va aparea aici</p>
+        </div>
+      )}
+
+      {isActive && (
+        <div>
+          <InlineEdit tag="p" editMode={editMode} value={block.musicTitle || ""} onChange={v => onUpdate({ musicTitle: v })} placeholder="Titlul melodiei..."
+            style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: PLUM, margin: "0 0 2px" }} />
+          <InlineEdit tag="p" editMode={editMode} value={block.musicArtist || ""} onChange={v => onUpdate({ musicArtist: v })} placeholder="Artist..."
+            style={{ fontFamily: SANS, fontSize: 10, color: MUTED, margin: "0 0 10px" }} />
+
+          <div onClick={seek} style={{ height: 4, background: BLUSH_L, borderRadius: 99, marginBottom: 6, cursor: "pointer", position: "relative" }}>
+            <div style={{ height: "100%", borderRadius: 99, background: BLUSH_D, width: pct }} />
+            <div style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: pct, marginLeft: -5, width: 10, height: 10, borderRadius: "50%", background: BLUSH_D }} />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+            <span style={{ fontFamily: SANS, fontSize: 9, color: MUTED }}>{fmt(progress)}</span>
+            <span style={{ fontFamily: SANS, fontSize: 9, color: MUTED }}>{duration ? fmt(duration) : "--:--"}</span>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16 }}>
+            <button type="button" onClick={() => { const a = audioRef.current; if (a) a.currentTime = Math.max(0, a.currentTime - 10); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.55 }}>
+              <SkipBack className="w-4 h-4" style={{ color: BLUSH_D }} />
+            </button>
+            <button type="button" onClick={toggle} style={{ width: 40, height: 40, borderRadius: "50%", background: BLUSH_D, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {playing ? <Pause className="w-4 h-4" style={{ color: "white" }} /> : <Play className="w-4 h-4" style={{ color: "white", marginLeft: 2 }} />}
+            </button>
+            <button type="button" onClick={() => { const a = audioRef.current; if (a) a.currentTime = Math.min(duration || a.currentTime + 10, a.currentTime + 10); }} style={{ background: "none", border: "none", cursor: "pointer", padding: 4, opacity: 0.55 }}>
+              <SkipForward className="w-4 h-4" style={{ color: BLUSH_D }} />
+            </button>
+          </div>
+
+          {editMode && (
+            <div style={{ marginTop: 8, display: "flex", justifyContent: "center", gap: 8 }}>
+              <button type="button" onClick={() => mp3Ref.current?.click()} style={{ background: BLUSH_XL, border: `1px solid ${BLUSH_L}`, borderRadius: 99, padding: "4px 12px", cursor: "pointer", fontFamily: SANS, fontSize: 9, color: MUTED, fontWeight: 700 }}>
+                Schimba sursa
+              </button>
+              <button type="button" onClick={() => { deleteUploadedFile(block.musicUrl); onUpdate({ musicUrl: "", musicType: "none" as any }); setPlaying(false); setProgress(0); setDuration(0); }} style={{ background: "transparent", border: `1px dashed ${BLUSH_L}`, borderRadius: 99, padding: "4px 12px", cursor: "pointer", fontFamily: SANS, fontSize: 9, color: MUTED, fontWeight: 700 }}>
+                Sterge
+              </button>
+              <input ref={mp3Ref} type="file" accept="audio/*,.mp3" onChange={e => { const f = e.target.files?.[0]; if (f) handleMp3(f); }} style={{ display: "none" }} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CalendarMonth: React.FC<{ date: string | undefined }> = ({ date }) => {
+  if (!date) return null;
+  const d = new Date(date);
+  const year = d.getFullYear();
+  const month = d.getMonth();
+  const day = d.getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthNames = ["IANUARIE", "FEBRUARIE", "MARTIE", "APRILIE", "MAI", "IUNIE", "IULIE", "AUGUST", "SEPTEMBRIE", "OCTOMBRIE", "NOIEMBRIE", "DECEMBRIE"];
+  const dayLabels = ["L", "M", "M", "J", "V", "S", "D"];
+  const startOffset = (firstDay + 6) % 7;
+  const cells: (number | null)[] = [...Array(startOffset).fill(null), ...Array.from({ length: daysInMonth }, (_, i) => i + 1)];
+  return (
+    <div style={{ background: "rgba(255,255,255,0.9)", borderRadius: 6, padding: 16, textAlign: "center", border: `1px solid ${BLUSH_L}` }}>
+      <p style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", color: PLUM, marginBottom: 10 }}>{monthNames[month]} {year}</p>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 6 }}>
+        {dayLabels.map((l, i) => <div key={`${l}-${i}`} style={{ fontSize: 9, fontWeight: 700, color: MUTED }}>{l}</div>)}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
+        {cells.map((cell, i) => {
+          const isToday = cell === day;
+          return (
+            <div key={i} style={{ height: 24, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: isToday ? 700 : 400, color: isToday ? "white" : cell ? PLUM : "transparent", background: isToday ? BLUSH_D : "transparent", borderRadius: "50%" }}>
+              {cell || ""}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -644,9 +993,20 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
   data, onOpenRSVP, editMode = false, introPreview = false, onProfileUpdate, onBlocksUpdate, onBlockSelect, selectedBlockId,
 }) => {
   const { profile, guest } = data;
+  const activeTheme = getBlushBloomTheme((profile as any).colorTheme);
+  BLUSH = activeTheme.PINK_D;
+  BLUSH_D = activeTheme.PINK_DARK;
+  BLUSH_L = activeTheme.PINK_L;
+  BLUSH_XL = activeTheme.PINK_XL;
+  PLUM = activeTheme.TEXT;
+  MUTED = activeTheme.MUTED;
 
   const [showIntro, setShowIntro]           = useState(!editMode || introPreview);
   const [contentVisible, setContentVisible] = useState(editMode && !introPreview);
+  const handleIntroDone = useCallback(() => {
+    setShowIntro(false);
+    setTimeout(() => setContentVisible(true), 40);
+  }, []);
 
   useEffect(() => {
     if (editMode) {
@@ -660,7 +1020,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
   // Lock scroll during intro
   useEffect(() => {
     if (editMode) {
-      ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
+      ['overflow','position','top','left','right','inset'].forEach(p => (document.body.style as any)[p] = '');
       return;
     }
     if (showIntro) {
@@ -668,22 +1028,28 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
       document.body.style.position = 'fixed';
       document.body.style.inset = '0';
     } else {
-      ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = '');
+      ['overflow','position','top','left','right','inset'].forEach(p => (document.body.style as any)[p] = '');
     }
-    return () => { ['overflow','position','top','left','right'].forEach(p => (document.body.style as any)[p] = ''); };
+    return () => { ['overflow','position','top','left','right','inset'].forEach(p => (document.body.style as any)[p] = ''); };
   }, [showIntro, editMode]);
 
   const safeJSON = (s: string | undefined, fb: any) => { try { return s ? JSON.parse(s) : fb; } catch { return fb; } };
 
-  const [blocks, setBlocks]           = useState<InvitationBlock[]>(() => safeJSON(profile.customSections, []));
-  const [godparents, setGodparents]   = useState<any[]>(() => safeJSON(profile.godparents, []));
-  const [parentsData, setParentsData] = useState<any>(() => safeJSON(profile.parents, {}));
+  const [blocks, setBlocks]           = useState<InvitationBlock[]>(() => {
+    const fromDb = safeJSON(profile.customSections, null);
+    return Array.isArray(fromDb) && fromDb.length ? fromDb : CASTLE_DEFAULT_BLOCKS;
+  });
+  const [openInsertAt, setOpenInsertAt] = useState<number | null>(null);
+  const [godparents, setGodparents]   = useState<any[]>(() => safeJSON(profile.godparents, [{ godfather: 'Nume Nas', godmother: 'Nume Nasa' }]));
+  const [parentsData, setParentsData] = useState<any>(() => safeJSON(profile.parents, { p1_father: 'Tatal Miresei', p1_mother: 'Mama Miresei', p2_father: 'Tatal Mirelui', p2_mother: 'Mama Mirelui' }));
 
-  useEffect(() => { setBlocks(safeJSON(profile.customSections, [])); }, [profile.customSections]);
-  useEffect(() => { setGodparents(safeJSON(profile.godparents, [])); }, [profile.godparents]);
-  useEffect(() => { setParentsData(safeJSON(profile.parents, {})); }, [profile.parents]);
+  useEffect(() => {
+    const fromDb = safeJSON(profile.customSections, null);
+    setBlocks(Array.isArray(fromDb) && fromDb.length ? fromDb : CASTLE_DEFAULT_BLOCKS);
+  }, [profile.customSections]);
+  useEffect(() => { setGodparents(safeJSON(profile.godparents, [{ godfather: 'Nume Nas', godmother: 'Nume Nasa' }])); }, [profile.godparents]);
+  useEffect(() => { setParentsData(safeJSON(profile.parents, { p1_father: 'Tatal Miresei', p1_mother: 'Mama Miresei', p2_father: 'Tatal Mirelui', p2_mother: 'Mama Mirelui' })); }, [profile.parents]);
 
-  const timeline: any[] = safeJSON(profile.timeline, []);
   const countdown = useCountdown(profile.weddingDate || '');
 
   // Debounced updates
@@ -714,9 +1080,43 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
     setBlocks(prev => { const nb = prev.filter((_, i) => i !== idx); onBlocksUpdate?.(nb); return nb; });
   }, [onBlocksUpdate]);
 
-  const addBlock = useCallback((type: string, def: any) => {
-    setBlocks(prev => { const nb = [...prev, { id: Date.now().toString(), type: type as any, show: true, ...def }]; onBlocksUpdate?.(nb); return nb; });
+  const addBlockAt = useCallback((afterIdx: number, type: string, def: any) => {
+    setBlocks(prev => {
+      const nb = [...prev];
+      nb.splice(afterIdx + 1, 0, { id: Date.now().toString(), type: type as InvitationBlockType, show: true, ...def });
+      onBlocksUpdate?.(nb);
+      return nb;
+    });
   }, [onBlocksUpdate]);
+  const addBlock = useCallback((type: string, def: any) => {
+    setBlocks(prev => { const nb = [...prev, { id: Date.now().toString(), type: type as InvitationBlockType, show: true, ...def }]; onBlocksUpdate?.(nb); return nb; });
+  }, [onBlocksUpdate]);
+
+  const getTimelineItems = () => safeJSON(profile.timeline, []);
+  const updateTimeline = (next: any[]) => {
+    upProfile("timeline", JSON.stringify(next));
+    upProfile("showTimeline", true);
+  };
+  const addTimelineItem = (preset: { icon?: string; title?: string } | null) => {
+    const next = [
+      ...getTimelineItems(),
+      {
+        id: Date.now().toString(),
+        title: preset?.title || "",
+        time: "",
+        location: "",
+        icon: preset?.icon || "party",
+        notice: "",
+      },
+    ];
+    updateTimeline(next);
+  };
+  const updateTimelineItem = (id: string, patch: any) => {
+    updateTimeline(getTimelineItems().map((t: any) => (t.id === id ? { ...t, ...patch } : t)));
+  };
+  const removeTimelineItem = (id: string) => {
+    updateTimeline(getTimelineItems().filter((t: any) => t.id !== id));
+  };
 
   const updGodparent = (i: number, f: 'godfather'|'godmother', v: string) => {
     setGodparents(prev => { const ng = prev.map((g, j) => j === i ? { ...g, [f]: v } : g); upProfile('godparents', JSON.stringify(ng)); return ng; });
@@ -725,12 +1125,48 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
   const delGodparent = (i: number) => setGodparents(prev => { const ng = prev.filter((_, j) => j !== i); upProfile('godparents', JSON.stringify(ng)); return ng; });
   const updParent = (field: string, val: string) => setParentsData((prev: any) => { const np = { ...prev, [field]: val }; upProfile('parents', JSON.stringify(np)); return np; });
 
-  const welcomeText     = profile.welcomeText?.trim()     || 'Împreună cu familiile noastre';
-  const celebrationText = profile.celebrationText?.trim() || 'nunții noastre';
-  const rsvpText        = profile.rsvpButtonText?.trim()  || 'Confirmă Prezența';
+  const welcomeText     = profile.welcomeText?.trim()     || CASTLE_DEFAULTS.welcomeText;
+  const invitationLeadText = ((profile as any).invitationLeadText || CASTLE_DEFAULTS.invitationLeadText).trim() || CASTLE_DEFAULTS.invitationLeadText;
+  const celebrationText = profile.celebrationText?.trim() || CASTLE_DEFAULTS.celebrationText;
+  const rsvpText        = profile.rsvpButtonText?.trim()  || CASTLE_DEFAULTS.rsvpButtonText;
   const showRsvp        = profile.showRsvpButton !== false;
   const isBaptism       = profile.eventType === 'baptism' || profile.eventType === 'kids';
+  const hasRsvpBlock    = blocks.some(b => b.type === 'rsvp' && (editMode || b.show !== false));
   const displayBlocks   = editMode ? blocks : blocks.filter(b => b.show !== false);
+  const dateStr         = profile.weddingDate
+    ? new Date(profile.weddingDate).toLocaleDateString('ro-RO', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+    : 'Data Evenimentului';
+
+  const BLOCK_TYPES: { type: string; label: string; def: any }[] = [
+    { type: 'photo', label: 'Foto', def: { imageData: undefined, altText: '', aspectRatio: '3:4', photoClip: 'arch', photoMasks: ['fade-b'] } },
+    { type: 'text', label: 'Text', def: { content: 'O poveste frumoasa incepe...' } },
+    { type: 'location', label: 'Locatie', def: { label: 'Locatie', time: '17:00', locationName: 'Nume locatie', locationAddress: 'Adresa', wazeLink: '' } },
+    { type: 'calendar', label: 'Calendar', def: {} },
+    { type: 'countdown', label: 'Countdown', def: { countdownTitle: 'Timp ramas pana la marele eveniment' } },
+    { type: 'timeline', label: 'Cronologie', def: {} },
+    { type: 'music', label: 'Muzica', def: { musicTitle: '', musicArtist: '', musicType: 'none' } },
+    { type: 'gift', label: 'Cadouri', def: { sectionTitle: 'Sugestie cadou', content: '', iban: '', ibanName: '' } },
+    { type: 'whatsapp', label: 'WhatsApp', def: { label: 'Contact WhatsApp', content: '0700000000' } },
+    { type: 'rsvp', label: 'RSVP', def: { label: 'Confirma Prezenta' } },
+    { type: 'divider', label: 'Linie', def: {} },
+    { type: 'family', label: 'Familie', def: { label: 'Familie', content: 'Cu drag si recunostinta', members: JSON.stringify([{ name1: 'Mama', name2: 'Tata' }]) } },
+    { type: 'date', label: 'Data', def: { content: '' } },
+    { type: 'description', label: 'Descriere', def: { content: 'O scurta descriere...' } },
+    { type: 'title', label: 'Titlu', def: { content: 'Titlu sectiune' } },
+    { type: 'godparents', label: 'Nasi', def: { sectionTitle: 'Nasii Nostri', content: '' } },
+    { type: 'parents', label: 'Parinti', def: { sectionTitle: 'Parintii Nostri', content: '' } },
+    { type: 'spacer', label: 'Spatiu', def: {} },
+  ];
+  const handleInsertAt = (afterIdx: number, type: string, def: any) => {
+    if (type === "timeline") {
+      if (getTimelineItems().length === 0) addTimelineItem(null);
+      addBlockAt(afterIdx, type, def);
+      setOpenInsertAt(null);
+      return;
+    }
+    addBlockAt(afterIdx, type, def);
+    setOpenInsertAt(null);
+  };
 
   const l1 = (profile.partner1Name || 'S').charAt(0).toUpperCase();
   const l2 = isBaptism ? '' : (profile.partner2Name || 'A').charAt(0).toUpperCase();
@@ -741,8 +1177,8 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
 
   const sep = (
     <div style={{ display: "flex", flexDirection: "column", gap: 7, alignItems: "center", paddingBottom: 22, flexShrink: 0 }}>
-      <div style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(201,116,144,0.4)" }}/>
-      <div style={{ width: 3, height: 3, borderRadius: "50%", background: "rgba(201,116,144,0.4)" }}/>
+      <div style={{ width: 3, height: 3, borderRadius: "50%", background: BLUSH }}/>
+      <div style={{ width: 3, height: 3, borderRadius: "50%", background: BLUSH }}/>
     </div>
   );
 
@@ -757,18 +1193,20 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
         @keyframes bb-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
       `}</style>
 
+      {showIntro && <BlushIntro l1={l1} l2={l2} onDone={handleIntroDone} />}
+
       {editMode && (
         <div className="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 rounded-full px-4 py-1.5 shadow-xl text-[10px] font-bold pointer-events-none select-none"
-          style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(232,160,172,0.4)", color: "#8b5e6b", backdropFilter: "blur(8px)" }}>
-          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "#e8a0ac" }}/>
+          style={{ background: "rgba(255,255,255,0.9)", border: `1px solid ${BLUSH_L}`, color: PLUM, backdropFilter: "blur(8px)" }}>
+          <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: BLUSH }}/>
           <span className="uppercase tracking-widest">Editare Directă</span>
-          <span style={{ color: "rgba(139,94,107,0.5)" }} className="font-normal">— click pe orice text</span>
+          <span style={{ color: MUTED }} className="font-normal">— click pe orice text</span>
         </div>
       )}
 
       <div style={{
         minHeight: "100vh",
-        background: "linear-gradient(160deg,#fdf8f5 0%,#faf0ee 40%,#fdf5f7 100%)",
+        background: `linear-gradient(160deg, ${BLUSH_XL} 0%, ${activeTheme.CREAM} 40%, #ffffff 100%)`,
         display: "flex", alignItems: "flex-start", justifyContent: "center",
         fontFamily: SANS, position: "relative", overflow: "hidden",
         paddingTop: editMode ? 56 : 0, paddingBottom: 40,
@@ -779,15 +1217,15 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
 
         {/* Ambient blobs */}
         <div style={{ position: "fixed", top: "8%", left: "2%", width: 420, height: 420, borderRadius: "50%",
-          background: "radial-gradient(circle,rgba(232,160,172,0.11) 0%,transparent 70%)", pointerEvents: "none", zIndex: 0 }}/>
+          background: `radial-gradient(circle, ${BLUSH}22 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}/>
         <div style={{ position: "fixed", bottom: "4%", right: "2%", width: 360, height: 360, borderRadius: "50%",
-          background: "radial-gradient(circle,rgba(201,116,138,0.09) 0%,transparent 70%)", pointerEvents: "none", zIndex: 0 }}/>
+          background: `radial-gradient(circle, ${BLUSH_D}1A 0%, transparent 70%)`, pointerEvents: "none", zIndex: 0 }}/>
 
         <div style={{ width: "100%", maxWidth: 440, position: "relative", zIndex: 1, padding: "20px 16px" }}>
 
           {/* ── HERO CARD ── */}
           <div style={{ background: "rgba(255,255,255,0.88)", borderRadius: 4,
-            border: "1px solid rgba(232,160,172,0.28)",
+            border: `1px solid ${BLUSH_L}`,
             boxShadow: "0 8px 60px rgba(184,120,140,0.12), 0 2px 12px rgba(184,120,140,0.07)",
             position: "relative", overflow: "hidden", padding: "50px 36px 42px" }}>
             <SplashTopLeft/>
@@ -796,46 +1234,67 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
             <div style={{ position: "absolute", top: 0, right: -10, zIndex: 0 }}><RoseBranch flip/></div>
 
             <div style={{ position: "relative", zIndex: 1, textAlign: "center" }}>
-              {profile.showWelcomeText && (
-                <InlineEdit tag="p" editMode={editMode} value={welcomeText} onChange={v => upProfile('welcomeText', v)}
-                  placeholder="Text intro..." multiline
-                  style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: "rgba(139,94,107,0.65)", margin: "0 0 20px", lineHeight: 1.7, display: "block" }}/>
-              )}
-
               <BlockStyleProvider value={{
                 fontFamily:    (profile as any).heroFontFamily,
                 fontSize:      (profile as any).heroNameSize,
                 letterSpacing: (profile as any).heroLetterSpacing,
                 lineHeight:    (profile as any).heroLineHeight,
-                textColor:     (profile as any).heroTextColor || '#5a3a44',
+                textColor:     (profile as any).heroTextColor || PLUM,
                 textAlign:     ((profile as any).heroAlign as any) || 'center',
+                blockId: "__hero__",
+                textStyles: (profile as any).heroTextStyles,
+                onTextSelect: (textKey, textLabel) => onBlockSelect?.(
+                  { id: "__hero__", type: "title", show: true, textStyles: (profile as any).heroTextStyles } as any,
+                  -1,
+                  textKey,
+                  textLabel
+                ),
               } as BlockStyle}>
+              {profile.showWelcomeText && (
+                <InlineEdit tag="p" editMode={editMode} value={welcomeText} onChange={v => upProfile('welcomeText', v)}
+                  placeholder="Text intro..." multiline
+                  textKey="hero:intro-welcome"
+                  textLabel="Intro welcome"
+                  style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: MUTED, margin: "0 0 20px", lineHeight: 1.7, display: "block" }}/>
+              )}
               {isBaptism ? (
                 <InlineEdit tag="h1" editMode={editMode} value={profile.partner1Name || ''}
                   onChange={v => upProfile('partner1Name', v)} placeholder="Prenume"
-                  style={{ fontFamily: DISPLAY, fontSize: 58, fontWeight: 400, lineHeight: 1, color: "#5a3a44", display: "block", margin: "0 0 8px", letterSpacing: 1 }}/>
+                  textKey="hero:partner1"
+                  textLabel="Partener 1"
+                  style={{ fontFamily: DISPLAY, fontSize: 58, fontWeight: 400, lineHeight: 1, color: PLUM, display: "block", margin: "0 0 8px", letterSpacing: 1 }}/>
               ) : (
                 <div style={{ margin: "0 0 8px" }}>
                   <InlineEdit tag="h1" editMode={editMode} value={profile.partner1Name || ''}
                     onChange={v => upProfile('partner1Name', v)} placeholder="Sofia"
-                    style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 400, lineHeight: 1.05, color: "#5a3a44", margin: 0, letterSpacing: 2, display: "block" }}/>
+                    textKey="hero:partner1"
+                    textLabel="Partener 1"
+                    style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 400, lineHeight: 1.05, color: PLUM, margin: 0, letterSpacing: 2, display: "block" }}/>
                   <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "12px 0" }}>
-                    <div style={{ flex: 1, height: "0.5px", background: "rgba(201,116,144,0.22)" }}/>
-                    <span style={{ fontFamily: SERIF, fontSize: 30, fontStyle: "italic", color: "#c97090", lineHeight: 1 }}>&</span>
-                    <div style={{ flex: 1, height: "0.5px", background: "rgba(201,116,144,0.22)" }}/>
+                    <div style={{ flex: 1, height: "0.5px", background: BLUSH_L }}/>
+                    <span style={{ fontFamily: SERIF, fontSize: 30, fontStyle: "italic", color: BLUSH_D, lineHeight: 1 }}>&</span>
+                    <div style={{ flex: 1, height: "0.5px", background: BLUSH_L }}/>
                   </div>
                   <InlineEdit tag="h1" editMode={editMode} value={profile.partner2Name || ''}
                     onChange={v => upProfile('partner2Name', v)} placeholder="Andrei"
-                    style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 400, lineHeight: 1.05, color: "#5a3a44", margin: 0, letterSpacing: 2, display: "block" }}/>
+                    textKey="hero:partner2"
+                    textLabel="Partener 2"
+                    style={{ fontFamily: DISPLAY, fontSize: 50, fontWeight: 400, lineHeight: 1.05, color: PLUM, margin: 0, letterSpacing: 2, display: "block" }}/>
                 </div>
               )}
-              </BlockStyleProvider>
-
               {profile.showCelebrationText && (
-                <InlineEdit tag="p" editMode={editMode} value={celebrationText} onChange={v => upProfile('celebrationText', v)}
-                  placeholder="descriere eveniment..."
-                  style={{ fontFamily: SERIF, fontSize: 15, fontStyle: "italic", color: "rgba(90,58,68,0.52)", margin: "12px 0 0", display: "block" }}/>
+                <p style={{ fontFamily: SERIF, fontSize: 15, fontStyle: "italic", color: MUTED, margin: "12px 0 0", display: "block" }}>
+                  <InlineEdit tag="span" editMode={editMode} value={invitationLeadText} onChange={v => upProfile('invitationLeadText', v)}
+                    placeholder="Text invitatie..."
+                    textKey="hero:intro-invite-lead"
+                    textLabel="Intro text 1" />{" "}
+                  <InlineEdit tag="span" editMode={editMode} value={celebrationText} onChange={v => upProfile('celebrationText', v)}
+                    placeholder="descriere eveniment..."
+                    textKey="hero:intro-celebration"
+                    textLabel="Intro text 2" />
+                </p>
               )}
+              </BlockStyleProvider>
 
               <div style={{ margin: "24px 0 16px" }}><RoseDivider/></div>
 
@@ -843,11 +1302,11 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
               {editMode ? (
                 <input type="date" value={profile.weddingDate ? new Date(profile.weddingDate).toISOString().split('T')[0] : ''}
                   onChange={e => upProfile('weddingDate', e.target.value)}
-                  style={{ fontFamily: SERIF, fontSize: 15, color: "rgba(90,58,68,0.72)", letterSpacing: "0.06em",
-                    background: "transparent", border: "none", borderBottom: "1px solid rgba(201,116,144,0.3)",
+                  style={{ fontFamily: SERIF, fontSize: 15, color: PLUM, letterSpacing: "0.06em",
+                    background: "transparent", border: "none", borderBottom: `1px solid ${BLUSH_L}`,
                     outline: "none", textAlign: "center", cursor: "pointer", padding: "2px 0", margin: "0 0 22px", display: "block", width: "100%" }}/>
               ) : (
-                <p style={{ fontFamily: SERIF, fontSize: 15, color: "rgba(90,58,68,0.72)", letterSpacing: "0.06em",
+                <p style={{ fontFamily: SERIF, fontSize: 15, color: PLUM, letterSpacing: "0.06em",
                   textTransform: "capitalize", margin: "0 0 22px" }}>{formattedDate}</p>
               )}
 
@@ -856,9 +1315,9 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                 <div style={{ margin: "0 0 24px" }}>
                   <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
                     <span style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em",
-                      textTransform: "uppercase", color: "rgba(139,94,107,0.6)",
+                      textTransform: "uppercase", color: MUTED,
                       padding: "4px 14px", borderRadius: 99,
-                      background: "rgba(232,160,172,0.1)", border: "1px solid rgba(232,160,172,0.35)" }}>
+                      background: BLUSH_XL, border: `1px solid ${BLUSH_L}` }}>
                       Timp rămas
                     </span>
                   </div>
@@ -867,7 +1326,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                       <React.Fragment key={i}>
                         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 7 }}>
                           <FlipDigit value={v}/>
-                          <span style={{ fontFamily: SERIF, fontSize: 11, fontStyle: "italic", color: "rgba(139,94,107,0.55)" }}>
+                          <span style={{ fontFamily: SERIF, fontSize: 11, fontStyle: "italic", color: MUTED }}>
                             {['Zile','Ore','Min','Sec'][i]}
                           </span>
                         </div>
@@ -876,9 +1335,9 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                     ))}
                   </div>
                   <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 5, marginTop: 12 }}>
-                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: "#c97090",
+                    <div style={{ width: 5, height: 5, borderRadius: "50%", background: BLUSH_D,
                       animation: "bb-pulse 2s ease-in-out infinite", opacity: 0.7 }}/>
-                    <span style={{ fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.3em", textTransform: "uppercase", color: "rgba(139,94,107,0.4)" }}>live</span>
+                    <span style={{ fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.3em", textTransform: "uppercase", color: MUTED }}>live</span>
                   </div>
                 </div>
               )}
@@ -886,9 +1345,9 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
               <div style={{ margin: "0 0 20px" }}><RoseDivider/></div>
 
               {/* Guest badge */}
-              <div style={{ background: "rgba(232,180,184,0.11)", border: "1px solid rgba(232,160,172,0.28)", borderRadius: 2, padding: "14px 20px" }}>
-                <p style={{ fontFamily: SANS, fontSize: 9, letterSpacing: "0.35em", textTransform: "uppercase", color: "rgba(139,94,107,0.5)", margin: "0 0 5px" }}>Dragă</p>
-                <p style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 400, color: "#5a3a44", margin: 0, letterSpacing: 1 }}>
+              <div style={{ background: BLUSH_XL, border: `1px solid ${BLUSH_L}`, borderRadius: 2, padding: "14px 20px" }}>
+                <p style={{ fontFamily: SANS, fontSize: 9, letterSpacing: "0.35em", textTransform: "uppercase", color: MUTED, margin: "0 0 5px" }}>Dragă</p>
+                <p style={{ fontFamily: DISPLAY, fontSize: 22, fontWeight: 400, color: PLUM, margin: 0, letterSpacing: 1 }}>
                   {guest?.name || 'Nume Invitat'}
                 </p>
               </div>
@@ -899,12 +1358,22 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
 
           {/* ── BLOCURI ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+            {editMode && (
+              <InsertBlockButton
+                insertIdx={-1}
+                openInsertAt={openInsertAt}
+                setOpenInsertAt={setOpenInsertAt}
+                blockTypes={BLOCK_TYPES}
+                onInsert={(type, def) => handleInsertAt(-1, type, def)}
+              />
+            )}
             {displayBlocks.map((block, idx) => {
               const isVisible = block.show !== false;
               const realIdx   = blocks.indexOf(block);
 
               return (
-                <div key={block.id} className={cn("relative group/block", !isVisible && editMode && "opacity-35")}
+                <div key={block.id} className="group/insert">
+                <div className={cn("relative group/block", !isVisible && editMode && "opacity-35")}
                   onClick={editMode ? () => onBlockSelect?.(block, realIdx) : undefined}>
                   {editMode && (
                     <BlockToolbar
@@ -936,24 +1405,24 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   {/* NAȘI */}
                   {block.type === 'godparents' && (
                     <div style={{ background: "rgba(255,255,255,0.82)", backdropFilter: "blur(8px)",
-                      borderRadius: 4, border: "1px solid rgba(232,160,172,0.25)", padding: "20px 28px", textAlign: "center",
+                      borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "20px 28px", textAlign: "center",
                       boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
                       <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Nașii Noștri'} onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
-                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(139,94,107,0.5)", margin: "0 0 10px", display: "block" }}/>
+                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: MUTED, margin: "0 0 10px", display: "block" }}/>
                       <InlineEdit tag="p" editMode={editMode} value={block.content || ''} onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..." multiline
-                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: "rgba(139,94,107,0.6)", margin: "0 0 12px", display: "block" }}/>
+                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, margin: "0 0 12px", display: "block" }}/>
                       <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                         {godparents.map((g: any, i: number) => (
                           <div key={i} className={cn("flex items-center justify-center gap-2", editMode && "group/gp")}>
                             <InlineEdit tag="span" editMode={editMode} value={g.godfather || ''} onChange={v => updGodparent(i, 'godfather', v)} placeholder="Naș"
-                              style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: "#5a3a44", letterSpacing: 1 }}/>
-                            <span style={{ fontFamily: SERIF, fontStyle: "italic", color: "#c97090", margin: "0 6px" }}>&</span>
+                              style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: PLUM, letterSpacing: 1 }}/>
+                            <span style={{ fontFamily: SERIF, fontStyle: "italic", color: BLUSH_D, margin: "0 6px" }}>&</span>
                             <InlineEdit tag="span" editMode={editMode} value={g.godmother || ''} onChange={v => updGodparent(i, 'godmother', v)} placeholder="Nașă"
-                              style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: "#5a3a44", letterSpacing: 1 }}/>
+                              style={{ fontFamily: DISPLAY, fontSize: 18, fontWeight: 400, color: PLUM, letterSpacing: 1 }}/>
                             {editMode && <button type="button" onClick={() => delGodparent(i)} className="opacity-0 group-hover/gp:opacity-100 transition-opacity p-0.5 rounded hover:bg-red-50"><Trash2 className="w-3 h-3 text-red-400"/></button>}
                           </div>
                         ))}
-                        {editMode && <button type="button" onClick={addGodparent} className="text-[10px] text-rose-300 hover:text-rose-500 border border-dashed border-rose-200 rounded-full px-2 py-0.5 flex items-center gap-1 mx-auto transition-colors"><Plus className="w-2.5 h-2.5"/> adaugă</button>}
+                        {editMode && <button type="button" onClick={addGodparent} className="text-[10px] border border-dashed rounded-full px-2 py-0.5 flex items-center gap-1 mx-auto transition-colors" style={{ color: BLUSH_D, borderColor: BLUSH_L }}><Plus className="w-2.5 h-2.5"/> adaugă</button>}
                       </div>
                     </div>
                   )}
@@ -961,12 +1430,12 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   {/* PĂRINȚI */}
                   {block.type === 'parents' && (
                     <div style={{ background: "rgba(255,255,255,0.82)", backdropFilter: "blur(8px)",
-                      borderRadius: 4, border: "1px solid rgba(232,160,172,0.25)", padding: "20px 28px", textAlign: "center",
+                      borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "20px 28px", textAlign: "center",
                       boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
                       <InlineEdit tag="p" editMode={editMode} value={block.sectionTitle || 'Părinții Noștri'} onChange={v => updBlock(realIdx, { sectionTitle: v })} placeholder="Titlu..."
-                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(139,94,107,0.5)", margin: "0 0 10px", display: "block" }}/>
+                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: MUTED, margin: "0 0 10px", display: "block" }}/>
                       <InlineEdit tag="p" editMode={editMode} value={block.content || ''} onChange={v => updBlock(realIdx, { content: v })} placeholder="Text introductiv..." multiline
-                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: "rgba(139,94,107,0.6)", margin: "0 0 12px", display: "block" }}/>
+                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, margin: "0 0 12px", display: "block" }}/>
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center" }}>
                         {([
                           { key: 'p1_father', ph: 'Tatăl Miresei' }, { key: 'p1_mother', ph: 'Mama Miresei' },
@@ -975,7 +1444,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                           const val = parentsData?.[key];
                           if (!val && !editMode) return null;
                           return <InlineEdit key={key} tag="p" editMode={editMode} value={val || ''} onChange={v => updParent(key, v)} placeholder={ph}
-                            style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 400, color: "#5a3a44", margin: 0, letterSpacing: 0.5 }}/>;
+                            style={{ fontFamily: DISPLAY, fontSize: 16, fontWeight: 400, color: PLUM, margin: 0, letterSpacing: 0.5 }}/>;
                         })}
                       </div>
                     </div>
@@ -985,7 +1454,9 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   {block.type === 'text' && (
                     <div style={{ textAlign: "center", padding: "8px 4px" }}>
                       <InlineEdit tag="p" editMode={editMode} value={block.content || ''} onChange={v => updBlock(realIdx, { content: v })} placeholder="Scrieți un mesaj..." multiline
-                        style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: "rgba(90,58,68,0.6)", lineHeight: 1.8 }}/>
+                        textKey={`${block.id}:text-content`}
+                        textLabel="Text · Continut"
+                        style={{ fontFamily: SERIF, fontSize: 14, fontStyle: "italic", color: MUTED, lineHeight: 1.8 }}/>
                     </div>
                   )}
 
@@ -993,9 +1464,221 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   {block.type === 'title' && (
                     <div style={{ textAlign: "center", padding: "4px 0" }}>
                       <InlineEdit tag="p" editMode={editMode} value={block.content || ''} onChange={v => updBlock(realIdx, { content: v })} placeholder="Titlu secțiune..."
-                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: "rgba(139,94,107,0.5)" }}/>
+                        textKey={`${block.id}:title-content`}
+                        textLabel="Titlu bloc"
+                        style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase", color: MUTED }}/>
                     </div>
                   )}
+
+                  {block.type === 'description' && (
+                    <div style={{ textAlign: "center", padding: "6px 4px" }}>
+                      <InlineEdit tag="p" editMode={editMode} value={block.content || ''} onChange={v => updBlock(realIdx, { content: v })} placeholder="Descriere..." multiline
+                        textKey={`${block.id}:description-content`}
+                        textLabel="Descriere bloc"
+                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, lineHeight: 1.7 }}/>
+                    </div>
+                  )}
+
+                  {block.type === 'date' && (
+                    <div style={{ textAlign: "center", padding: "4px 0" }}>
+                      <InlineEdit tag="p" editMode={editMode} value={block.content || dateStr} onChange={v => updBlock(realIdx, { content: v })}
+                        textKey={`${block.id}:date-content`}
+                        textLabel="Data bloc"
+                        style={{ fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.3em", textTransform: "uppercase", color: PLUM }}/>
+                    </div>
+                  )}
+
+                  {block.type === 'calendar' && (
+                    <div style={{ background: "rgba(255,255,255,0.82)", borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "14px 16px", boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
+                      <CalendarMonth date={profile.weddingDate} />
+                    </div>
+                  )}
+
+                  {block.type === 'countdown' && (
+                    <div style={{ background: "rgba(255,255,255,0.82)", borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "14px 16px", boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
+                      <FlipClock
+                        targetDate={profile.weddingDate}
+                        bgColor={BLUSH_D}
+                        textColor="white"
+                        accentColor={BLUSH_L}
+                        labelColor="rgba(255,255,255,0.7)"
+                        editMode={editMode}
+                        titleText={block.countdownTitle || "Timp ramas pana la marele eveniment"}
+                        onTitleChange={text => updBlock(realIdx, { countdownTitle: text })}
+                        titleTextKey={`${block.id}:countdown-title`}
+                        titleTextLabel="Countdown · Titlu"
+                      />
+                    </div>
+                  )}
+
+                  {block.type === "timeline" && (() => {
+                    const timelineItems = getTimelineItems();
+                    if (!editMode && timelineItems.length === 0) return null;
+                    return (
+                      <div style={{ background: "rgba(255,255,255,0.9)", borderRadius: 6, padding: 18, border: `1px solid ${BLUSH_L}` }}>
+                        <p style={{ fontFamily: SANS, fontSize: 8, fontWeight: 700, letterSpacing: "0.42em", textTransform: "uppercase", color: BLUSH_D, textAlign: "center", margin: "0 0 14px" }}>
+                          Programul Zilei
+                        </p>
+                        {timelineItems.length === 0 && editMode && (
+                          <p style={{ fontFamily: SERIF, fontSize: 12, fontStyle: "italic", color: MUTED, textAlign: "center", margin: "0 0 8px" }}>
+                            Adauga primul moment al zilei.
+                          </p>
+                        )}
+                        {timelineItems.map((item: any, i: number) => (
+                          <div key={item.id} style={{ display: "grid", gridTemplateColumns: "58px 44px 1fr", alignItems: "stretch", minHeight: 64 }}>
+                            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: 10 }}>
+                              <InlineTime
+                                editMode={editMode}
+                                value={item.time || ""}
+                                onChange={v => updateTimelineItem(item.id, { time: v })}
+                                textKey={`timeline:${item.id}:time`}
+                                textLabel={`Ora ${i + 1}`}
+                                style={{ fontFamily: SERIF, fontSize: 15, fontWeight: 600, color: BLUSH_D, lineHeight: 1.2, textAlign: "center", width: "100%" }}
+                              />
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                              <div style={{ width: 38, height: 38, borderRadius: "50%", background: BLUSH_XL, border: `1.5px solid ${BLUSH_L}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                                <WeddingIcon iconKey={item.icon || "party"} size={20} color={BLUSH_D} />
+                              </div>
+                              {i < timelineItems.length - 1 && (
+                                <div style={{ flex: 1, width: 1, background: `linear-gradient(to bottom, ${BLUSH_L}, transparent)`, marginTop: 4 }} />
+                              )}
+                            </div>
+                            <div style={{ paddingLeft: 12, paddingTop: 10, paddingBottom: i < timelineItems.length - 1 ? 20 : 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <InlineEdit
+                                  tag="span"
+                                  editMode={editMode}
+                                  value={item.title || ""}
+                                  onChange={v => updateTimelineItem(item.id, { title: v })}
+                                  placeholder="Moment..."
+                                  textKey={`timeline:${item.id}:title`}
+                                  textLabel={`Titlu ${i + 1}`}
+                                  style={{ fontFamily: SANS, fontSize: 15, fontWeight: 600, color: PLUM, display: "block", lineHeight: 1.3 }}
+                                />
+                                {editMode && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTimelineItem(item.id)}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 14, padding: "0 4px", opacity: 0.6, lineHeight: 1 }}
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+                              {(editMode || item.notice) && (
+                                <InlineEdit
+                                  tag="span"
+                                  editMode={editMode}
+                                  value={item.notice || ""}
+                                  onChange={v => updateTimelineItem(item.id, { notice: v })}
+                                  placeholder="Nota..."
+                                  textKey={`timeline:${item.id}:notice`}
+                                  textLabel={`Nota ${i + 1}`}
+                                  style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, display: "block", marginTop: 4, lineHeight: 1.5 }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                        <TimelineInsertButton
+                          editMode={editMode}
+                          colors={{ dark: BLUSH_D, light: BLUSH_L, xl: BLUSH_XL, muted: MUTED }}
+                          onAdd={(preset) => addTimelineItem(preset)}
+                        />
+                      </div>
+                    );
+                  })()}
+
+                  {block.type === 'music' && (
+                    <MusicBlock block={block} editMode={editMode} onUpdate={patch => updBlock(realIdx, patch)} />
+                  )}
+
+                  {block.type === 'gift' && (
+                    <div style={{ background: "rgba(255,255,255,0.82)", borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "18px 20px", textAlign: "center", boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
+                      <Gift className="w-7 h-7 mx-auto mb-3" style={{ color: BLUSH_D, opacity: 0.8 }} />
+                      <InlineEdit tag="h3" editMode={editMode} value={block.sectionTitle || "Sugestie cadou"} onChange={v => updBlock(realIdx, { sectionTitle: v })}
+                        style={{ fontFamily: DISPLAY, fontSize: 24, color: PLUM, margin: "0 0 8px" }} />
+                      <InlineEdit tag="p" editMode={editMode} value={block.content || ""} onChange={v => updBlock(realIdx, { content: v })} multiline
+                        style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, margin: "0 0 8px" }} />
+                      {(block.iban || editMode) && (
+                        <InlineEdit tag="p" editMode={editMode} value={block.iban || ""} onChange={v => updBlock(realIdx, { iban: v })} placeholder="IBAN..."
+                          style={{ fontFamily: SANS, fontSize: 11, fontWeight: 700, color: PLUM, margin: "0 0 3px" }} />
+                      )}
+                      {(block.ibanName || editMode) && (
+                        <InlineEdit tag="p" editMode={editMode} value={block.ibanName || ""} onChange={v => updBlock(realIdx, { ibanName: v })} placeholder="Beneficiar..."
+                          style={{ fontFamily: SANS, fontSize: 10, color: MUTED, margin: 0 }} />
+                      )}
+                    </div>
+                  )}
+
+                  {block.type === 'whatsapp' && (
+                    <div style={{ background: "rgba(255,255,255,0.82)", borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "18px 20px", textAlign: "center", boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
+                      <a
+                        href={`https://wa.me/${(block.content || "").replace(/\D/g, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 16px", borderRadius: 999, background: `linear-gradient(135deg,${BLUSH_D},${BLUSH})`, color: "white", textDecoration: "none", fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: "0.2em", textTransform: "uppercase" }}
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <InlineEdit tag="span" editMode={editMode} value={block.label || "Contact WhatsApp"} onChange={v => updBlock(realIdx, { label: v })} />
+                      </a>
+                      {editMode && (
+                        <div style={{ marginTop: 8 }}>
+                          <InlineEdit tag="p" editMode={editMode} value={block.content || ""} onChange={v => updBlock(realIdx, { content: v })} placeholder="Numar..."
+                            style={{ fontFamily: SANS, fontSize: 11, color: MUTED, margin: 0 }} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {block.type === 'rsvp' && (
+                    <div style={{ display: "flex", justifyContent: "center" }}>
+                      <button
+                        onClick={() => { if (!editMode) onOpenRSVP?.(); }}
+                        style={{ padding: "14px 24px", borderRadius: 4, border: "none", cursor: "pointer", background: `linear-gradient(135deg, ${BLUSH_D} 0%, ${BLUSH} 100%)`, fontFamily: SANS, fontWeight: 700, fontSize: 10, letterSpacing: "0.3em", textTransform: "uppercase", color: "white" }}
+                      >
+                        <InlineEdit tag="span" editMode={editMode} value={block.label || "Confirma Prezenta"} onChange={v => updBlock(realIdx, { label: v })} />
+                      </button>
+                    </div>
+                  )}
+
+                  {block.type === 'family' && (() => {
+                    const members: { name1: string; name2: string }[] = (() => {
+                      try { return JSON.parse(block.members || "[]"); } catch { return []; }
+                    })();
+                    const updateMembers = (newMembers: { name1: string; name2: string }[]) => {
+                      updBlock(realIdx, { members: JSON.stringify(newMembers) } as any);
+                    };
+                    return (
+                      <div style={{ background: "rgba(255,255,255,0.82)", borderRadius: 4, border: `1px solid ${BLUSH_L}`, padding: "18px 20px", textAlign: "center", boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
+                        <InlineEdit tag="p" editMode={editMode} value={block.label || "Familie"} onChange={v => updBlock(realIdx, { label: v })}
+                          style={{ fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.25em", textTransform: "uppercase", color: MUTED, margin: "0 0 8px" }} />
+                        <InlineEdit tag="p" editMode={editMode} value={block.content || ""} onChange={v => updBlock(realIdx, { content: v })} multiline
+                          style={{ fontFamily: SERIF, fontSize: 13, fontStyle: "italic", color: MUTED, margin: "0 0 10px" }} />
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                          {members.map((m, mi) => (
+                            <div key={mi} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
+                              <InlineEdit tag="span" editMode={editMode} value={m.name1} onChange={v => { const nm=[...members]; nm[mi] = { ...nm[mi], name1: v }; updateMembers(nm); }}
+                                style={{ fontFamily: DISPLAY, fontSize: 18, color: PLUM }} />
+                              <span style={{ color: BLUSH_D }}>&amp;</span>
+                              <InlineEdit tag="span" editMode={editMode} value={m.name2} onChange={v => { const nm=[...members]; nm[mi] = { ...nm[mi], name2: v }; updateMembers(nm); }}
+                                style={{ fontFamily: DISPLAY, fontSize: 18, color: PLUM }} />
+                              {editMode && members.length > 1 && (
+                                <button type="button" onClick={() => updateMembers(members.filter((_, i) => i !== mi))} style={{ border: "none", background: "none", color: "#dc2626", cursor: "pointer" }}>x</button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                        {editMode && (
+                          <button type="button" onClick={() => updateMembers([...members, { name1: "Nume 1", name2: "Nume 2" }])}
+                            style={{ marginTop: 10, border: `1px dashed ${BLUSH_L}`, background: "transparent", borderRadius: 999, padding: "4px 12px", fontFamily: SANS, fontSize: 9, fontWeight: 700, letterSpacing: "0.18em", textTransform: "uppercase", color: MUTED, cursor: "pointer" }}>
+                            + Adauga
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   {block.type === 'divider' && <RoseDivider/>}
                   {block.type === 'spacer'  && <div style={{ height: 16 }}/>}
@@ -1019,14 +1702,24 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                   )}
                   </BlockStyleProvider>
                 </div>
+                {editMode && (
+                  <InsertBlockButton
+                    insertIdx={realIdx}
+                    openInsertAt={openInsertAt}
+                    setOpenInsertAt={setOpenInsertAt}
+                    blockTypes={BLOCK_TYPES}
+                    onInsert={(type, def) => handleInsertAt(realIdx, type, def)}
+                  />
+                )}
+                </div>
               );
             })}
           </div>
 
           {/* Add block strip */}
           {editMode && (
-            <div className="text-center mt-4 py-4 border-2 border-dashed border-rose-100 hover:border-rose-200 rounded transition-colors">
-              <p className="text-[9px] uppercase tracking-widest mb-2.5 font-bold" style={{ color: "rgba(139,94,107,0.4)", fontFamily: SANS }}>Adaugă bloc</p>
+            <div className="text-center mt-4 py-4 border-2 border-dashed rounded transition-colors" style={{ borderColor: BLUSH_L }}>
+              <p className="text-[9px] uppercase tracking-widest mb-2.5 font-bold" style={{ color: MUTED, opacity: 0.65, fontFamily: SANS }}>Adaugă bloc</p>
               <div className="flex flex-wrap justify-center gap-2">
                 {[
                   { type: 'location',   label: 'Locație',  def: { label: '', time: '', locationName: '', locationAddress: '', wazeLink: '' } },
@@ -1039,7 +1732,7 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
                 ].map(({ type, label, def }) => (
                   <button key={type} type="button" onClick={() => addBlock(type, def)}
                     className="px-3 py-1 text-[10px] font-bold border rounded-full transition-all"
-                    style={{ color: "#8b5e6b", borderColor: "rgba(232,160,172,0.5)", fontFamily: SANS }}>
+                    style={{ color: MUTED, borderColor: `${BLUSH}80`, fontFamily: SANS }}>
                     + {label}
                   </button>
                 ))}
@@ -1047,56 +1740,18 @@ const BlushBloomTemplate: React.FC<BlushBloomProps> = ({
             </div>
           )}
 
-          {/* Timeline */}
-          {profile.showTimeline && timeline.length > 0 && (
-            <div style={{ marginTop: 8, background: "rgba(255,255,255,0.82)", backdropFilter: "blur(8px)",
-              borderRadius: 4, border: "1px solid rgba(232,160,172,0.25)", padding: "20px 28px",
-              boxShadow: "0 4px 24px rgba(184,120,140,0.07)" }}>
-              <p style={{ fontFamily: SANS, fontSize: 8, fontWeight: 800, letterSpacing: "0.4em", textTransform: "uppercase",
-                color: "rgba(139,94,107,0.5)", textAlign: "center", margin: "0 0 18px" }}>Programul Zilei</p>
-              <div style={{ display: "flex", flexDirection: "column" }}>
-                {timeline.map((item: any, i: number) => (
-                  <div key={item.id} style={{ display: "grid", gridTemplateColumns: "58px 52px 1fr", alignItems: "stretch", minHeight: 46 }}>
-                    {/* Time */}
-                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "flex-end", paddingRight: 8, paddingTop: 10 }}>
-                      <span style={{ fontFamily: SERIF, fontSize: 14, fontWeight: 600, color: BLUSH_D }}>{item.time}</span>
-                    </div>
-                    {/* Icon column */}
-                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      <div style={{ width: 46, height: 46, borderRadius: "50%", background: "#fdf8f5",
-                        border: `1.5px solid ${BLUSH_L}`, boxShadow: `0 2px 8px rgba(232,160,172,0.18)`,
-                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                        color: BLUSH_D }}>
-                        
-                      </div>
-                      {i < timeline.length - 1 && (
-                        <div style={{ flex: 1, width: "0.6px", background: `rgba(232,160,172,0.25)`, marginTop: 2, marginBottom: 2 }}/>
-                      )}
-                    </div>
-                    {/* Content */}
-                    <div style={{ paddingLeft: 10, paddingTop: 10, paddingBottom: i < timeline.length - 1 ? 16 : 0 }}>
-                      <span style={{ fontFamily: SANS, fontSize: 14, fontWeight: 600, color: "rgba(90,58,68,0.85)", display: "block" }}>{item.title}</span>
-                      {item.notice && <span style={{ fontFamily: SERIF, fontSize: 12, fontStyle: "italic", color: BLUSH_D, display: "block", marginTop: 2 }}>{item.notice}</span>}
-                      {item.location && <span style={{ fontFamily: SANS, fontSize: 11, color: MUTED, display: "block", marginTop: 2 }}>{item.location}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* RSVP */}
-          {showRsvp && (
+          {showRsvp && !hasRsvpBlock && (
             <div style={{ marginTop: 8 }}>
               {editMode ? (
                 <div style={{ width: "100%", padding: "18px 24px", borderRadius: 4, textAlign: "center",
-                  background: "linear-gradient(135deg,#c97090 0%,#a85570 60%,#8b3d5a 100%)" }}>
+                  background: `linear-gradient(135deg, ${BLUSH_D} 0%, ${BLUSH} 100%)` }}>
                   <InlineEdit tag="span" editMode={editMode} value={rsvpText} onChange={v => upProfile('rsvpButtonText', v)}
                     style={{ fontFamily: SANS, fontWeight: 700, fontSize: 11, letterSpacing: "0.35em", textTransform: "uppercase", color: "white", cursor: "text" }}/>
                 </div>
               ) : (
                 <button onClick={() => onOpenRSVP && onOpenRSVP()} style={{ width: "100%", padding: "18px 24px",
-                  background: "linear-gradient(135deg,#c97090 0%,#a85570 60%,#8b3d5a 100%)",
+                  background: `linear-gradient(135deg, ${BLUSH_D} 0%, ${BLUSH} 100%)`,
                   border: "none", borderRadius: 4, cursor: "pointer",
                   fontFamily: SANS, fontWeight: 700, fontSize: 11, letterSpacing: "0.35em",
                   textTransform: "uppercase", color: "white",

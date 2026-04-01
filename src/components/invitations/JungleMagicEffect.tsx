@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { InvitationTemplateProps, TemplateMeta } from "./types";
 import { cn } from "../../lib/utils";
-import { InvitationBlock, InvitationBlockType } from "../../types";
+import { InvitationBlock, InvitationBlockType, TextStyle } from "../../types";
 import { InlineEdit, InlineTime, InlineWaze } from "./InlineEdit";
 import { TimelineInsertButton } from "./TimelineInsertButton";
 import FlipClock from "./FlipClock";
@@ -751,11 +751,12 @@ type JungleIntroProps = {
   inviteText?: string;
   headerText?: string;
   footerText?: string;
+  introTextStyles?: Record<string, TextStyle>;
   themeColors?: { pinkDark: string; pinkL: string; pinkXL: string; gold: string };
   onRevealed?: () => void;
 };
 
-const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile, childName, partner2Name, subtitle, welcomeText, inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr, inviteText, headerText, footerText, themeColors, onRevealed }) => {
+const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile, childName, partner2Name, subtitle, welcomeText, inviteTop, inviteMiddle, inviteBottom, inviteTag, dateStr, inviteText, headerText, footerText, introTextStyles, themeColors, onRevealed }) => {
   const canvasRef  = useRef<HTMLCanvasElement>(null);
   const heroRef    = useRef<HTMLDivElement>(null);
   const mediaRef   = useRef<HTMLDivElement>(null);
@@ -777,6 +778,23 @@ const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile,
   const initial2 = (partner2Name || 'B').trim().charAt(0).toUpperCase() || 'B';
   const monoDate = dateStr || 'Data Evenimentului';
   const [loaderPhase, setLoaderPhase] = useState<'enter' | 'hold' | 'exit'>('enter');
+  const introStyleOf = (key: 'intro:header' | 'intro:text' | 'intro:footer'): React.CSSProperties => {
+    const style = introTextStyles?.[key];
+    if (!style) return {};
+    const out: React.CSSProperties = {};
+    if (style.fontFamily != null) out.fontFamily = style.fontFamily;
+    if (style.fontSize != null) out.fontSize = `${style.fontSize}px`;
+    if (style.fontWeight != null) out.fontWeight = style.fontWeight;
+    if (style.fontStyle != null) out.fontStyle = style.fontStyle;
+    if (style.letterSpacing != null) out.letterSpacing = `${style.letterSpacing * 0.01}em`;
+    if (style.lineHeight != null) out.lineHeight = `${style.lineHeight * 0.01}`;
+    if (style.color != null) out.color = style.color;
+    if (style.textAlign != null) out.textAlign = style.textAlign;
+    return out;
+  };
+  const headerTextStyle = introStyleOf('intro:header');
+  const bodyTextStyle = introStyleOf('intro:text');
+  const footerTextStyle = introStyleOf('intro:footer');
 
   const hexToVec3 = (hex: string) => {
     const r = parseInt(hex.slice(1,3),16)/255;
@@ -1080,7 +1098,7 @@ const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile,
             fontFamily: '"Tangerine", cursive', // ✅ corect
             opacity: 1,
             transition: 'opacity 180ms linear',
-
+            ...headerTextStyle,
           }}
         >
           {headerText || 'Save The Date'}
@@ -1105,6 +1123,7 @@ const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile,
             textShadow: '0 6px 18px rgba(0,0,0,0.28)',
             opacity: 1,
             transition: 'opacity 180ms linear',
+            ...footerTextStyle,
           }}
         >
           {footerText || monoDate}
@@ -1137,6 +1156,7 @@ const DissolveIntro: React.FC<JungleIntroProps> = ({ castleUrl, castleUrlMobile,
             fontSize: isMob ? 'clamp(2.5rem, 4.5vw, 5rem)' : 'clamp(2.5rem, 4.5vw, 5rem)',
             lineHeight: 0.9,
             textTransform: 'uppercase',
+            ...bodyTextStyle,
           }}
         >
           {overlayWords.map((word, index) => (
@@ -1612,7 +1632,12 @@ const JO: React.FC<InvitationTemplateProps & {
 
   // ── Imagini intro — din introVariants (regal) ────────────────────────────
   const introVariants: Record<string, { label: string; desktop?: string; mobile?: string }> = globalConfig.introVariants || {};
-  const activeIntroVariantId = p.introVariant || globalConfig.defaultIntroVariant || Object.keys(introVariants)[0];
+  const introVariantIdFromProfile = p.introVariant;
+  const fallbackIntroVariantId = globalConfig.defaultIntroVariant || Object.keys(introVariants)[0];
+  const activeIntroVariantId =
+    introVariantIdFromProfile && introVariants[introVariantIdFromProfile]
+      ? introVariantIdFromProfile
+      : fallbackIntroVariantId;
   const activeIntroVariant = (introVariants[activeIntroVariantId] || {}) as { label?: string; desktop?: string; mobile?: string };
 
   // Fallback: dacă nu există introVariants (config vechi), folosim heroBgImage/themeImages
@@ -1752,6 +1777,7 @@ const JO: React.FC<InvitationTemplateProps & {
   };
 
   const name1    = p.partner1Name;
+  const name2    = p.partner2Name;
   const dateStr  = p.weddingDate ? new Date(p.weddingDate).toLocaleDateString('ro-RO', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Data Evenimentului';
   const showRsvp = p.showRsvpButton;
   const rsvpText = p.rsvpButtonText?.trim() || CASTLE_DEFAULTS.rsvpButtonText;
@@ -1810,6 +1836,7 @@ const JO: React.FC<InvitationTemplateProps & {
             inviteText={jungleOverlayText}
             headerText={jungleHeaderText}
             footerText={jungleFooterText}
+            introTextStyles={(p as any).introTextStyles}
             themeColors={{ pinkDark: PINK_DARK, pinkL: PINK_L, pinkXL: PINK_XL, gold: GOLD }}
             onRevealed={() => {
               if (audioAllowedRef.current && musicPlayRef.current) {
@@ -1924,6 +1951,19 @@ const JO: React.FC<InvitationTemplateProps & {
         {/* Imagini uși se configurează din admin panel */}
 
           <div className="text-center">
+            <BlockStyleProvider
+              value={{
+                blockId: "__hero__",
+                textStyles: (profile as any).heroTextStyles,
+                onTextSelect: (textKey, textLabel) =>
+                  onBlockSelect?.(
+                    { id: "__hero__", type: "__hero__", textStyles: (profile as any).heroTextStyles } as any,
+                    -1,
+                    textKey,
+                    textLabel
+                  ),
+              }}
+            >
             <Reveal>
               <div className="mb-6 inline-block relative">
                 <div className="absolute -inset-4 bg-pink-200/30 blur-xl rounded-full" />
@@ -1987,18 +2027,55 @@ const JO: React.FC<InvitationTemplateProps & {
                 </svg>
               </div>
 
-              <InlineEdit
-                tag="h1"
-                editMode={editMode}
-                value={name1}
-                onChange={(v) => upProfile("partner1Name", v)}
+              <div
                 style={{
-                  fontFamily: INTO_TEXT,
-                  fontSize: "5rem",
-                  color: PINK_DARK,
-                  lineHeight: 1.2,
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "center",
+                  gap: "0.35em",
+                  flexWrap: "wrap",
                 }}
-              />
+              >
+                <InlineEdit
+                  tag="span"
+                  editMode={editMode}
+                  value={name1}
+                  onChange={(v) => upProfile("partner1Name", v)}
+                  textKey="hero:name1"
+                  textLabel="Nume 1 Hero"
+                  style={{
+                    fontFamily: INTO_TEXT,
+                    fontSize: "5rem",
+                    color: PINK_DARK,
+                    lineHeight: 1.2,
+                  }}
+                />
+                <span
+                  style={{
+                    fontFamily: HeroText,
+                    fontSize: "2.3rem",
+                    color: PINK_DARK,
+                    lineHeight: 1,
+                    opacity: 0.7,
+                  }}
+                >
+                  &
+                </span>
+                <InlineEdit
+                  tag="span"
+                  editMode={editMode}
+                  value={name2 || "Ea"}
+                  onChange={(v) => upProfile("partner2Name", v)}
+                  textKey="hero:name2"
+                  textLabel="Nume 2 Hero"
+                  style={{
+                    fontFamily: INTO_TEXT,
+                    fontSize: "5rem",
+                    color: PINK_DARK,
+                    lineHeight: 1.2,
+                  }}
+                />
+              </div>
 
               {/* Data — display custom cu zi / lună / an separate */}
               {p.weddingDate &&
@@ -2157,6 +2234,8 @@ const JO: React.FC<InvitationTemplateProps & {
                       editMode={editMode}
                       value={p.welcomeText}
                       onChange={(v) => upProfile("welcomeText", v)}
+                      textKey="hero:welcomeText"
+                      textLabel="Text Invitatie Hero"
                       style={{
                         fontFamily: HeroText,
                         fontStyle: "italic",
@@ -2244,6 +2323,8 @@ const JO: React.FC<InvitationTemplateProps & {
                         CASTLE_DEFAULTS.celebrationText
                       }
                       onChange={(v) => upProfile("celebrationText", v)}
+                      textKey="hero:celebrationText"
+                      textLabel="Text Celebrare Hero"
                       style={{
                         fontFamily: HeroText,
                         fontStyle: "italic",
@@ -2258,6 +2339,7 @@ const JO: React.FC<InvitationTemplateProps & {
                 </div>
               )}
             </Reveal>
+            </BlockStyleProvider>
           </div>
 
           <div className="space-y-0">

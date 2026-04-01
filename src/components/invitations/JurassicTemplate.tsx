@@ -1258,7 +1258,15 @@ const JurassicTemplate: React.FC<InvitationTemplateProps & {
       {/* MAIN CONTENT */}
       <div
         ref={el=>{ contentRef.current=el; setContentEl(el); }}
-        style={{ minHeight:'100vh', background:`linear-gradient(180deg,${C.darkJungle} 0%,${hexToRgba(C.midJungle,.9)} 40%,${C.darkJungle} 100%)`, fontFamily:sans, position:'relative', paddingBottom:60 }}>
+        style={{
+          minHeight:'100dvh',
+          background:`linear-gradient(180deg,${C.darkJungle} 0%,${hexToRgba(C.midJungle,.9)} 40%,${C.darkJungle} 100%)`,
+          backgroundColor:C.darkJungle,
+          fontFamily:sans,
+          position:'relative',
+          paddingBottom:'max(60px, env(safe-area-inset-bottom))',
+          overflow:'hidden'
+        }}>
 
         {/* Ambient glows */}
         <div style={{position:'fixed',top:'8%',left:'4%',width:300,height:300,borderRadius:'50%',pointerEvents:'none',zIndex:1,background:`radial-gradient(circle,${hexToRgba(C.amber,.06)} 0%,transparent 70%)`}}/>
